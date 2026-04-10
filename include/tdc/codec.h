@@ -1,0 +1,294 @@
+/*
+ * tdc/codec.h — frozen v0
+ *
+ * Codec specification: how to encode one block, plus the one-shot
+ * tdc_encode_block / tdc_decode_block entry points.
+ *
+ * Design rules:
+ *   1. The transform stage is a CHAIN, not a single id, from day 0. v0 keeps
+ *      the chain as a fixed-capacity array (TDC_MAX_TRANSFORMS = 4) to avoid
+ *      a heap allocation per encode. A 0 entry terminates the chain.
+ *   2. Symbolization is owned by REPRESENTATION (the transform stage). It is
+ *      not its own pipeline phase. The model emits a flat residual stream;
+ *      transforms turn that stream into entropy-friendly bytes. This was
+ *      Option B in the design discussion and is the only way the pipeline
+ *      stays the same shape across all dimensionalities.
+ *   3. v0 has a STATIC registry. The ids below are an enum, not a runtime
+ *      registration table. A future plugin API can be added without changing
+ *      the on-disk format because the ids are u16 and id ranges are reserved
+ *      below for "core" vs "experimental" vs "user".
+ *   4. Per-stage params are passed as opaque pointers. Each stage knows how
+ *      to cast them. This keeps tdc_codec_spec small and POD.
+ */
+
+#ifndef TDC_CODEC_H
+#define TDC_CODEC_H
+
+#include "types.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define TDC_MAX_TRANSFORMS 4
+#define TDC_MAX_ENTROPY    4
+
+/* ----- Stage ids ----------------------------------------------------------- */
+/*
+ * Reserved id ranges (for both model, transform, entropy enums):
+ *     0x0000          = NONE / sentinel (chain terminator for transforms)
+ *     0x0001 - 0x00FF = core (shipped with tdc)
+ *     0x0100 - 0x01FF = experimental (may change without version bump)
+ *     0x0200 - 0xFEFF = reserved
+ *     0xFF00 - 0xFFFF = user-defined (post-v0, when plugin API exists)
+ */
+
+/* Models — full v0 set.
+ *
+ * Existing in vectra (extraction): RAW, DELTA_1D, DICT_1D, PRED_2D, PLANE_2D.
+ * New in v0 (write from scratch):  STACK_2D, PRED_3D.
+ *
+ * PRED_2D covers the LEFT/UP/AVERAGE/PAETH predictor family. PLANE is a
+ * SEPARATE model id (not a tdc_pred2d_kind) because its side metadata is
+ * structurally incompatible: PRED_2D side meta is 1 byte (the resolved
+ * kind); PLANE side meta is u16 tile_size + u32 n_tiles + 3*i32 per tile.
+ * Cramming both shapes under one model id would force a "primary path +
+ * fallback path" branch on the side-meta layout — exactly the anti-pattern
+ * the project rules forbid. */
+typedef enum {
+    TDC_MODEL_NONE      = 0x0000,  /* invalid; never written to disk */
+    TDC_MODEL_RAW       = 0x0001,  /* identity; any layout, any dtype */
+    TDC_MODEL_DELTA_1D  = 0x0002,  /* x_i - x_{i-1}; VECTOR_1D, integer dtypes */
+    TDC_MODEL_DICT_1D   = 0x0003,  /* dictionary + RLE indices; VECTOR_1D + STRING */
+    TDC_MODEL_PRED_2D   = 0x0004,  /* LEFT/UP/AVERAGE/PAETH; RASTER_2D */
+    TDC_MODEL_STACK_2D  = 0x0005,  /* per-slice 2D predictor; STACK_2D */
+    TDC_MODEL_PRED_3D   = 0x0006,  /* 3D neighbor predictor; VOLUME_3D */
+    TDC_MODEL_PLANE_2D  = 0x0007   /* per-tile LSQ plane fit; RASTER_2D */
+} tdc_model_id;
+
+/* Transforms (representation stage; chained) */
+typedef enum {
+    TDC_XFORM_NONE         = 0x0000, /* chain terminator */
+    TDC_XFORM_QUANTIZE     = 0x0001, /* lossy: f32/f64 -> narrow int */
+    TDC_XFORM_ZIGZAG       = 0x0002, /* signed -> unsigned, small magnitudes near 0 */
+    TDC_XFORM_BYTE_SHUFFLE = 0x0003, /* transpose by byte lane (8/4/2 byte elems) */
+    TDC_XFORM_BIT_SHUFFLE  = 0x0004  /* transpose by bit lane (post-v0; reserved) */
+} tdc_xform_id;
+
+/* Entropy coders */
+typedef enum {
+    TDC_ENTROPY_NONE    = 0x0000, /* memcpy passthrough */
+    TDC_ENTROPY_LZ2     = 0x0001, /* native LZ77, separated-stream, 64K window.
+                                   * Note: LZ2 is a byte-level matcher. On a
+                                   * multi-byte dtype with no exact byte
+                                   * repetitions (e.g. an i32 ramp `1000+i*3`),
+                                   * RAW+LZ2 returns ~1.0x. Put a model OR a
+                                   * BYTE_SHUFFLE in front to expose the
+                                   * per-lane structure. */
+    TDC_ENTROPY_DEFLATE = 0x0002, /* zlib deflate; optional link, "ratio" mode */
+    TDC_ENTROPY_HUFFMAN = 0x0003, /* native canonical static Huffman, max code length 15 */
+    TDC_ENTROPY_FSE     = 0x0004, /* native tabled-ANS / Finite State Entropy */
+    TDC_ENTROPY_LANE    = 0x0005  /* per-lane entropy: splits BSHUF output into
+                                   * byte lanes, applies an independent sub-coder
+                                   * per lane (AUTO picks Huffman/FSE/STORE per
+                                   * lane based on Shannon entropy sampling). */
+} tdc_entropy_id;
+
+/* ----- Per-stage params ---------------------------------------------------- */
+/*
+ * These structs are public so that callers can stack-allocate them. Each
+ * stage's encode() casts the (void*) it receives back to its own params type.
+ *
+ * Adding a field to one of these is forward-compatible IFF the new field has
+ * a meaningful zero default (so old call sites that memset the struct still
+ * work). Otherwise the format version must be bumped.
+ */
+
+/* TDC_XFORM_QUANTIZE */
+typedef struct {
+    double    scale;       /* stored = round((value - offset) * scale) */
+    double    offset;
+    tdc_dtype target;      /* must be a signed integer dtype */
+} tdc_quantize_params;
+
+/* TDC_MODEL_PRED_2D — predictor selection */
+typedef enum {
+    TDC_PRED2D_AUTO    = 0,
+    TDC_PRED2D_LEFT    = 1,
+    TDC_PRED2D_UP      = 2,
+    TDC_PRED2D_AVERAGE = 3,
+    TDC_PRED2D_PAETH   = 4
+} tdc_pred2d_kind;
+
+typedef struct {
+    tdc_pred2d_kind kind;
+} tdc_pred2d_params;
+
+/* TDC_MODEL_PRED_3D — true 3D neighborhood predictor selection.
+ *
+ * Causal neighbor naming (offsets from voxel (z, y, x)):
+ *   a   = (z,   y,   x-1)   "left"
+ *   b   = (z,   y-1, x  )   "up"
+ *   c   = (z-1, y,   x  )   "front"  (prior slice)
+ *   ab  = (z,   y-1, x-1)
+ *   ac  = (z-1, y,   x-1)
+ *   bc  = (z-1, y-1, x  )
+ *   abc = (z-1, y-1, x-1)
+ *
+ * Kinds:
+ *   LEFT/UP/FRONT — single-axis predictors (pred = a, b, or c).
+ *   AVG3          — mean of in-bounds face neighbors among {a, b, c}; on
+ *                   the inner box pred = (a + b + c) / 3 with C truncation.
+ *                   Edge cells use the count of in-bounds neighbors.
+ *   GRAD3D        — trilinear linear predictor:
+ *                       pred = a + b + c - ab - ac - bc + abc
+ *                   This is the natural 3D extension of pred2d's linear
+ *                   plane predictor (the `p` in PNG Paeth) and is exact
+ *                   on any tri-affine field.
+ *   PAETH3D       — pick the face neighbor in {a, b, c} closest to the
+ *                   GRAD3D linear predictor. Tie-break order: a wins ties
+ *                   over b, b wins ties over c. Reduces to 2D Paeth on
+ *                   each face slab where one axis is on the boundary.
+ *   AUTO          — encoder picks the kind with the smallest sum of
+ *                   |residual| over a sample prefix; never written to disk.
+ *
+ * Side metadata: 1 byte = the resolved predictor kind (one of LEFT, UP,
+ * FRONT, AVG3, GRAD3D, PAETH3D — never AUTO). */
+typedef enum {
+    TDC_PRED3D_AUTO    = 0,
+    TDC_PRED3D_LEFT    = 1,
+    TDC_PRED3D_UP      = 2,
+    TDC_PRED3D_FRONT   = 3,
+    TDC_PRED3D_AVG3    = 4,
+    TDC_PRED3D_GRAD3D  = 5,
+    TDC_PRED3D_PAETH3D = 6
+} tdc_pred3d_kind;
+
+typedef struct {
+    tdc_pred3d_kind kind;
+} tdc_pred3d_params;
+
+/* TDC_MODEL_PLANE_2D — per-tile plane fit */
+typedef struct {
+    uint16_t tile_size;    /* default 32 */
+} tdc_plane2d_params;
+
+/* TDC_MODEL_STACK_2D — per-slice 2D predictor with optional inter-slice delta */
+typedef struct {
+    tdc_pred2d_kind kind;   /* in-plane predictor (AUTO selects on first slice) */
+    int inter_slice;        /* 1 = subtract previous slice before in-plane prediction */
+} tdc_stack2d_params;
+
+/* TDC_ENTROPY_LZ2 / DEFLATE */
+typedef struct {
+    int level;             /* 0 = default; range is backend-specific */
+} tdc_entropy_level;
+
+/* TDC_ENTROPY_LANE — per-lane entropy selection.
+ *
+ * After BYTE_SHUFFLE transposes by byte lane, different lanes have very
+ * different distributions. High-significance lanes (exponent bytes) are
+ * peaked → Huffman suffices. Low-significance lanes (mantissa noise)
+ * benefit from FSE's fractional-bit precision. Incompressible lanes
+ * should be stored raw.
+ *
+ * n_lanes must match elem_size from the upstream BYTE_SHUFFLE.
+ * lane_entropy[i] selects the sub-coder for lane i:
+ *   TDC_ENTROPY_NONE = AUTO (heuristic picks Huffman/FSE/NONE per lane).
+ *   TDC_ENTROPY_HUFFMAN / TDC_ENTROPY_FSE / explicitly selects that coder.
+ *
+ * On-disk header is self-describing; params are only needed at encode time. */
+#define TDC_MAX_LANES 8
+
+typedef struct {
+    uint8_t        n_lanes;
+    tdc_entropy_id lane_entropy[TDC_MAX_LANES];
+} tdc_lane_entropy_params;
+
+/* ----- Codec spec ---------------------------------------------------------- */
+/*
+ * The full description of how to encode one block. POD, copy-by-value safe.
+ *
+ * Both the transform chain AND the entropy chain run LEFT TO RIGHT during
+ * encode and RIGHT TO LEFT during decode. The first NONE (0) terminates
+ * each chain (sticky: everything after the first NONE must also be NONE).
+ *
+ * An all-NONE entropy chain is valid and means "passthrough" — the
+ * post-transform residuals are written to the payload byte-for-byte.
+ * tdc_codec_spec_raw() leaves entropy[] zeroed for exactly this reason.
+ *
+ * Typical chains:
+ *
+ *   model      = TDC_MODEL_PRED_2D
+ *   xform[0]   = TDC_XFORM_ZIGZAG
+ *   xform[1]   = TDC_XFORM_BYTE_SHUFFLE
+ *   entropy[0] = TDC_ENTROPY_LZ2            <-- single-stage entropy
+ *
+ *   model      = TDC_MODEL_DELTA_1D
+ *   xform[0]   = TDC_XFORM_ZIGZAG
+ *   xform[1]   = TDC_XFORM_BYTE_SHUFFLE
+ *   entropy[0] = TDC_ENTROPY_LZ2
+ *   entropy[1] = TDC_ENTROPY_HUFFMAN        <-- LZ2 output re-coded by Huffman
+ */
+
+typedef struct {
+    tdc_model_id   model;
+    tdc_xform_id   xform[TDC_MAX_TRANSFORMS];
+    tdc_entropy_id entropy[TDC_MAX_ENTROPY];
+
+    const void *model_params;     /* points to tdc_pred2d_params, etc., or NULL */
+    const void *xform_params[TDC_MAX_TRANSFORMS];
+    const void *entropy_params[TDC_MAX_ENTROPY];
+} tdc_codec_spec;
+
+/* Convenience: zero-initialize a spec to RAW + no xforms + passthrough entropy.
+ * The zeroed entropy chain is treated as NONE (memcpy passthrough) by the
+ * encode/decode drivers. */
+static inline tdc_codec_spec tdc_codec_spec_raw(void) {
+    tdc_codec_spec s = {0};
+    s.model = TDC_MODEL_RAW;
+    return s;
+}
+
+/* ----- One-shot encode / decode entry points ------------------------------- */
+/*
+ * Encode a single block according to spec. Output is written into out as a
+ * single tdc_block_record (header + side_meta + payload). The caller's
+ * tdc_buffer is grown via its realloc_fn as needed.
+ */
+tdc_status tdc_encode_block(const tdc_block      *src,
+                            const tdc_codec_spec *spec,
+                            tdc_buffer           *out);
+
+/*
+ * Decode a single block record. dst must already have:
+ *   - data pointing at a buffer of n_elems * dtype_size bytes
+ *   - dtype, layout, shape filled in (these are checked against the header)
+ * On TDC_OK, dst->data is filled with the reconstructed values.
+ *
+ * If the header's (dtype, layout, shape) disagrees with dst, returns
+ * TDC_E_DTYPE / TDC_E_LAYOUT / TDC_E_SHAPE without touching dst->data.
+ */
+tdc_status tdc_decode_block(const uint8_t *src, size_t src_size,
+                            tdc_block     *dst);
+
+/*
+ * Decode a single block record using a caller-supplied allocator.
+ * Identical to tdc_decode_block, but internal scratch buffers are
+ * allocated via scratch->realloc_fn instead of libc realloc.
+ *
+ * The caller must set scratch->realloc_fn before calling. The
+ * scratch->data / size / capacity fields are ignored on entry and
+ * are NOT used as a pre-allocated buffer — they serve only as the
+ * parent template for internal ping-pong buffers.
+ *
+ * On return (success or error), all scratch memory allocated by the
+ * function has been freed via the same realloc_fn(user, ptr, 0).
+ */
+tdc_status tdc_decode_block_ex(const uint8_t *src, size_t src_size,
+                               tdc_block *dst, tdc_buffer *scratch);
+
+#ifdef __cplusplus
+}
+#endif
+#endif /* TDC_CODEC_H */

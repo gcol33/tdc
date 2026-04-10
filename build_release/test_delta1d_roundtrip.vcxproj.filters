@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\tests\test_delta1d_roundtrip.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Gilles Colling\Documents\dev\tdc\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{EBCF1731-8F87-3641-96B0-E6EA0A3C0DA6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

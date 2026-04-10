@@ -1,0 +1,14 @@
+tdc throughput bench (best of 5, sizes are uncompressed)
+
+pipeline                                                   block     raw MiB     enc MiB   ratio    enc MB/s    dec MB/s
+--------------------------------------------------  ------------  ----------  ----------  ------  ----------  ----------
+RAW + NONE                                          vec1d u8 16M       16.00       16.00    1.00x      2796.0      4911.6
+RAW + LZ2                                           vec1d i32 4M (ramp)       16.00       16.00    1.00x       188.4      5330.7
+RAW + BSHUF + LZ2                                   vec1d i32 4M (ramp)       16.00        0.33   48.59x      1048.0      1502.5
+DELTA1D + LZ2                                       vec1d i32 4M (ramp)       16.00        0.00  159783.01x      2060.8      4410.3
+DELTA1D+ZIGZAG+BSHUF+LZ2                            vec1d i16 8M (walk)       16.00        7.94    2.02x       258.6      1209.6
+DELTA1D+ZZ+BSHUF+HUFFMAN                            vec1d i16 8M (walk)       16.00        6.81    2.35x       234.6       220.1
+DELTA1D+ZZ+BSHUF+FSE                                vec1d i16 8M (walk)       16.00        6.80    2.35x       192.4       257.4
+DELTA1D+ZZ+BSHUF+LZ2+HUF                            vec1d i16 8M (walk)       16.00        5.47    2.93x       163.5       158.3
+PRED2D(PAETH)+BSHUF+LZ2                             rast2d u16 2048x2048        8.00        4.89    1.64x       133.0       282.2
+PLANE2D+BSHUF+LZ2                                   rast2d i32 1024x1024        4.00        0.00  1316.48x       331.1       494.8

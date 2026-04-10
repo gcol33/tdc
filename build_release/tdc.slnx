@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Solution>
+	<Configurations>
+		<BuildType Name="Debug"/>
+		<BuildType Name="Release"/>
+		<BuildType Name="MinSizeRel"/>
+		<BuildType Name="RelWithDebInfo"/>
+		<Platform Name="x64"/>
+	</Configurations>
+	<Project Path="ALL_BUILD.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="cee91f60-6d02-39c3-ad44-1ad7aeea523a" DefaultStartup="true">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="bench_pred3d_avg3.vcxproj"/>
+		<BuildDependency Project="bench_throughput.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+		<BuildDependency Project="tdc_smoke.vcxproj"/>
+		<BuildDependency Project="test_byte_shuffle_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_delta1d_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_dict1d_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_format_validate.vcxproj"/>
+		<BuildDependency Project="test_fse_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_huffman_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_lz2_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_pipeline_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_pred2d_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_pred3d_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_quantize_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_raw_roundtrip.vcxproj"/>
+		<BuildDependency Project="test_zigzag_roundtrip.vcxproj"/>
+		<Build Solution="Debug|*" Project="false"/>
+		<Build Solution="Release|*" Project="false"/>
+		<Build Solution="MinSizeRel|*" Project="false"/>
+		<Build Solution="RelWithDebInfo|*" Project="false"/>
+	</Project>
+	<Project Path="RUN_TESTS.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="7a5edd80-4c4d-3517-a4f1-7faada3f6809">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<Build Solution="Debug|*" Project="false"/>
+		<Build Solution="Release|*" Project="false"/>
+		<Build Solution="MinSizeRel|*" Project="false"/>
+		<Build Solution="RelWithDebInfo|*" Project="false"/>
+	</Project>
+	<Project Path="ZERO_CHECK.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="223fb35e-8ded-3a73-b51d-5562e1870bf7"/>
+	<Project Path="bench_pred3d_avg3.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="3040faa0-fecc-37c4-a0ce-d2bef7520f05">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="bench_throughput.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="eb3278a5-5a43-3861-83da-c63d5d3d6ccf">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="tdc.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="5fa6af07-1bed-3111-a48e-30710db37e26">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="tdc_smoke.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="6135aadc-f05a-3866-9519-e5b0c420a9c9">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_byte_shuffle_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="a5a7a81b-16da-3695-93d9-7c0d8752b454">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_delta1d_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="69addb51-994a-3136-9601-237958cd7cbc">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_dict1d_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="d56739f9-6c19-3fb2-a415-87bf288f3744">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_format_validate.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="e6f6fe96-071c-3c6f-81bb-569a6aa23ef6">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_fse_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="4deff62f-910f-39e1-b028-ccc4bbd80541">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_huffman_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="95e4050d-7d9c-3f23-88de-9608a97549f5">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_lz2_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="d7920b2e-999b-370a-8f6f-4d6c36a8caa9">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_pipeline_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="605a1607-a405-34de-a29c-7ca389abe495">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_pred2d_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="c3cefea4-e52e-37f2-9a83-07b6b8b764cf">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_pred3d_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="a8fe24b3-0be0-32c6-ac2f-e0c17ad576c8">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_quantize_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="7a47307f-75ef-3574-8759-4f176c196589">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_raw_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="0ca685e8-8741-3eb1-aa0a-2cc546d0ad11">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+	<Project Path="test_zigzag_roundtrip.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="48c82ae9-12e1-3b70-8224-cf75923b8854">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+		<BuildDependency Project="tdc.vcxproj"/>
+	</Project>
+</Solution>

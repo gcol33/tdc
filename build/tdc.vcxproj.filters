@@ -1,0 +1,124 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\core\block.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\core\stream.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\core\arena.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\core\registry.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\core\error.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\layout\traverse.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\layout\tiling.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\model\raw.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\model\delta1d.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\model\dict.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\model\pred2d.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\model\plane2d.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\model\stack2d.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\model\pred3d.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\transform\quantize.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\transform\zigzag.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\transform\shuffle.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\transform\bitshuffle.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\symbols\residuals.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\symbols\runs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\entropy\none.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\entropy\lz2.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\entropy\deflate.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\entropy\huffman.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\entropy\fse.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\entropy\lane.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\format\header.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\format\block_record.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\format\metadata.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\format\schema.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\format\rowgroup.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\format\stats.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\api\encode.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\api\decode.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\api\decode_ex.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\api\stream_encode.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\Gilles Colling\Documents\dev\tdc\src\api\stream_decode.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Gilles Colling\Documents\dev\tdc\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{B0D99E54-0FB3-3C45-AFD1-A70EB62AA682}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

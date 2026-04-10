@@ -1,0 +1,100 @@
+[stage] model=  2.21 ms ( 7245.1 MB/s) xform=  0.00 ms (159812736.6 MB/s) entropy=  2.14 ms ( 7478.0 MB/s) raw=16.00 MiB enc=16777216 B
+[stage] model=  2.17 ms ( 7386.9 MB/s) xform=  0.00 ms (    0.0 MB/s) entropy=  2.06 ms ( 7758.7 MB/s) raw=16.00 MiB enc=16777216 B
+[stage] model=  2.05 ms ( 7807.9 MB/s) xform=  0.00 ms (    0.0 MB/s) entropy=  2.12 ms ( 7533.0 MB/s) raw=16.00 MiB enc=16777216 B
+[stage] model=  2.08 ms ( 7676.1 MB/s) xform=  0.00 ms (    0.0 MB/s) entropy=  2.11 ms ( 7598.1 MB/s) raw=16.00 MiB enc=16777216 B
+[stage] model=  2.04 ms ( 7855.8 MB/s) xform=  0.00 ms (    0.0 MB/s) entropy=  2.06 ms ( 7752.3 MB/s) raw=16.00 MiB enc=16777216 B
+[dec  ] entropy=  2.16 ms ( 7416.3 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  2.05 ms ( 7795.0 MB/s) raw=16.00 MiB enc=16777216 B
+[dec  ] entropy=  2.11 ms ( 7580.1 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  0.77 ms (20738.8 MB/s) raw=16.00 MiB enc=16777216 B
+[dec  ] entropy=  2.09 ms ( 7668.0 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  0.74 ms (21514.1 MB/s) raw=16.00 MiB enc=16777216 B
+[dec  ] entropy=  3.30 ms ( 4842.9 MB/s) xform=  0.00 ms (159812736.6 MB/s) model=  0.75 ms (21413.3 MB/s) raw=16.00 MiB enc=16777216 B
+[dec  ] entropy=  1.77 ms ( 9034.4 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  0.86 ms (18529.2 MB/s) raw=16.00 MiB enc=16777216 B
+[stage] model=  1.98 ms ( 8100.0 MB/s) xform=  0.00 ms (159812736.6 MB/s) entropy= 81.60 ms (  196.1 MB/s) raw=16.00 MiB enc=16777228 B
+[stage] model=  2.14 ms ( 7483.6 MB/s) xform=  0.00 ms (    0.0 MB/s) entropy= 81.63 ms (  196.0 MB/s) raw=16.00 MiB enc=16777228 B
+[stage] model=  2.22 ms ( 7204.6 MB/s) xform=  0.00 ms (159812736.6 MB/s) entropy= 80.77 ms (  198.1 MB/s) raw=16.00 MiB enc=16777228 B
+[stage] model=  2.17 ms ( 7384.8 MB/s) xform=  0.00 ms (    0.0 MB/s) entropy= 80.69 ms (  198.3 MB/s) raw=16.00 MiB enc=16777228 B
+[stage] model=  2.88 ms ( 5548.6 MB/s) xform=  0.00 ms (    0.0 MB/s) entropy= 81.51 ms (  196.3 MB/s) raw=16.00 MiB enc=16777228 B
+[dec  ] entropy=  2.25 ms ( 7100.7 MB/s) xform=  0.00 ms (159812736.6 MB/s) model=  2.02 ms ( 7911.0 MB/s) raw=16.00 MiB enc=16777228 B
+[dec  ] entropy=  2.11 ms ( 7595.2 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  0.75 ms (21211.7 MB/s) raw=16.00 MiB enc=16777228 B
+[dec  ] entropy=  1.85 ms ( 8645.8 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  0.77 ms (20803.5 MB/s) raw=16.00 MiB enc=16777228 B
+[dec  ] entropy=  1.86 ms ( 8599.8 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  0.85 ms (18874.6 MB/s) raw=16.00 MiB enc=16777228 B
+[dec  ] entropy=  2.03 ms ( 7869.0 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  0.77 ms (20846.9 MB/s) raw=16.00 MiB enc=16777228 B
+[stage] model=  2.00 ms ( 8003.6 MB/s) xform=  7.19 ms ( 2225.8 MB/s) entropy=  5.23 ms ( 3058.6 MB/s) raw=16.00 MiB enc=345200 B
+[stage] model=  2.18 ms ( 7350.6 MB/s) xform=  7.36 ms ( 2172.6 MB/s) entropy=  5.21 ms ( 3069.3 MB/s) raw=16.00 MiB enc=345200 B
+[stage] model=  2.13 ms ( 7499.8 MB/s) xform=  7.06 ms ( 2266.4 MB/s) entropy=  5.46 ms ( 2931.4 MB/s) raw=16.00 MiB enc=345200 B
+[stage] model=  2.19 ms ( 7317.0 MB/s) xform=  7.02 ms ( 2279.9 MB/s) entropy=  5.27 ms ( 3037.2 MB/s) raw=16.00 MiB enc=345200 B
+[stage] model=  2.22 ms ( 7213.4 MB/s) xform=  7.08 ms ( 2259.8 MB/s) entropy=  5.16 ms ( 3099.1 MB/s) raw=16.00 MiB enc=345200 B
+[dec  ] entropy=  3.26 ms ( 4901.7 MB/s) xform=  6.27 ms ( 2552.4 MB/s) model=  1.72 ms ( 9289.4 MB/s) raw=16.00 MiB enc=345200 B
+[dec  ] entropy=  3.25 ms ( 4927.8 MB/s) xform=  6.16 ms ( 2595.5 MB/s) model=  0.43 ms (36900.4 MB/s) raw=16.00 MiB enc=345200 B
+[dec  ] entropy=  3.30 ms ( 4846.1 MB/s) xform=  6.42 ms ( 2491.7 MB/s) model=  0.76 ms (20923.2 MB/s) raw=16.00 MiB enc=345200 B
+[dec  ] entropy=  3.33 ms ( 4809.3 MB/s) xform=  6.55 ms ( 2443.3 MB/s) model=  0.79 ms (20343.3 MB/s) raw=16.00 MiB enc=345200 B
+[dec  ] entropy=  3.55 ms ( 4503.9 MB/s) xform=  6.66 ms ( 2404.1 MB/s) model=  0.84 ms (18975.3 MB/s) raw=16.00 MiB enc=345200 B
+[stage] model=  2.72 ms ( 5877.6 MB/s) xform=  0.00 ms (159812736.6 MB/s) entropy=  4.93 ms ( 3243.3 MB/s) raw=16.00 MiB enc=25 B
+[stage] model=  2.66 ms ( 6016.6 MB/s) xform=  0.00 ms (160559525.1 MB/s) entropy=  5.26 ms ( 3041.3 MB/s) raw=16.00 MiB enc=25 B
+[stage] model=  2.72 ms ( 5879.1 MB/s) xform=  0.00 ms (160559525.1 MB/s) entropy=  4.93 ms ( 3244.4 MB/s) raw=16.00 MiB enc=25 B
+[stage] model=  2.63 ms ( 6083.4 MB/s) xform=  0.00 ms (159812736.6 MB/s) entropy=  4.76 ms ( 3360.7 MB/s) raw=16.00 MiB enc=25 B
+[stage] model=  2.70 ms ( 5929.2 MB/s) xform=  0.00 ms (159812736.6 MB/s) entropy=  4.64 ms ( 3448.9 MB/s) raw=16.00 MiB enc=25 B
+[dec  ] entropy=  2.06 ms ( 7748.6 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  2.55 ms ( 6280.9 MB/s) raw=16.00 MiB enc=25 B
+[dec  ] entropy=  2.07 ms ( 7731.7 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  1.25 ms (12767.3 MB/s) raw=16.00 MiB enc=25 B
+[dec  ] entropy=  2.03 ms ( 7891.5 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  1.35 ms (11833.4 MB/s) raw=16.00 MiB enc=25 B
+[dec  ] entropy=  2.05 ms ( 7802.6 MB/s) xform=  0.00 ms (160559525.1 MB/s) model=  1.88 ms ( 8516.1 MB/s) raw=16.00 MiB enc=25 B
+[dec  ] entropy=  1.96 ms ( 8157.9 MB/s) xform=  0.00 ms (    0.0 MB/s) model=  1.19 ms (13482.8 MB/s) raw=16.00 MiB enc=25 B
+[stage] model=  3.17 ms ( 5043.7 MB/s) xform=  7.77 ms ( 2058.9 MB/s) entropy= 50.37 ms (  317.7 MB/s) raw=16.00 MiB enc=8321088 B
+[stage] model=  3.16 ms ( 5064.6 MB/s) xform=  7.69 ms ( 2080.9 MB/s) entropy= 49.95 ms (  320.3 MB/s) raw=16.00 MiB enc=8321088 B
+[stage] model=  3.05 ms ( 5242.6 MB/s) xform=  7.58 ms ( 2111.0 MB/s) entropy= 49.72 ms (  321.8 MB/s) raw=16.00 MiB enc=8321088 B
+[stage] model=  3.61 ms ( 4433.9 MB/s) xform=  8.15 ms ( 1963.7 MB/s) entropy= 50.32 ms (  318.0 MB/s) raw=16.00 MiB enc=8321088 B
+[stage] model=  3.72 ms ( 4295.6 MB/s) xform=  8.37 ms ( 1912.6 MB/s) entropy= 51.03 ms (  313.5 MB/s) raw=16.00 MiB enc=8321088 B
+[dec  ] entropy=  3.50 ms ( 4570.4 MB/s) xform=  7.51 ms ( 2131.7 MB/s) model=  3.00 ms ( 5336.5 MB/s) raw=16.00 MiB enc=8321088 B
+[dec  ] entropy=  3.44 ms ( 4652.2 MB/s) xform=  7.17 ms ( 2231.3 MB/s) model=  1.91 ms ( 8398.5 MB/s) raw=16.00 MiB enc=8321088 B
+[dec  ] entropy=  3.43 ms ( 4667.7 MB/s) xform=  7.21 ms ( 2220.2 MB/s) model=  1.73 ms ( 9258.2 MB/s) raw=16.00 MiB enc=8321088 B
+[dec  ] entropy=  3.53 ms ( 4528.0 MB/s) xform=  7.39 ms ( 2165.9 MB/s) model=  1.76 ms ( 9100.2 MB/s) raw=16.00 MiB enc=8321088 B
+[dec  ] entropy=  3.62 ms ( 4416.6 MB/s) xform=  7.94 ms ( 2015.0 MB/s) model=  1.99 ms ( 8056.8 MB/s) raw=16.00 MiB enc=8321088 B
+[stage] model=  3.39 ms ( 4719.8 MB/s) xform=  9.71 ms ( 1647.5 MB/s) entropy= 56.11 ms (  285.1 MB/s) raw=16.00 MiB enc=7143692 B
+[stage] model=  3.36 ms ( 4762.0 MB/s) xform=  8.34 ms ( 1918.1 MB/s) entropy= 55.52 ms (  288.2 MB/s) raw=16.00 MiB enc=7143692 B
+[stage] model=  3.25 ms ( 4921.7 MB/s) xform=  8.00 ms ( 2000.4 MB/s) entropy= 57.07 ms (  280.3 MB/s) raw=16.00 MiB enc=7143692 B
+[stage] model=  3.22 ms ( 4965.9 MB/s) xform=  8.03 ms ( 1993.6 MB/s) entropy= 55.45 ms (  288.5 MB/s) raw=16.00 MiB enc=7143692 B
+[stage] model=  3.36 ms ( 4762.9 MB/s) xform=  8.20 ms ( 1950.5 MB/s) entropy= 55.39 ms (  288.9 MB/s) raw=16.00 MiB enc=7143692 B
+[dec  ] entropy= 64.29 ms (  248.9 MB/s) xform=  7.37 ms ( 2171.8 MB/s) model=  2.88 ms ( 5562.1 MB/s) raw=16.00 MiB enc=7143692 B
+[dec  ] entropy= 63.04 ms (  253.8 MB/s) xform=  7.04 ms ( 2274.1 MB/s) model=  1.74 ms ( 9221.4 MB/s) raw=16.00 MiB enc=7143692 B
+[dec  ] entropy= 62.66 ms (  255.3 MB/s) xform=  7.29 ms ( 2193.7 MB/s) model=  2.14 ms ( 7487.5 MB/s) raw=16.00 MiB enc=7143692 B
+[dec  ] entropy= 64.57 ms (  247.8 MB/s) xform=  7.19 ms ( 2225.2 MB/s) model=  1.73 ms ( 9241.6 MB/s) raw=16.00 MiB enc=7143692 B
+[dec  ] entropy= 64.10 ms (  249.6 MB/s) xform=  7.36 ms ( 2174.2 MB/s) model=  1.76 ms ( 9082.7 MB/s) raw=16.00 MiB enc=7143692 B
+[stage] model=  3.20 ms ( 5000.8 MB/s) xform=  8.35 ms ( 1917.0 MB/s) entropy= 72.77 ms (  219.9 MB/s) raw=16.00 MiB enc=7125639 B
+[stage] model=  3.10 ms ( 5153.8 MB/s) xform=  7.64 ms ( 2093.5 MB/s) entropy= 71.07 ms (  225.1 MB/s) raw=16.00 MiB enc=7125639 B
+[stage] model=  3.68 ms ( 4347.5 MB/s) xform=  8.41 ms ( 1902.8 MB/s) entropy= 70.98 ms (  225.4 MB/s) raw=16.00 MiB enc=7125639 B
+[stage] model=  3.11 ms ( 5152.6 MB/s) xform=  7.59 ms ( 2108.0 MB/s) entropy= 72.38 ms (  221.1 MB/s) raw=16.00 MiB enc=7125639 B
+[stage] model=  3.43 ms ( 4666.1 MB/s) xform=  8.52 ms ( 1879.0 MB/s) entropy= 73.32 ms (  218.2 MB/s) raw=16.00 MiB enc=7125639 B
+[dec  ] entropy= 54.27 ms (  294.8 MB/s) xform=  7.07 ms ( 2262.8 MB/s) model=  2.87 ms ( 5582.3 MB/s) raw=16.00 MiB enc=7125639 B
+[dec  ] entropy= 53.82 ms (  297.3 MB/s) xform=  7.61 ms ( 2101.7 MB/s) model=  1.70 ms ( 9422.9 MB/s) raw=16.00 MiB enc=7125639 B
+[dec  ] entropy= 52.68 ms (  303.7 MB/s) xform=  6.87 ms ( 2329.9 MB/s) model=  1.67 ms ( 9572.8 MB/s) raw=16.00 MiB enc=7125639 B
+[dec  ] entropy= 52.64 ms (  303.9 MB/s) xform=  7.47 ms ( 2143.1 MB/s) model=  2.13 ms ( 7510.7 MB/s) raw=16.00 MiB enc=7125639 B
+[dec  ] entropy= 52.81 ms (  303.0 MB/s) xform=  7.12 ms ( 2246.5 MB/s) model=  1.73 ms ( 9229.9 MB/s) raw=16.00 MiB enc=7125639 B
+[stage] model=  3.54 ms ( 4524.4 MB/s) xform=  8.15 ms ( 1963.6 MB/s) entropy= 86.03 ms (  186.0 MB/s) raw=16.00 MiB enc=5734962 B
+[stage] model=  3.13 ms ( 5109.9 MB/s) xform=  7.88 ms ( 2031.3 MB/s) entropy= 85.64 ms (  186.8 MB/s) raw=16.00 MiB enc=5734962 B
+[stage] model=  3.47 ms ( 4607.9 MB/s) xform=  7.91 ms ( 2021.6 MB/s) entropy= 87.45 ms (  183.0 MB/s) raw=16.00 MiB enc=5734962 B
+[stage] model=  3.24 ms ( 4935.1 MB/s) xform=  7.84 ms ( 2041.6 MB/s) entropy= 91.90 ms (  174.1 MB/s) raw=16.00 MiB enc=5734962 B
+[stage] model=  5.33 ms ( 3003.4 MB/s) xform= 12.60 ms ( 1270.3 MB/s) entropy=132.29 ms (  120.9 MB/s) raw=16.00 MiB enc=5734962 B
+[dec  ] entropy= 82.96 ms (  192.9 MB/s) xform= 14.24 ms ( 1123.4 MB/s) model=  4.61 ms ( 3473.2 MB/s) raw=16.00 MiB enc=5734962 B
+[dec  ] entropy= 83.58 ms (  191.4 MB/s) xform= 13.05 ms ( 1226.3 MB/s) model=  3.22 ms ( 4973.9 MB/s) raw=16.00 MiB enc=5734962 B
+[dec  ] entropy= 83.62 ms (  191.3 MB/s) xform= 14.31 ms ( 1118.1 MB/s) model=  3.56 ms ( 4491.7 MB/s) raw=16.00 MiB enc=5734962 B
+[dec  ] entropy= 82.92 ms (  193.0 MB/s) xform= 13.56 ms ( 1180.0 MB/s) model=  3.74 ms ( 4279.9 MB/s) raw=16.00 MiB enc=5734962 B
+[dec  ] entropy= 83.10 ms (  192.5 MB/s) xform= 15.14 ms ( 1056.9 MB/s) model=  3.52 ms ( 4546.2 MB/s) raw=16.00 MiB enc=5734962 B
+[stage] model=  9.45 ms (  847.0 MB/s) xform=  5.11 ms ( 1566.2 MB/s) entropy= 46.15 ms (  173.3 MB/s) raw=8.00 MiB enc=5123409 B
+[stage] model=  9.37 ms (  853.3 MB/s) xform=  5.11 ms ( 1566.0 MB/s) entropy= 45.41 ms (  176.2 MB/s) raw=8.00 MiB enc=5123409 B
+[stage] model=  9.53 ms (  839.2 MB/s) xform=  5.33 ms ( 1500.0 MB/s) entropy= 46.34 ms (  172.6 MB/s) raw=8.00 MiB enc=5123409 B
+[stage] model=  9.37 ms (  854.1 MB/s) xform=  5.19 ms ( 1541.7 MB/s) entropy= 45.91 ms (  174.3 MB/s) raw=8.00 MiB enc=5123409 B
+[stage] model=  9.34 ms (  856.5 MB/s) xform=  5.12 ms ( 1561.5 MB/s) entropy= 44.34 ms (  180.4 MB/s) raw=8.00 MiB enc=5123409 B
+[dec  ] entropy= 13.99 ms (  571.7 MB/s) xform=  5.08 ms ( 1573.4 MB/s) model=  9.16 ms (  872.9 MB/s) raw=8.00 MiB enc=5123409 B
+[dec  ] entropy= 13.98 ms (  572.1 MB/s) xform=  5.10 ms ( 1567.7 MB/s) model=  8.61 ms (  928.7 MB/s) raw=8.00 MiB enc=5123409 B
+[dec  ] entropy= 13.96 ms (  573.0 MB/s) xform=  5.09 ms ( 1572.4 MB/s) model=  8.75 ms (  914.6 MB/s) raw=8.00 MiB enc=5123409 B
+[dec  ] entropy= 13.93 ms (  574.1 MB/s) xform=  5.17 ms ( 1547.0 MB/s) model=  8.62 ms (  927.6 MB/s) raw=8.00 MiB enc=5123409 B
+[dec  ] entropy= 14.01 ms (  571.1 MB/s) xform=  5.16 ms ( 1550.4 MB/s) model=  8.67 ms (  922.9 MB/s) raw=8.00 MiB enc=5123409 B
+[stage] model=  7.40 ms (  540.4 MB/s) xform=  2.53 ms ( 1583.0 MB/s) entropy=  1.79 ms ( 2230.4 MB/s) raw=4.00 MiB enc=20 B
+[stage] model=  7.55 ms (  529.9 MB/s) xform=  2.53 ms ( 1581.8 MB/s) entropy=  2.07 ms ( 1927.9 MB/s) raw=4.00 MiB enc=20 B
+[stage] model=  7.58 ms (  527.9 MB/s) xform=  2.54 ms ( 1574.5 MB/s) entropy=  1.77 ms ( 2254.3 MB/s) raw=4.00 MiB enc=20 B
+[stage] model=  7.58 ms (  527.7 MB/s) xform=  2.61 ms ( 1532.3 MB/s) entropy=  1.80 ms ( 2228.2 MB/s) raw=4.00 MiB enc=20 B
+[stage] model=  7.57 ms (  528.5 MB/s) xform=  2.54 ms ( 1572.1 MB/s) entropy=  1.90 ms ( 2104.5 MB/s) raw=4.00 MiB enc=20 B
+[dec  ] entropy=  0.59 ms ( 6807.4 MB/s) xform=  2.54 ms ( 1576.5 MB/s) model=  5.01 ms (  798.4 MB/s) raw=4.00 MiB enc=20 B
+[dec  ] entropy=  0.57 ms ( 7005.3 MB/s) xform=  2.71 ms ( 1473.5 MB/s) model=  4.64 ms (  861.9 MB/s) raw=4.00 MiB enc=20 B
+[dec  ] entropy=  0.61 ms ( 6509.4 MB/s) xform=  2.55 ms ( 1568.8 MB/s) model=  4.57 ms (  874.9 MB/s) raw=4.00 MiB enc=20 B
+[dec  ] entropy=  0.66 ms ( 6056.0 MB/s) xform=  2.85 ms ( 1405.4 MB/s) model=  4.63 ms (  864.8 MB/s) raw=4.00 MiB enc=20 B
+[dec  ] entropy=  0.57 ms ( 7010.2 MB/s) xform=  2.56 ms ( 1565.6 MB/s) model=  4.71 ms (  849.0 MB/s) raw=4.00 MiB enc=20 B

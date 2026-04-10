@@ -1,0 +1,285 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ResolveNugetPackages>false</ResolveNugetPackages>
+  </PropertyGroup>
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="MinSizeRel|x64">
+      <Configuration>MinSizeRel</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="RelWithDebInfo|x64">
+      <Configuration>RelWithDebInfo</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{434B8692-732C-3B77-A6C5-07C6849D1C40}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+    <Platform>x64</Platform>
+    <ProjectName>ALL_BUILD</ProjectName>
+    <VCProjectUpgraderObjectName>NoUpgrade</VCProjectUpgraderObjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'" Label="Configuration">
+    <ConfigurationType>Utility</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v145</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.20506.1</_ProjectFileVersion>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">
+    <Midl>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <OutputDirectory>$(ProjectDir)/$(IntDir)</OutputDirectory>
+      <HeaderFileName>%(Filename).h</HeaderFileName>
+      <TypeLibraryName>%(Filename).tlb</TypeLibraryName>
+      <InterfaceIdentifierFileName>%(Filename)_i.c</InterfaceIdentifierFileName>
+      <ProxyFileName>%(Filename)_p.c</ProxyFileName>
+    </Midl>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Gilles Colling\Documents\dev\tdc\CMakeLists.txt">
+      <UseUtf8Encoding>Always</UseUtf8Encoding>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Building Custom Rule C:/Users/Gilles Colling/Documents/dev/tdc/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/Gilles Colling/Documents/dev/tdc" "-BC:/Users/Gilles Colling/Documents/dev/tdc/build" --check-stamp-file "C:/Users/Gilles Colling/Documents/dev/tdc/build/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Linker\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\WindowsPaths.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeCCompiler.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeRCCompiler.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Building Custom Rule C:/Users/Gilles Colling/Documents/dev/tdc/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/Gilles Colling/Documents/dev/tdc" "-BC:/Users/Gilles Colling/Documents/dev/tdc/build" --check-stamp-file "C:/Users/Gilles Colling/Documents/dev/tdc/build/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Linker\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\WindowsPaths.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeCCompiler.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeRCCompiler.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">Building Custom Rule C:/Users/Gilles Colling/Documents/dev/tdc/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/Gilles Colling/Documents/dev/tdc" "-BC:/Users/Gilles Colling/Documents/dev/tdc/build" --check-stamp-file "C:/Users/Gilles Colling/Documents/dev/tdc/build/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Linker\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\WindowsPaths.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeCCompiler.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeRCCompiler.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='MinSizeRel|x64'">false</LinkObjects>
+      <Message Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">Building Custom Rule C:/Users/Gilles Colling/Documents/dev/tdc/CMakeLists.txt</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">setlocal
+"C:\Program Files\CMake\bin\cmake.exe" "-SC:/Users/Gilles Colling/Documents/dev/tdc" "-BC:/Users/Gilles Colling/Documents/dev/tdc/build" --check-stamp-file "C:/Users/Gilles Colling/Documents/dev/tdc/build/CMakeFiles/generate.stamp"
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal &amp; call :cmErrorLevel %errorlevel% &amp; goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeCInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeCommonLanguageInclude.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeGenericSystem.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeInitializeConfigs.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeLanguageInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeRCInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeSystemSpecificInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\CMakeSystemSpecificInitialize.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\CMakeCommonCompilerMacros.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Compiler\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Internal\CMakeCLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Internal\CMakeCommonLinkerInformation.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Linker\MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Linker\MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Linker\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Linker\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-Initialize.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-MSVC-C.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows-MSVC.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\Windows.cmake;C:\Program Files\CMake\share\cmake-4.2\Modules\Platform\WindowsPaths.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeCCompiler.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeRCCompiler.cmake;C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\4.2.1\CMakeSystem.cmake;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">C:\Users\Gilles Colling\Documents\dev\tdc\build\CMakeFiles\generate.stamp</Outputs>
+      <LinkObjects Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|x64'">false</LinkObjects>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\ZERO_CHECK.vcxproj">
+      <Project>{5A934915-643C-3AF9-A982-F9A8D4FA6211}</Project>
+      <Name>ZERO_CHECK</Name>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\bench_pred3d_avg3.vcxproj">
+      <Project>{795E9A5A-3C40-3978-B076-0ED9AA15470A}</Project>
+      <Name>bench_pred3d_avg3</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\bench_throughput.vcxproj">
+      <Project>{B58CDADF-CD79-3A08-A365-55DB405BF16D}</Project>
+      <Name>bench_throughput</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\tdc.vcxproj">
+      <Project>{A1A19DAD-1CDA-32A0-B734-FFF3156D9961}</Project>
+      <Name>tdc</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\tdc_smoke.vcxproj">
+      <Project>{531FBA8C-8E50-3F82-826B-F8C63B7B9C26}</Project>
+      <Name>tdc_smoke</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_bitshuffle_roundtrip.vcxproj">
+      <Project>{9AA0DA3C-11A3-35E2-9863-0B2A7E0837CD}</Project>
+      <Name>test_bitshuffle_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_byte_shuffle_roundtrip.vcxproj">
+      <Project>{B7538D97-0113-3862-B657-FC3C79B8B1E3}</Project>
+      <Name>test_byte_shuffle_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_decode_ex.vcxproj">
+      <Project>{53EF3A03-6F28-388D-A483-C8D51EEF983D}</Project>
+      <Name>test_decode_ex</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_deflate_roundtrip.vcxproj">
+      <Project>{BA2B5810-9759-34E5-83AB-DBF19AFB92F4}</Project>
+      <Name>test_deflate_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_delta1d_roundtrip.vcxproj">
+      <Project>{4D7FCFC4-BE13-39DC-B39F-32F14392B00F}</Project>
+      <Name>test_delta1d_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_dict1d_roundtrip.vcxproj">
+      <Project>{B3A13C94-26B0-3336-9294-D61A980B20BD}</Project>
+      <Name>test_dict1d_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_format_validate.vcxproj">
+      <Project>{A3D2CD10-0C4D-3871-9DE1-A609B235C8E1}</Project>
+      <Name>test_format_validate</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_fse_roundtrip.vcxproj">
+      <Project>{A8598CEB-8897-3220-8351-311E18E45DDB}</Project>
+      <Name>test_fse_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_huffman_roundtrip.vcxproj">
+      <Project>{28510E64-1D7A-345E-9820-D11102BD131E}</Project>
+      <Name>test_huffman_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_lane_roundtrip.vcxproj">
+      <Project>{1B5F7060-17A3-32E9-8574-69D7B2C7823C}</Project>
+      <Name>test_lane_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_lz2_roundtrip.vcxproj">
+      <Project>{818CCCEF-8372-352E-9559-0141AE1F706B}</Project>
+      <Name>test_lz2_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_pipeline_roundtrip.vcxproj">
+      <Project>{870A308A-BB9C-389F-BFC7-E6F20083B35C}</Project>
+      <Name>test_pipeline_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_pred2d_roundtrip.vcxproj">
+      <Project>{9F9BB0DD-A9A4-34C0-8922-A12F7823141E}</Project>
+      <Name>test_pred2d_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_pred3d_roundtrip.vcxproj">
+      <Project>{EEA1BC7A-0BE8-35AF-BC03-1B70417C89B6}</Project>
+      <Name>test_pred3d_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_quantize_roundtrip.vcxproj">
+      <Project>{B2B22311-090D-3F58-9C92-9869E1501247}</Project>
+      <Name>test_quantize_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_raw_roundtrip.vcxproj">
+      <Project>{34E87604-D7D1-3755-8619-83AF4E4DCF8D}</Project>
+      <Name>test_raw_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_rowgroup_index.vcxproj">
+      <Project>{5C58425E-79E1-3926-8E51-B214231500FB}</Project>
+      <Name>test_rowgroup_index</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_schema.vcxproj">
+      <Project>{9F8A7111-F24A-3227-9038-42595606767F}</Project>
+      <Name>test_schema</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_stack2d_roundtrip.vcxproj">
+      <Project>{A5664C9B-5E2C-3961-8D4C-51BDBCF08A10}</Project>
+      <Name>test_stack2d_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_stats.vcxproj">
+      <Project>{A895AD0A-B671-392D-B093-33FF6828F9E1}</Project>
+      <Name>test_stats</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_stream_roundtrip.vcxproj">
+      <Project>{978DD9A9-32C2-31DF-BFDE-F21A77EE065D}</Project>
+      <Name>test_stream_roundtrip</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\Gilles Colling\Documents\dev\tdc\build\test_zigzag_roundtrip.vcxproj">
+      <Project>{CB938536-AACC-3D00-822B-AB8598172615}</Project>
+      <Name>test_zigzag_roundtrip</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
