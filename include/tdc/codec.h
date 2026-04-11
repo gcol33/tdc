@@ -88,10 +88,14 @@ typedef enum {
     TDC_ENTROPY_DEFLATE = 0x0002, /* zlib deflate; optional link, "ratio" mode */
     TDC_ENTROPY_HUFFMAN = 0x0003, /* native canonical static Huffman, max code length 15 */
     TDC_ENTROPY_FSE     = 0x0004, /* native tabled-ANS / Finite State Entropy */
-    TDC_ENTROPY_LANE    = 0x0005  /* per-lane entropy: splits BSHUF output into
+    TDC_ENTROPY_LANE    = 0x0005, /* per-lane entropy: splits BSHUF output into
                                    * byte lanes, applies an independent sub-coder
                                    * per lane (AUTO picks Huffman/FSE/STORE per
                                    * lane based on Shannon entropy sampling). */
+    TDC_ENTROPY_LZ2_OPT = 0x0006  /* LZ2 with optimal (dynamic-programming)
+                                   * parser. Emits the SAME on-disk format as
+                                   * TDC_ENTROPY_LZ2 — decoder is shared. Slower
+                                   * encode, smaller output on structured data. */
 } tdc_entropy_id;
 
 /* ----- Per-stage params ---------------------------------------------------- */

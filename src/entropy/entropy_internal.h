@@ -24,6 +24,7 @@ extern "C" {
 
 extern const tdc_entropy_vt tdc_entropy_none_vt;
 extern const tdc_entropy_vt tdc_entropy_lz2_vt;
+extern const tdc_entropy_vt tdc_entropy_lz2_opt_vt;
 extern const tdc_entropy_vt tdc_entropy_huffman_vt;
 extern const tdc_entropy_vt tdc_entropy_fse_vt;
 extern const tdc_entropy_vt tdc_entropy_lane_vt;

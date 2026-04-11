@@ -1,6 +1,6 @@
 # tdc bench results
 
-Date: 2026-04-07
+Date: 2026-04-07 (original), 2026-04-10 (re-bench after P0.3 + side-meta rewrite)
 Host: the-beast (Windows 11, MSVC 19.50, RTX 5080 / 64 GB — CPU bench, GPU unused)
 tdc build: `cmake --build build_release --config Release` (MSVC `/W4 /permissive-`, default Release flags)
 zstd: libzstd 1.5.7 via python-zstandard 0.25.0 (in-process)
@@ -20,19 +20,19 @@ python bench/bench_zstd_compare.py
 | RAW + NONE                  | vec1d u8 16M         |   16.00 |   16.00 |   1.00x |   2840.1 |   5226.2 |
 | RAW + LZ2                   | vec1d i32 4M (ramp)  |   16.00 |   16.00 |   1.00x |    180.9 |   4699.9 |
 | RAW + BSHUF + LZ2           | vec1d i32 4M (ramp)  |   16.00 |    0.38 |  42.57x |   1005.1 |   1511.2 |
-| DELTA1D + LZ2               | vec1d i32 4M (ramp)  |   16.00 |    0.06 | 254.62x |   2230.4 |   4742.6 |
+| DELTA1D + LZ2               | vec1d i32 4M (ramp)  |   16.00 |    0.00 | 159783.01x |  2005.6 |   3871.0 |
 | DELTA1D+ZIGZAG+BSHUF+LZ2    | vec1d i16 8M (walk)  |   16.00 |    7.94 |   2.02x |    257.8 |   1240.0 |
 | DELTA1D+ZZ+BSHUF+HUFFMAN    | vec1d i16 8M (walk)  |   16.00 |    6.81 |   2.35x |    245.7 |    223.9 |
 | DELTA1D+ZZ+BSHUF+FSE        | vec1d i16 8M (walk)  |   16.00 |    6.80 |   2.35x |    191.2 |    245.9 |
 | DELTA1D+ZZ+BSHUF+LZ2+HUF    | vec1d i16 8M (walk)  |   16.00 |    5.47 |   2.93x |    163.0 |    161.2 |
 | PRED2D(PAETH)+BSHUF+LZ2     | rast2d u16 2048x2048 |    8.00 |    4.89 |   1.64x |    206.8 |    315.0 |
-| PLANE2D+BSHUF+LZ2           | rast2d i32 1024x1024 |    4.00 |    0.03 | 145.46x |    567.8 |    534.4 |
+| PLANE2D+BSHUF+LZ2           | rast2d i32 1024x1024 |    4.00 |    0.00 | 1316.48x |   392.0 |   1493.2 |
 
 Notes:
 - `RAW + NONE` is the memcpy ceiling for the API (encode/decode framing overhead included).
-- `RAW + LZ2` on the i32 ramp returns 1.00x because the byte-level pattern of `1000 + i*3` has no exact repetitions for LZ2's match-finder. The instant DELTA1D collapses the ramp, LZ2 hits 254x at >2 GB/s — proves the entropy stage itself is healthy. (SPEEDUP-TODO P1.1 fixed: codec.h now documents that LZ2 alone needs either a model or a byte-shuffle on multi-byte dtypes.)
+- `RAW + LZ2` on the i32 ramp returns 1.00x because the byte-level pattern of `1000 + i*3` has no exact repetitions for LZ2's match-finder. The instant DELTA1D collapses the ramp, LZ2 hits 159,783x at ~2 GB/s — the residual is a constant (3), LEB128 match-length encodes the whole 16 MiB run in one sequence. (SPEEDUP-TODO P1.1 fixed: codec.h now documents that LZ2 alone needs either a model or a byte-shuffle on multi-byte dtypes.)
 - `RAW + BSHUF + LZ2` is the new "no model, just shuffle+entropy" floor row. On the i32 ramp it lands at 42x — a generic shuffle finds significant per-lane structure even without a model. DELTA1D still wins on ratio, but this is the realistic comparison floor for users who don't know which model to pick.
-- DELTA1D+LZ2 ramp ratio jumped from 32x → 254x and PLANE2D+BSHUF+LZ2 from 30x → 145x after **SPEEDUP-TODO P0.1**: LZ2's max-match cap (130 bytes, inherited from vectra) was chopping long zero-run residuals into thousands of 3-byte sequences. Match length is now varint-encoded with no ceiling; the safe-path overlap copy was upgraded to the same doubling pattern the fast path uses so long matches don't bail to byte-by-byte. Round-trip clean across all 11 ctests.
+- DELTA1D+LZ2 ramp ratio jumped from 32x → 159,783x and PLANE2D+BSHUF+LZ2 from 30x → 1,316x after **SPEEDUP-TODO P0.1–P0.3** (LZ2 max-match cap removed, match-length encoding switched from chained-255 to LEB128) **+** the PLANE2D structural predictor side-meta rewrite (2026-04-08, delta-coded varint stream reduced side_meta from 12 KB to 3 KB). Round-trip clean across all 24 ctests.
 - PRED2D(PAETH) encode 129 → 207 MB/s, decode 219 → 315 MB/s after **SPEEDUP-TODO P0.2** partial: the `&&` short-circuit in the Paeth ternary chain was replaced with bitwise `&` so the compiler emits a flat cmov sequence. Decode is still serial-bound on the per-row `left = d0[col-1]` chain — getting to the 800 MB/s acceptance target requires row-interleaved SIMD which is parked.
 - **SPEEDUP-TODO P2.1** (entropy chain): the four `DELTA1D+ZZ+BSHUF+*` rows run the identical residual stream through different entropy backends. LZ2 alone is the throughput king at 258/1240 MB/s but loses ~17% ratio to Huffman/FSE; swapping LZ2 for Huffman or FSE costs throughput and buys 2.35x vs 2.02x on this random-walk residual. Chaining LZ2→Huffman picks up the long-term wins LZ2 leaves on the table for a 2.93x ratio, but cuts throughput roughly in half because the Huffman pass then re-processes the LZ2 output stream end-to-end. The driver-side chain walk (size-table prefix in the payload) is correct and runs on every applicable pipeline; the numbers above establish the crossover point where a second entropy pass starts earning its cost.
 
@@ -67,7 +67,7 @@ zstd is run on the **same raw input bytes** as tdc — the comparison is "specia
 | zstd L3               |   1.45x |    856.4 |   1695.4 |
 | zstd L9               |   1.46x |    578.4 |   1748.9 |
 | zstd L19              |   4.63x |      4.7 |    404.4 |
-| **tdc DELTA1D+LZ2**   |  **32.49x** | **2091.7** | **4085.8** |
+| **tdc DELTA1D+LZ2**   |  **159783x** | **2005.6** | **3871.0** |
 
 Clean sweep — best ratio **and** best throughput in both directions.
 
@@ -103,15 +103,15 @@ zstd L9 wins this block: better ratio (1.91 vs 1.64) and ~4× faster decode at h
 | zstd L3                     |  324.69x |  10746.9 |   5204.3 |
 | zstd L9                     |  369.09x |   2466.9 |   4949.3 |
 | zstd L19                    |  469.00x |    219.0 |   5767.0 |
-| tdc PLANE2D+BSHUF+LZ2       |   29.65x |    563.4 |    494.3 |
+| tdc PLANE2D+BSHUF+LZ2       | 1316.48x |    392.0 |   1493.2 |
 
-After **SPEEDUP-TODO P0.1** (LZ2 max-match cap removed): tdc PLANE2D+BSHUF+LZ2 = **145.46x @ 568/534 MB/s**. Now within ~3x of zstd L1 in ratio at ~1/30 of its throughput. The remaining ratio gap on this synthetic block is the varint-length encoding floor on a literal 4 MiB-of-zeros stream — real planar data won't hit it.
+After **SPEEDUP-TODO P0.1–P0.3 + side-meta rewrite**: tdc PLANE2D+BSHUF+LZ2 = **1316x @ 392/1493 MB/s**. Beats zstd L1 by 4× on ratio. LEB128 match-length encoding collapses the 4 MiB zero-run to ~16 bytes of LZ2 payload; the structural predictor side-meta rewrite dropped side_meta from 12 KB to 3 KB. The compressed block is ~3.2 KB total (80 B header + 3086 B side_meta + ~20 B payload). N0 in SPEEDUP-TODO is resolved.
 
 ### Headlines
 
-1. For **smooth/signed 1D signals**, tdc's model stack is the right answer — beats libzstd in ratio **and** throughput simultaneously. DELTA1D vs zstd L19 on the ramp: **254x vs 4.6x, 470× faster encode** (post-P0.1).
-2. **PRED2D PAETH still loses on noisy gradients.** Decode is bottlenecked by the per-row serial dependency; hitting >800 MB/s on decode requires row-interleaved SIMD (parked, see SPEEDUP-TODO P0.2).
-3. **PLANE2D recovered after the LZ2 fix.** Was 30x at 60 MB/s; now 145x at 570 MB/s on the same block. The original "PLANE2D underdelivers" diagnosis pointed at the model — it was actually the entropy stage capping match length.
+1. For **smooth/signed 1D signals**, tdc's model stack is the right answer — beats libzstd in ratio **and** throughput simultaneously. DELTA1D vs zstd L19 on the ramp: **159,783x vs 4.6x** at 2 GB/s encode — the model collapses the ramp to a constant residual that LEB128-encoded LZ2 compresses to ~100 bytes.
+2. **PRED2D PAETH still loses on noisy gradients.** Decode is bottlenecked by the per-row serial dependency; hitting >800 MB/s on decode requires row-interleaved SIMD (parked, see SPEEDUP-TODO N4).
+3. **PLANE2D is the big winner.** Was 30x at 60 MB/s (pre-P0); now **1316x at 392/1493 MB/s** after P0.1–P0.3 + side-meta rewrite. Beats zstd L1 (327x) by 4× on ratio. The compressed block is ~3.2 KB for a 4 MiB input.
 
 ## Part 4 — Real data (SPEEDUP-TODO P1.3)
 

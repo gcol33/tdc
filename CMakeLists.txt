@@ -57,6 +57,7 @@ set(TDC_SOURCES
 
     src/entropy/none.c
     src/entropy/lz2.c
+    src/entropy/lz2_opt.c
     src/entropy/deflate.c
     src/entropy/huffman.c
     src/entropy/fse.c
@@ -98,6 +99,10 @@ if(TDC_BUILD_TESTS)
     add_executable(test_lz2_roundtrip tests/test_lz2_roundtrip.c)
     target_link_libraries(test_lz2_roundtrip PRIVATE tdc)
     add_test(NAME lz2_roundtrip COMMAND test_lz2_roundtrip)
+
+    add_executable(test_lz2_opt_roundtrip tests/test_lz2_opt_roundtrip.c)
+    target_link_libraries(test_lz2_opt_roundtrip PRIVATE tdc)
+    add_test(NAME lz2_opt_roundtrip COMMAND test_lz2_opt_roundtrip)
 
     add_executable(test_huffman_roundtrip tests/test_huffman_roundtrip.c)
     target_link_libraries(test_huffman_roundtrip PRIVATE tdc)
@@ -198,6 +203,9 @@ if(TDC_BUILD_BENCH)
     endif()
 
     add_executable(bench_pred3d_avg3 bench/bench_pred3d_avg3.c)
+
+    add_executable(bench_lz2_opt bench/bench_lz2_opt.c)
+    target_link_libraries(bench_lz2_opt PRIVATE tdc)
     # Round-trip smoke gate: runs every bench pipeline once on a tiny block
     # and asserts bytes match. Sub-second; catches any pipeline that breaks
     # round-trip between bench runs. SPEEDUP-TODO P3.2.

@@ -37,6 +37,7 @@
 
 #include "tdc/entropy.h"
 #include "entropy_internal.h"
+#include "lz2_internal.h"
 #include "../core/buffer.h"
 
 #include <string.h>
@@ -47,12 +48,13 @@
 #  include <intrin.h>
 #endif
 
-/* ----- Constants (frozen on-disk format) --------------------------------- */
+/* ----- Greedy-matcher constants ------------------------------------------ */
+/* LZ2_MIN_MATCH, LZ2_MAX_OFFSET, LZ2_HEADER_SIZE, and the LZ2Seq type live
+ * in lz2_internal.h — they're shared with the optimal parser in lz2_opt.c.
+ * The constants below are specific to this file's greedy matcher. */
 
 #define LZ2_HASH_BITS  16
 #define LZ2_HASH_SIZE  (1 << LZ2_HASH_BITS)
-#define LZ2_MIN_MATCH  3
-#define LZ2_MAX_OFFSET 65536  /* 16 bits + 1 */
 /* Match length is encoded as 4 bits in the tag + a varint extension
  * (chained 255-byte chunks, same shape as the literal-length encoding).
  * No hard ceiling — long zero-run residuals (PLANE2D, RAW on flat data)
@@ -62,9 +64,6 @@
  * which made the model stages look bad on synthetic-flat inputs and was
  * the root cause documented in SPEEDUP-TODO P0.1. */
 #define LZ2_MAX_MATCH  UINT32_MAX
-
-/* On-disk header is 8 bytes: uint32 n_sequences + uint32 literals_size. */
-#define LZ2_HEADER_SIZE 8
 
 /* ----- Branch hints (zstd-style) ----------------------------------------- */
 
@@ -126,25 +125,17 @@ static inline void lz2_wildcopy16(uint8_t *dst, const uint8_t *src, uint32_t len
     } while (dst < end);
 }
 
-/* ----- Sequence descriptor (encoder-side temporary) ---------------------- */
-
-typedef struct {
-    uint32_t lit_len;
-    uint32_t match_len;     /* 3-130 for matches */
-    uint32_t match_off;     /* 1-65536 */
-} LZ2Seq;
-
-/* Encoded byte size of one packed sequence header.
+/* ----- Sequence layout note ---------------------------------------------- *
  *
- * Layout:
+ * The packed sequence header format is:
+ *
  *   Byte 0: [LLLLMMMM] tag byte
  *     L (0-14):  literal byte count before this match
  *     L (15):    extended — chained 255-byte varint (add 255 per byte until
  *                a byte < 255 terminates; total = 15 + sum)
  *     M (0-14):  match_length - 3
  *     M (15):    extended — LEB128 unsigned varint (7 bits of payload + 1
- *                continuation bit per byte). See the note below for why
- *                match length uses a different encoding than literal length.
+ *                continuation bit per byte)
  *   uint16_t offset_m1 (little-endian)
  *
  * Common case: 3 bytes (tag + 2-byte offset).
@@ -161,29 +152,15 @@ typedef struct {
  * literal buffer directly (no sequence header), so per-sequence lit_len
  * is bounded by real literal density between matches and never blows up
  * the same way. See SPEEDUP-TODO P0.3 for the full diagnosis.
+ *
+ * lz2_seq_encoded_size() and the LZ2Seq type are defined in lz2_internal.h
+ * so the optimal parser in lz2_opt.c can use them without duplicating.
  */
-static inline uint32_t lz2_leb128_size(uint32_t v) {
-    uint32_t n = 1;
-    while (v >= 128) { v >>= 7; n++; }
-    return n;
-}
-
-static inline uint32_t lz2_seq_encoded_size(uint32_t lit_len, uint32_t match_len_m3) {
-    uint32_t size = 1 + 2; /* tag byte + uint16 offset */
-    if (lit_len >= 15) {
-        uint32_t extra = lit_len - 15;
-        size += extra / 255 + 1; /* chained 255-byte chunks + final byte */
-    }
-    if (match_len_m3 >= 15) {
-        size += lz2_leb128_size(match_len_m3 - 15);
-    }
-    return size;
-}
 
 /* ----- Literal-only fallback --------------------------------------------- */
 /*
- * Used when input is shorter than LZ2_MIN_MATCH+1 OR when the greedy match
- * finder produced no compression gain. Output is the same on-disk format:
+ * Used when input is shorter than LZ2_MIN_MATCH+1 OR when a parse (greedy or
+ * optimal) produced no compression gain. Output is the same on-disk format:
  * 8-byte header with n_seq=0, literals_size=src_size, followed by raw bytes.
  * The decoder picks them up in the safe path's trailing-literal block.
  */
@@ -202,17 +179,111 @@ static tdc_status lz2_encode_literal_only(const uint8_t *src, uint32_t src_size,
     return TDC_OK;
 }
 
-/* ----- Encoder ----------------------------------------------------------- */
+/* ----- Sequence serializer (shared with lz2_opt) ------------------------- */
 /*
- * Greedy hash-table match finder; outputs sequences into a temporary array
- * and literals into a temporary buffer, then concatenates them with packed
- * variable-length headers (zstd-style [LLLLMMMM] tag bytes).
+ * Takes a parsed LZ2Seq array and writes the on-disk LZ2 stream. The greedy
+ * encoder (lz2_encode_core) and the optimal parser (lz2_opt.c) both produce
+ * LZ2Seq arrays and call this function to serialize them. Both emit the
+ * exact same on-disk format, decoded by lz2_decode_core — optimal parsing
+ * is a pure encode-side optimization.
  *
- * If the encoded size would meet or exceed the input size, falls back to
- * the literal-only stream so the entropy stage always produces a valid
- * LZ2 record. Vectra's variant returns NULL in that case and the caller
- * picks a different compression tag; tdc keeps the entropy stage closed
- * over its own input/output.
+ * Literals for sequence i live at src[src_pos .. src_pos + seqs[i].lit_len),
+ * where src_pos is the running sum of (lit_len + match_len) over sequences
+ * 0..i-1. Trailing literals (after the last match) live at
+ * src[consumed .. src_size). No separate literal buffer is needed.
+ *
+ * If the encoded size would meet or exceed src_size, falls back to the
+ * literal-only stream so the entropy stage always produces a valid LZ2
+ * record regardless of parse quality.
+ */
+tdc_status tdc_lz2_serialize_sequences(const uint8_t *src, uint32_t src_size,
+                                       const LZ2Seq *seqs, uint32_t seq_count,
+                                       tdc_buffer *dst) {
+    /* Walk seqs once to compute total literal length and header size. */
+    uint32_t total_lit = 0;
+    uint32_t seq_hdr_size = 0;
+    uint32_t consumed = 0;
+    for (uint32_t i = 0; i < seq_count; i++) {
+        uint32_t ll = seqs[i].lit_len;
+        uint32_t ml_m3 = seqs[i].match_len - LZ2_MIN_MATCH;
+        seq_hdr_size += lz2_seq_encoded_size(ll, ml_m3);
+        total_lit += ll;
+        consumed += ll + seqs[i].match_len;
+    }
+    uint32_t trailing = src_size - consumed;
+    total_lit += trailing;
+
+    uint32_t total = LZ2_HEADER_SIZE + seq_hdr_size + total_lit;
+    if (total >= src_size) {
+        return lz2_encode_literal_only(src, src_size, dst);
+    }
+
+    tdc_status st = tdc_buf_reserve(dst, total);
+    if (st != TDC_OK) return st;
+
+    uint8_t *p = dst->data;
+    memcpy(p, &seq_count, 4); p += 4;
+    memcpy(p, &total_lit, 4); p += 4;
+
+    /* Write packed sequence headers. */
+    for (uint32_t i = 0; i < seq_count; i++) {
+        uint32_t ll = seqs[i].lit_len;
+        uint32_t ml_m3 = seqs[i].match_len - LZ2_MIN_MATCH;
+        uint32_t L = ll < 15 ? ll : 15;
+        uint32_t M = ml_m3 < 15 ? ml_m3 : 15;
+
+        *p++ = (uint8_t)((L << 4) | M);
+
+        /* Extended literal length — chained 255-byte varint. */
+        if (ll >= 15) {
+            uint32_t extra = ll - 15;
+            while (extra >= 255) {
+                *p++ = 255;
+                extra -= 255;
+            }
+            *p++ = (uint8_t)extra;
+        }
+
+        /* Extended match length — LEB128 unsigned varint. See the note
+         * above lz2_seq_encoded_size for why match length uses LEB128 while
+         * literal length uses chained-255. */
+        if (ml_m3 >= 15) {
+            uint32_t extra = ml_m3 - 15;
+            while (extra >= 128) {
+                *p++ = (uint8_t)((extra & 0x7Fu) | 0x80u);
+                extra >>= 7;
+            }
+            *p++ = (uint8_t)extra;
+        }
+
+        /* Offset */
+        uint16_t off_m1 = (uint16_t)(seqs[i].match_off - 1);
+        memcpy(p, &off_m1, 2); p += 2;
+    }
+
+    /* Write literals — contiguous regions in src between match ends. */
+    uint32_t src_pos = 0;
+    for (uint32_t i = 0; i < seq_count; i++) {
+        uint32_t ll = seqs[i].lit_len;
+        if (ll > 0) {
+            memcpy(p, src + src_pos, ll);
+            p += ll;
+        }
+        src_pos += ll + seqs[i].match_len;
+    }
+    if (trailing > 0) {
+        memcpy(p, src + src_pos, trailing);
+    }
+
+    dst->size = total;
+    return TDC_OK;
+}
+
+/* ----- Encoder (greedy) -------------------------------------------------- */
+/*
+ * Greedy hash-table match finder. Produces an LZ2Seq array and hands it to
+ * lz2_serialize_sequences, which writes the on-disk stream (same path used
+ * by the optimal parser in lz2_opt.c).
  */
 static tdc_status lz2_encode_core(const uint8_t *src, uint32_t src_size,
                                   tdc_buffer *dst) {
@@ -231,15 +302,6 @@ static tdc_status lz2_encode_core(const uint8_t *src, uint32_t src_size,
     LZ2Seq *seqs = (LZ2Seq *)lz2_alloc(dst, seq_cap * sizeof(LZ2Seq));
     if (!seqs) {
         lz2_free(dst, htab);
-        return TDC_E_NOMEM;
-    }
-
-    /* Collect literals into a separate buffer. */
-    uint32_t lit_total = 0;
-    uint8_t *lit_buf = (uint8_t *)lz2_alloc(dst, src_size);
-    if (!lit_buf) {
-        lz2_free(dst, htab);
-        lz2_free(dst, seqs);
         return TDC_E_NOMEM;
     }
 
@@ -305,7 +367,6 @@ static tdc_status lz2_encode_core(const uint8_t *src, uint32_t src_size,
                 if (!new_seqs) {
                     lz2_free(dst, htab);
                     lz2_free(dst, seqs);
-                    lz2_free(dst, lit_buf);
                     return TDC_E_NOMEM;
                 }
                 seqs = new_seqs;
@@ -315,11 +376,6 @@ static tdc_status lz2_encode_core(const uint8_t *src, uint32_t src_size,
             seqs[seq_count].match_len = match_len;
             seqs[seq_count].match_off = match_off;
             seq_count++;
-
-            if (pending_lit > 0) {
-                memcpy(lit_buf + lit_total, src + lit_start, pending_lit);
-                lit_total += pending_lit;
-            }
 
             for (uint32_t i = 1; i < match_len && sp + i + LZ2_MIN_MATCH + 1 <= src_size; i += 4) {
                 htab[lz2_hash4(src + sp + i)] = sp + i;
@@ -331,87 +387,11 @@ static tdc_status lz2_encode_core(const uint8_t *src, uint32_t src_size,
         }
     }
 
-    /* Trailing literals go into the literal buffer only (no sequence). */
-    uint32_t trailing_lit = src_size - lit_start;
-    if (trailing_lit > 0) {
-        memcpy(lit_buf + lit_total, src + lit_start, trailing_lit);
-        lit_total += trailing_lit;
-    }
-
     lz2_free(dst, htab);
 
-    /* Compute total encoded size of sequence headers. */
-    uint32_t seq_hdr_size = 0;
-    for (uint32_t i = 0; i < seq_count; i++) {
-        seq_hdr_size += lz2_seq_encoded_size(seqs[i].lit_len,
-                                              seqs[i].match_len - LZ2_MIN_MATCH);
-    }
-
-    uint32_t total = LZ2_HEADER_SIZE + seq_hdr_size + lit_total;
-
-    if (total >= src_size) {
-        /* Incompressible — fall back to literal-only stream. */
-        lz2_free(dst, seqs);
-        lz2_free(dst, lit_buf);
-        return lz2_encode_literal_only(src, src_size, dst);
-    }
-
-    tdc_status st = tdc_buf_reserve(dst, total);
-    if (st != TDC_OK) {
-        lz2_free(dst, seqs);
-        lz2_free(dst, lit_buf);
-        return st;
-    }
-
-    uint8_t *p = dst->data;
-    memcpy(p, &seq_count, 4); p += 4;
-    memcpy(p, &lit_total, 4); p += 4;
-
-    /* Write packed sequence headers. */
-    for (uint32_t i = 0; i < seq_count; i++) {
-        uint32_t ll = seqs[i].lit_len;
-        uint32_t ml_m3 = seqs[i].match_len - LZ2_MIN_MATCH;
-        uint32_t L = ll < 15 ? ll : 15;
-        uint32_t M = ml_m3 < 15 ? ml_m3 : 15;
-
-        *p++ = (uint8_t)((L << 4) | M);
-
-        /* Extended literal length */
-        if (ll >= 15) {
-            uint32_t extra = ll - 15;
-            while (extra >= 255) {
-                *p++ = 255;
-                extra -= 255;
-            }
-            *p++ = (uint8_t)extra;
-        }
-
-        /* Extended match length — LEB128 (7 bits payload + 1 continuation
-         * bit per byte). A 4 MiB match encodes in 4 bytes instead of the
-         * ~16 KiB the old chained-255 encoding cost. See the note above
-         * lz2_seq_encoded_size for the rationale. */
-        if (ml_m3 >= 15) {
-            uint32_t extra = ml_m3 - 15;
-            while (extra >= 128) {
-                *p++ = (uint8_t)((extra & 0x7Fu) | 0x80u);
-                extra >>= 7;
-            }
-            *p++ = (uint8_t)extra;
-        }
-
-        /* Offset */
-        uint16_t off_m1 = (uint16_t)(seqs[i].match_off - 1);
-        memcpy(p, &off_m1, 2); p += 2;
-    }
-
-    /* Literal data */
-    memcpy(p, lit_buf, lit_total);
-
+    tdc_status st = tdc_lz2_serialize_sequences(src, src_size, seqs, seq_count, dst);
     lz2_free(dst, seqs);
-    lz2_free(dst, lit_buf);
-
-    dst->size = total;
-    return TDC_OK;
+    return st;
 }
 
 /* ----- Decoder ----------------------------------------------------------- */

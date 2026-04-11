@@ -51,6 +51,7 @@ const tdc_xform_vt *tdc_xform_get(tdc_xform_id id) {
 const tdc_entropy_vt *tdc_entropy_get(tdc_entropy_id id) {
     switch (id) {
         case TDC_ENTROPY_LZ2:     return &tdc_entropy_lz2_vt;
+        case TDC_ENTROPY_LZ2_OPT: return &tdc_entropy_lz2_opt_vt;
         case TDC_ENTROPY_NONE:    return &tdc_entropy_none_vt;
 #ifdef TDC_HAVE_ZLIB
         case TDC_ENTROPY_DEFLATE: return &tdc_entropy_deflate_vt;
