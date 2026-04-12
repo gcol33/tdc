@@ -315,7 +315,7 @@ static int case_delta_zigzag_shuffle_walk(const char *label,
     return rc;
 }
 
-static int case_pred2d_paeth_shuffle_lz(void) {
+static int case_pred2d_noisy_u16(void) {
     const int NY = g_smoke ? 16 : 2048;
     const int NX = g_smoke ? 16 : 2048; /* 8 MiB u16 (or 512 B smoke) */
     uint16_t *data = (uint16_t *)malloc(sizeof(uint16_t) * (size_t)NY * (size_t)NX);
@@ -330,13 +330,77 @@ static int case_pred2d_paeth_shuffle_lz(void) {
     b.shape.dim[0] = NY; b.shape.dim[1] = NX;
     tdc_shape_set_contiguous(&b.shape);
 
+    const char *desc = "rast2d u16 2048x2048";
     tdc_pred2d_params params; params.kind = TDC_PRED2D_PAETH;
-    tdc_codec_spec s = {0};
-    s.model        = TDC_MODEL_PRED_2D;
-    s.model_params = &params;
-    s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0]      = TDC_ENTROPY_LZ;
-    int rc = run_case("PRED2D(PAETH)+BSHUF+LZ", "rast2d u16 2048x2048", &b, &s);
+    int rc = 0;
+
+    /* PRED2D(PAETH) + BSHUF + LZ */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        rc |= run_case("PRED2D+BSHUF+LZ", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + LZ + HUFFMAN */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        s.entropy[1]   = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("PRED2D+BSHUF+LZ+HUF", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + LZ_OPT */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ_OPT;
+        rc |= run_case("PRED2D+BSHUF+LZ_OPT", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + LZ_OPT + HUFFMAN */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ_OPT;
+        s.entropy[1]   = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("PRED2D+BSHUF+LZ_OPT+HUF", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + FSE */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_FSE;
+        rc |= run_case("PRED2D+BSHUF+FSE", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + HUFFMAN */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("PRED2D+BSHUF+HUF", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + LZ + FSE */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        s.entropy[1]   = TDC_ENTROPY_FSE;
+        rc |= run_case("PRED2D+BSHUF+LZ+FSE", desc, &b, &s);
+    }
+
     free(data);
     return rc;
 }
@@ -624,7 +688,7 @@ int main(int argc, char **argv) {
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+HUFFMAN",    TDC_ENTROPY_HUFFMAN,  TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+FSE",        TDC_ENTROPY_FSE,      TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+LZ+HUF",   TDC_ENTROPY_LZ,      TDC_ENTROPY_HUFFMAN);
-    rc |= case_pred2d_paeth_shuffle_lz();
+    rc |= case_pred2d_noisy_u16();
     rc |= case_plane2d_shuffle_lz();
 
     if (rc) {

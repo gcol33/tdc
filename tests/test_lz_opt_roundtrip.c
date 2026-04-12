@@ -172,6 +172,46 @@ int main(void) {
         if (check(small, sizeof small, "periodic 64B")) { any_fail = 1; }
     }
 
+    /* 7. Large: 8 MiB mixed (reproduces pipeline-scale inputs). */
+    {
+        const size_t BIG = 8u << 20; /* 8 MiB */
+        uint8_t *big = (uint8_t *)malloc(BIG);
+        if (big) {
+            fill_lcg(big, BIG / 2, 0xBEEFCAFEu);
+            fill_periodic(big + BIG / 2, BIG / 2);
+            if (check(big, BIG, "mixed 8MB"))         { any_fail = 1; }
+            free(big);
+        }
+    }
+
+    /* 8. Byte-shuffled noisy u16 gradient — matches PRED2D+BSHUF pipeline.
+     *    2048x2048 u16 = 8 MiB raw, byte-shuffled into 2 lanes. */
+    {
+        const int NY = 2048, NX = 2048;
+        const size_t n_elems = (size_t)NY * (size_t)NX;
+        const size_t raw_size = n_elems * 2;
+        uint16_t *raw = (uint16_t *)malloc(raw_size);
+        uint8_t *shuf = (uint8_t *)malloc(raw_size);
+        if (raw && shuf) {
+            uint32_t s = 0xC0FFEEu;
+            for (int r = 0; r < NY; ++r)
+                for (int c = 0; c < NX; ++c) {
+                    s = s * 1103515245u + 12345u;
+                    int noise = (int)((s >> 20) & 0x7) - 3;
+                    raw[r * NX + c] = (uint16_t)(100 + r * 5 + c * 3 + noise);
+                }
+            /* Apply Paeth-like residual (just use raw as-is for repro). */
+            /* Byte-shuffle: lane 0 = low bytes, lane 1 = high bytes. */
+            for (size_t i = 0; i < n_elems; i++) {
+                shuf[i]           = (uint8_t)(raw[i] & 0xFF);
+                shuf[n_elems + i] = (uint8_t)(raw[i] >> 8);
+            }
+            if (check(shuf, raw_size, "bshuf noisy u16 8MB")) { any_fail = 1; }
+        }
+        free(raw);
+        free(shuf);
+    }
+
     free(src);
     if (any_fail) {
         printf("test_lz_opt_roundtrip: FAIL\n");

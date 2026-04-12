@@ -204,12 +204,15 @@ tdc_status tdc_lz_serialize_sequences(const uint8_t *src, uint32_t src_size,
     uint32_t seq_hdr_size = 0;
     uint32_t consumed = 0;
     for (uint32_t i = 0; i < seq_count; i++) {
+        if (seqs[i].match_len < LZ_MIN_MATCH) return TDC_E_CORRUPT;
+        if (seqs[i].match_off == 0 || seqs[i].match_off > LZ_MAX_OFFSET) return TDC_E_CORRUPT;
         uint32_t ll = seqs[i].lit_len;
         uint32_t ml_m3 = seqs[i].match_len - LZ_MIN_MATCH;
         seq_hdr_size += lz_seq_encoded_size(ll, ml_m3);
         total_lit += ll;
         consumed += ll + seqs[i].match_len;
     }
+    if (consumed > src_size) return TDC_E_CORRUPT;
     uint32_t trailing = src_size - consumed;
     total_lit += trailing;
 
