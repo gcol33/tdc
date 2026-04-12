@@ -10,7 +10,7 @@
  *
  * v0 backends:
  *   TDC_ENTROPY_NONE     memcpy passthrough
- *   TDC_ENTROPY_LZ2      native LZ77, separated-stream, 64K window
+ *   TDC_ENTROPY_LZ      native LZ77, separated-stream, 64K window
  *   TDC_ENTROPY_DEFLATE  zlib deflate (link-time optional, "ratio" mode)
  *
  * Decode is called with a known dst_size. Entropy coders MUST NOT need to

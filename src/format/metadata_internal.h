@@ -114,6 +114,11 @@ static inline int tdc_meta_reader_remaining(const tdc_meta_reader *r) {
     return (int)(r->size - r->off);
 }
 
+static inline uint8_t tdc_meta_read_u8(tdc_meta_reader *r) {
+    if (!r->ok || r->size - r->off < 1u) { r->ok = 0; return 0; }
+    return r->base[r->off++];
+}
+
 #define DEFINE_META_READ(SUFFIX, TYPE, WIDTH, LOAD_FN)               \
 static inline TYPE tdc_meta_read_##SUFFIX(tdc_meta_reader *r) {      \
     if (!r->ok || r->size - r->off < (WIDTH)) { r->ok = 0; return 0; } \

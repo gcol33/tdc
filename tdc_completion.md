@@ -21,7 +21,7 @@ migration.  Neither phase can be skipped safely.
 
 ### Goal
 
-Replace vectra's hand-wired byte-shuffle + LZ2 calls with a single
+Replace vectra's hand-wired byte-shuffle + LZ calls with a single
 `tdc_encode_block` / `tdc_decode_block` call per column chunk.  VTR1
 continues to own the container (schema, stats, row groups, column
 chunk headers).
@@ -34,7 +34,7 @@ Currently wires individual vtable calls:
 
 ```
 byte_shuffle()   →  tdc_xform_get(TDC_XFORM_BYTE_SHUFFLE)->encode()
-lz2_compress()   →  tdc_entropy_get(TDC_ENTROPY_LZ2)->encode()
+lz_compress()   →  tdc_entropy_get(TDC_ENTROPY_LZ)->encode()
 ```
 
 Replace with one call per column:
@@ -42,7 +42,7 @@ Replace with one call per column:
 ```
 tdc_codec_spec spec = { .model = TDC_MODEL_RAW,
                         .xform = { TDC_XFORM_BYTE_SHUFFLE },
-                        .entropy = { TDC_ENTROPY_LZ2 } };
+                        .entropy = { TDC_ENTROPY_LZ } };
 tdc_encode_block(&blk, &spec, &out);
 ```
 
@@ -66,7 +66,7 @@ VTR1 encoding tag — it reads the model/xform/entropy ids from the
 
 **VTR1 on-disk format change:**
 
-The column chunk payload changes from raw bytes (byte-shuffled + LZ2)
+The column chunk payload changes from raw bytes (byte-shuffled + LZ)
 to a tdc block record (80-byte header + side_meta + xform_params +
 payload + validity).  This is a VTR format version bump (v5 → v6).
 

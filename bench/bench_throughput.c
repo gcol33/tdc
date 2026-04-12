@@ -219,7 +219,7 @@ static int case_raw_none_u8(void) {
     return rc;
 }
 
-static int case_raw_lz2_ramp(void) {
+static int case_raw_lz_ramp(void) {
     const size_t N = g_smoke ? 256u : (size_t)(4 * 1024 * 1024); /* 16 MiB i32 */
     int32_t *data = (int32_t *)malloc(sizeof(int32_t) * N);
     if (!data) return 1;
@@ -234,13 +234,13 @@ static int case_raw_lz2_ramp(void) {
     tdc_shape_set_contiguous(&b.shape);
 
     tdc_codec_spec s = tdc_codec_spec_raw();
-    s.entropy[0] = TDC_ENTROPY_LZ2;
-    int rc = run_case("RAW + LZ2", "vec1d i32 4M (ramp)", &b, &s);
+    s.entropy[0] = TDC_ENTROPY_LZ;
+    int rc = run_case("RAW + LZ", "vec1d i32 4M (ramp)", &b, &s);
     free(data);
     return rc;
 }
 
-static int case_raw_shuffle_lz2_ramp(void) {
+static int case_raw_shuffle_lz_ramp(void) {
     const size_t N = g_smoke ? 256u : (size_t)(4 * 1024 * 1024); /* 16 MiB i32 */
     int32_t *data = (int32_t *)malloc(sizeof(int32_t) * N);
     if (!data) return 1;
@@ -255,17 +255,17 @@ static int case_raw_shuffle_lz2_ramp(void) {
     tdc_shape_set_contiguous(&b.shape);
 
     /* The "no model, just shuffle+entropy" floor — exposes how much
-     * structure a generic byte-shuffle + LZ2 can find on a multi-byte
+     * structure a generic byte-shuffle + LZ can find on a multi-byte
      * dtype without any model in front. SPEEDUP-TODO P1.1. */
     tdc_codec_spec s = tdc_codec_spec_raw();
     s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0]  = TDC_ENTROPY_LZ2;
-    int rc = run_case("RAW + BSHUF + LZ2", "vec1d i32 4M (ramp)", &b, &s);
+    s.entropy[0]  = TDC_ENTROPY_LZ;
+    int rc = run_case("RAW + BSHUF + LZ", "vec1d i32 4M (ramp)", &b, &s);
     free(data);
     return rc;
 }
 
-static int case_delta_lz2_ramp(void) {
+static int case_delta_lz_ramp(void) {
     const size_t N = g_smoke ? 256u : (size_t)(4 * 1024 * 1024);
     int32_t *data = (int32_t *)malloc(sizeof(int32_t) * N);
     if (!data) return 1;
@@ -281,8 +281,8 @@ static int case_delta_lz2_ramp(void) {
 
     tdc_codec_spec s = {0};
     s.model   = TDC_MODEL_DELTA_1D;
-    s.entropy[0] = TDC_ENTROPY_LZ2;
-    int rc = run_case("DELTA1D + LZ2", "vec1d i32 4M (ramp)", &b, &s);
+    s.entropy[0] = TDC_ENTROPY_LZ;
+    int rc = run_case("DELTA1D + LZ", "vec1d i32 4M (ramp)", &b, &s);
     free(data);
     return rc;
 }
@@ -315,7 +315,7 @@ static int case_delta_zigzag_shuffle_walk(const char *label,
     return rc;
 }
 
-static int case_pred2d_paeth_shuffle_lz2(void) {
+static int case_pred2d_paeth_shuffle_lz(void) {
     const int NY = g_smoke ? 16 : 2048;
     const int NX = g_smoke ? 16 : 2048; /* 8 MiB u16 (or 512 B smoke) */
     uint16_t *data = (uint16_t *)malloc(sizeof(uint16_t) * (size_t)NY * (size_t)NX);
@@ -335,13 +335,13 @@ static int case_pred2d_paeth_shuffle_lz2(void) {
     s.model        = TDC_MODEL_PRED_2D;
     s.model_params = &params;
     s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0]      = TDC_ENTROPY_LZ2;
-    int rc = run_case("PRED2D(PAETH)+BSHUF+LZ2", "rast2d u16 2048x2048", &b, &s);
+    s.entropy[0]      = TDC_ENTROPY_LZ;
+    int rc = run_case("PRED2D(PAETH)+BSHUF+LZ", "rast2d u16 2048x2048", &b, &s);
     free(data);
     return rc;
 }
 
-static int case_plane2d_shuffle_lz2(void) {
+static int case_plane2d_shuffle_lz(void) {
     const int NY = g_smoke ? 32 : 1024;
     const int NX = g_smoke ? 32 : 1024; /* 4 MiB i32 (or 4 KiB smoke) */
     int32_t *data = (int32_t *)malloc(sizeof(int32_t) * (size_t)NY * (size_t)NX);
@@ -361,17 +361,17 @@ static int case_plane2d_shuffle_lz2(void) {
     s.model        = TDC_MODEL_PLANE_2D;
     s.model_params = &params;
     s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0]      = TDC_ENTROPY_LZ2;
-    int rc = run_case("PLANE2D+BSHUF+LZ2", "rast2d i32 1024x1024", &b, &s);
+    s.entropy[0]      = TDC_ENTROPY_LZ;
+    int rc = run_case("PLANE2D+BSHUF+LZ", "rast2d i32 1024x1024", &b, &s);
     free(data);
     return rc;
 }
 
 /* ----- Entropy chain bench cases ----------------------------------------- *
- * Same input as the DELTA+ZZ+BSHUF walk above, but swap LZ2 for
+ * Same input as the DELTA+ZZ+BSHUF walk above, but swap LZ for
  * HUFFMAN / FSE / chained combinations. Lets RESULTS.md compare
  * per-stage throughput and ratio for the new entropy backends against
- * the LZ2 baseline on identical residual streams. */
+ * the LZ baseline on identical residual streams. */
 
 /* Entropy chain bench cases removed — now use case_delta_zigzag_shuffle_walk. */
 
@@ -479,33 +479,33 @@ static int run_from_file(const char *path, const char *dtype_s,
 
     int rc = 0;
 
-    /* RAW + LZ2 — generic floor with no model. */
+    /* RAW + LZ — generic floor with no model. */
     {
         tdc_codec_spec s = tdc_codec_spec_raw();
-        s.entropy[0] = TDC_ENTROPY_LZ2;
-        rc |= run_case("RAW + LZ2", block_desc, &b, &s);
+        s.entropy[0] = TDC_ENTROPY_LZ;
+        rc |= run_case("RAW + LZ", block_desc, &b, &s);
     }
-    /* RAW + BSHUF + LZ2 — exposes per-lane structure on multi-byte dtypes. */
+    /* RAW + BSHUF + LZ — exposes per-lane structure on multi-byte dtypes. */
     if (tdc_dtype_size(dtype) > 1) {
         tdc_codec_spec s = tdc_codec_spec_raw();
         s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
-        s.entropy[0]  = TDC_ENTROPY_LZ2;
-        rc |= run_case("RAW + BSHUF + LZ2", block_desc, &b, &s);
+        s.entropy[0]  = TDC_ENTROPY_LZ;
+        rc |= run_case("RAW + BSHUF + LZ", block_desc, &b, &s);
     }
     /* DELTA1D family — only on 1D integer dtypes. */
     if (layout == TDC_LAYOUT_VECTOR_1D &&
         dtype != TDC_DT_F32 && dtype != TDC_DT_F64) {
         tdc_codec_spec s = {0};
         s.model   = TDC_MODEL_DELTA_1D;
-        s.entropy[0] = TDC_ENTROPY_LZ2;
-        rc |= run_case("DELTA1D + LZ2", block_desc, &b, &s);
+        s.entropy[0] = TDC_ENTROPY_LZ;
+        rc |= run_case("DELTA1D + LZ", block_desc, &b, &s);
 
         tdc_codec_spec s2 = {0};
         s2.model    = TDC_MODEL_DELTA_1D;
         s2.xform[0] = TDC_XFORM_ZIGZAG;
         s2.xform[1] = TDC_XFORM_BYTE_SHUFFLE;
-        s2.entropy[0]  = TDC_ENTROPY_LZ2;
-        rc |= run_case("DELTA1D+ZIGZAG+BSHUF+LZ2", block_desc, &b, &s2);
+        s2.entropy[0]  = TDC_ENTROPY_LZ;
+        rc |= run_case("DELTA1D+ZIGZAG+BSHUF+LZ", block_desc, &b, &s2);
 
         /* Same residual stream, different entropy backends. */
         tdc_codec_spec sh = {0};
@@ -526,9 +526,9 @@ static int run_from_file(const char *path, const char *dtype_s,
         slh.model    = TDC_MODEL_DELTA_1D;
         slh.xform[0] = TDC_XFORM_ZIGZAG;
         slh.xform[1] = TDC_XFORM_BYTE_SHUFFLE;
-        slh.entropy[0] = TDC_ENTROPY_LZ2;
+        slh.entropy[0] = TDC_ENTROPY_LZ;
         slh.entropy[1] = TDC_ENTROPY_HUFFMAN;
-        rc |= run_case("DELTA1D+ZZ+BSHUF+LZ2+HUF", block_desc, &b, &slh);
+        rc |= run_case("DELTA1D+ZZ+BSHUF+LZ+HUF", block_desc, &b, &slh);
     }
     /* PRED2D + PLANE2D — only on 2D integer rasters. */
     if (layout == TDC_LAYOUT_RASTER_2D &&
@@ -538,16 +538,16 @@ static int run_from_file(const char *path, const char *dtype_s,
         s.model        = TDC_MODEL_PRED_2D;
         s.model_params = &pp;
         s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-        s.entropy[0]      = TDC_ENTROPY_LZ2;
-        rc |= run_case("PRED2D(PAETH)+BSHUF+LZ2", block_desc, &b, &s);
+        s.entropy[0]      = TDC_ENTROPY_LZ;
+        rc |= run_case("PRED2D(PAETH)+BSHUF+LZ", block_desc, &b, &s);
 
         tdc_codec_spec sph = {0};
         sph.model        = TDC_MODEL_PRED_2D;
         sph.model_params = &pp;
         sph.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-        sph.entropy[0]   = TDC_ENTROPY_LZ2;
+        sph.entropy[0]   = TDC_ENTROPY_LZ;
         sph.entropy[1]   = TDC_ENTROPY_HUFFMAN;
-        rc |= run_case("PRED2D+BSHUF+LZ2+HUF", block_desc, &b, &sph);
+        rc |= run_case("PRED2D+BSHUF+LZ+HUF", block_desc, &b, &sph);
 
         if (dtype == TDC_DT_I32 || dtype == TDC_DT_U32 ||
             dtype == TDC_DT_I16 || dtype == TDC_DT_U16) {
@@ -556,8 +556,8 @@ static int run_from_file(const char *path, const char *dtype_s,
             s2.model        = TDC_MODEL_PLANE_2D;
             s2.model_params = &plp;
             s2.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-            s2.entropy[0]      = TDC_ENTROPY_LZ2;
-            rc |= run_case("PLANE2D+BSHUF+LZ2", block_desc, &b, &s2);
+            s2.entropy[0]      = TDC_ENTROPY_LZ;
+            rc |= run_case("PLANE2D+BSHUF+LZ", block_desc, &b, &s2);
         }
     }
 
@@ -617,15 +617,15 @@ int main(int argc, char **argv) {
 
     int rc = 0;
     rc |= case_raw_none_u8();
-    rc |= case_raw_lz2_ramp();
-    rc |= case_raw_shuffle_lz2_ramp();
-    rc |= case_delta_lz2_ramp();
-    rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZIGZAG+BSHUF+LZ2",     TDC_ENTROPY_LZ2,     TDC_ENTROPY_NONE);
+    rc |= case_raw_lz_ramp();
+    rc |= case_raw_shuffle_lz_ramp();
+    rc |= case_delta_lz_ramp();
+    rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZIGZAG+BSHUF+LZ",     TDC_ENTROPY_LZ,     TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+HUFFMAN",    TDC_ENTROPY_HUFFMAN,  TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+FSE",        TDC_ENTROPY_FSE,      TDC_ENTROPY_NONE);
-    rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+LZ2+HUF",   TDC_ENTROPY_LZ2,      TDC_ENTROPY_HUFFMAN);
-    rc |= case_pred2d_paeth_shuffle_lz2();
-    rc |= case_plane2d_shuffle_lz2();
+    rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+LZ+HUF",   TDC_ENTROPY_LZ,      TDC_ENTROPY_HUFFMAN);
+    rc |= case_pred2d_paeth_shuffle_lz();
+    rc |= case_plane2d_shuffle_lz();
 
     if (rc) {
         fprintf(stderr, "\nbench_throughput: FAIL\n");

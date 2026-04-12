@@ -6,7 +6,7 @@
  *
  *   - model           dimension-aware predictors (1D, 2D, 2D-stack, 3D)
  *   - representation  dimension-agnostic transforms (quantize, shuffle, ...)
- *   - entropy         dimension-agnostic coders (lz2, deflate, ...)
+ *   - entropy         dimension-agnostic coders (lz, deflate, ...)
  *   - storage         self-describing block records and containers
  *
  * The unit of work is a tdc_block: a typed n-dim tile of values whose

@@ -6,7 +6,7 @@
  * vtable is not compiled and tdc_entropy_get(TDC_ENTROPY_DEFLATE) returns
  * NULL from the registry.
  *
- * Provides the "ratio" mode: slower but smaller than native LZ2. Useful
+ * Provides the "ratio" mode: slower but smaller than native LZ. Useful
  * when the caller genuinely wants max ratio over max speed.
  *
  * Params: tdc_entropy_level::level maps to zlib compression level (1-9).

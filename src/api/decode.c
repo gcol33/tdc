@@ -202,8 +202,24 @@ tdc_status tdc_decode_block(const uint8_t *src, size_t src_size,
 
     /* The post-chain (entropy-side) byte count must match the header's
      * uncompressed_size, which is the byte count just before entropy
-     * encoding. */
-    if ((uint64_t)walk_bytes != hdr.uncompressed_size) return TDC_E_CORRUPT;
+     * encoding.
+     *
+     * Zero-residual short-circuit: when the encoder set
+     * TDC_BLOCK_FLAG_ZERO_RESIDUAL, the xform + entropy chains were
+     * skipped entirely and payload_size and xform_params_size are both
+     * zero. uncompressed_size still carries the logical residual byte
+     * count so walk_bytes can be computed from it; but we reinterpret
+     * it as n_elems * residual_elem_size directly, because no transform
+     * chain actually ran on encode and the post-chain vs pre-chain
+     * size distinction does not apply. */
+    const int zero_residual = (hdr.flags & TDC_BLOCK_FLAG_ZERO_RESIDUAL) != 0;
+    if (zero_residual) {
+        if (hdr.payload_size != 0u || hdr.xform_params_size != 0u) return TDC_E_CORRUPT;
+        size_t residual_bytes = (size_t)n_elems * residual_elem_size;
+        if ((uint64_t)residual_bytes != hdr.uncompressed_size) return TDC_E_CORRUPT;
+    } else {
+        if ((uint64_t)walk_bytes != hdr.uncompressed_size) return TDC_E_CORRUPT;
+    }
 
     /* ----- Stage 2: scratch buffers + entropy decode ------------------ */
 
@@ -226,6 +242,20 @@ tdc_status tdc_decode_block(const uint8_t *src, size_t src_size,
     const int dec_timing_on = tdc_stage_timers_enabled();
     double t_entropy = 0.0, t_xform = 0.0, t_model = 0.0;
     double dt0 = dec_timing_on ? tdc_now_secs() : 0.0;
+
+    /* Zero-residual short-circuit: the encoder stored no payload, no
+     * xform params, and no transformed bytes. We hand the model an
+     * uninitialized residual buffer — when the side_meta carries
+     * PLANE2D_FLAG_NO_RESIDUAL the NORES tile body never reads from it,
+     * and for models without a NORES path we could fall back to memset.
+     * For now only plane2d sets this flag and it always uses NORES, so
+     * the memset is skipped entirely. The buffer's *size* must be set
+     * correctly because the model validates residual_size == bytes. */
+    if (zero_residual) {
+        bufs[cur].size = entropy_out_size;
+        if (dec_timing_on) { double t1 = tdc_now_secs(); t_entropy = t1 - dt0; dt0 = t1; t_xform = 0.0; }
+        goto run_model;
+    }
 
     /* Entropy decode: walk the chain RTL. See encode.c for the payload
      * layout (size table prefix + final bytes). An empty chain is an
@@ -320,6 +350,7 @@ tdc_status tdc_decode_block(const uint8_t *src, size_t src_size,
 
     /* ----- Stage 4: model decode -------------------------------------- */
 
+run_model:
     st = model_vt->decode(dst, NULL, residual_dtype,
                           bufs[cur].data, bufs[cur].size,
                           (hdr.side_meta_size > 0) ? side_meta_p : NULL,

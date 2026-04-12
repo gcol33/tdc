@@ -131,7 +131,39 @@ tdc_status tdc_encode_block(const tdc_block      *src,
     if (st != TDC_OK) goto cleanup;
     if (timing_on) { double t1 = tdc_now_secs(); t_model = t1 - t0; t0 = t1; }
 
+    /* Zero-residual signal: a non-empty block whose model emitted zero
+     * residual bytes means the model fits the data exactly and the
+     * residual stream would be all-zero after the transform chain as
+     * well (every v0 transform is shape-preserving on zero input). The
+     * driver sets TDC_BLOCK_FLAG_ZERO_RESIDUAL on the block record, skips
+     * the xform + entropy chains entirely, and stores a 0-byte payload.
+     * Decode reconstructs the zero residual before calling model.decode.
+     *
+     * The logical uncompressed size is still n_elems * residual_elem_size
+     * so the decoder's shape-vs-size cross-check keeps working. We stash
+     * it here because this is the only point where we have both n_elems
+     * and the model's residual dtype in scope without recomputing them. */
+    int64_t n_elems_top = shape_n_elems(&src->shape);
+    const int zero_residual = (n_elems_top > 0) && (bufs[cur].size == 0);
+    size_t   zero_residual_bytes = 0;
+    if (zero_residual) {
+        size_t relem = tdc_dtype_size(cur_dtype);
+        if (relem == 0) { st = TDC_E_UNSUPPORTED; goto cleanup; }
+        zero_residual_bytes = (size_t)n_elems_top * relem;
+    }
+
     /* ----- Stage 2: transform chain ------------------------------------ */
+    /*
+     * The xform + entropy chains both short-circuit in the zero-residual
+     * case so that the hot path on piecewise-planar inputs (all the
+     * plane2d + BSHUF + LZ benchmarks) collapses to "emit side meta,
+     * stamp flag, write header". The inner loops below are unchanged;
+     * only the guard is new.
+     */
+
+    size_t uncompressed_size = 0;
+
+    if (!zero_residual) {
 
     for (int i = 0; i < TDC_MAX_TRANSFORMS; ++i) {
         tdc_xform_id xid = spec->xform[i];
@@ -165,7 +197,7 @@ tdc_status tdc_encode_block(const tdc_block      *src,
     }
 
     /* bufs[cur] now holds the residual stream that goes to entropy. */
-    const size_t uncompressed_size = bufs[cur].size;
+    uncompressed_size = bufs[cur].size;
     if (timing_on) { double t1 = tdc_now_secs(); t_xform = t1 - t0; t0 = t1; }
 
     /* ----- Stage 3: entropy chain -------------------------------------- *
@@ -261,10 +293,22 @@ tdc_status tdc_encode_block(const tdc_block      *src,
                 raw_mib, payload.size);
     }
 
+    } /* end if (!zero_residual) */
+
     /* ----- Stage 4: assemble block record ------------------------------ */
 
-    int64_t n_elems = shape_n_elems(&src->shape);
+    int64_t n_elems = n_elems_top;
     size_t  vbytes  = (src->validity != NULL) ? validity_bytes_for(n_elems) : 0;
+
+    /* Zero-residual short-circuit: xform + entropy chains were skipped,
+     * payload and xform_params are both empty, and the header stores the
+     * logical residual byte count in uncompressed_size so the decoder's
+     * cross-check still passes even though no bytes are on disk. The
+     * caller's xform/entropy spec is intentionally preserved in
+     * hdr.xform_ids/entropy_ids below — the flag is what gates whether
+     * the decoder actually walks them. */
+    size_t effective_uncompressed_size =
+        zero_residual ? zero_residual_bytes : uncompressed_size;
 
     if (side_meta.size    > UINT32_MAX ||
         xform_params.size > UINT32_MAX ||
@@ -272,7 +316,7 @@ tdc_status tdc_encode_block(const tdc_block      *src,
         vbytes            > UINT32_MAX) {
         st = TDC_E_INVAL; goto cleanup;
     }
-    if (uncompressed_size > UINT64_MAX) { /* always false; documents intent */
+    if (effective_uncompressed_size > UINT64_MAX) { /* always false; documents intent */
         st = TDC_E_INVAL; goto cleanup;
     }
 
@@ -287,6 +331,7 @@ tdc_status tdc_encode_block(const tdc_block      *src,
     hdr.version    = TDC_BLOCK_VERSION;
     hdr.flags      = 0;
     if (src->validity != NULL) hdr.flags |= TDC_BLOCK_FLAG_HAS_VALIDITY;
+    if (zero_residual)         hdr.flags |= TDC_BLOCK_FLAG_ZERO_RESIDUAL;
     hdr.model_id   = (uint16_t)spec->model;
     for (int i = 0; i < TDC_MAX_TRANSFORMS; ++i) {
         hdr.xform_ids[i] = (uint16_t)spec->xform[i];
@@ -300,7 +345,7 @@ tdc_status tdc_encode_block(const tdc_block      *src,
     for (uint8_t i = 0; i < TDC_MAX_RANK; ++i) {
         hdr.dim[i] = (i < src->shape.rank) ? src->shape.dim[i] : 0;
     }
-    hdr.uncompressed_size = (uint64_t)uncompressed_size;
+    hdr.uncompressed_size = (uint64_t)effective_uncompressed_size;
     hdr.side_meta_size    = (uint32_t)side_meta.size;
     hdr.payload_size      = (uint32_t)payload.size;
     hdr.xform_params_size = (uint32_t)xform_params.size;

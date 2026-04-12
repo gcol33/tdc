@@ -62,6 +62,23 @@
 #include "../core/buffer.h"
 #include "../format/metadata_internal.h"
 
+/* ----- SIMD capability detection ------------------------------------------ */
+#if defined(__AVX2__) || (defined(_MSC_VER) && defined(__AVX2__))
+#  include <immintrin.h>
+#  define TDC_PLANE2D_HAVE_AVX2 1
+#endif
+
+#if defined(__SSE2__) || defined(_M_X64) || \
+    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#  include <emmintrin.h>
+#  define TDC_PLANE2D_HAVE_SSE2 1
+#endif
+
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#  include <arm_neon.h>
+#  define TDC_PLANE2D_HAVE_NEON 1
+#endif
+
 /* ----- Zigzag LEB128 varint ---------------------------------------------- */
 /*
  * Small inline codec for signed 32-bit integers. We emit the plane
@@ -203,15 +220,186 @@ static plane2d_tiling plane2d_tile_count(int64_t nx, int64_t ny, uint32_t tile_s
  * 2's complement targets) avoids the implementation-defined behavior of
  * `>>` on signed values.
  */
+static inline int64_t round_div256_i64(int64_t acc) {
+    int64_t sign = acc >> 63;
+    int64_t abs_acc = (acc ^ sign) - sign;
+    int64_t q = (abs_acc + 128) >> 8;
+    return (q ^ sign) - sign;
+}
+
+static inline int32_t round_div256_i32(int32_t acc) {
+    int32_t sign = acc >> 31;
+    int32_t abs_acc = (acc ^ sign) - sign;
+    int32_t q = (abs_acc + 128) >> 8;
+    return (q ^ sign) - sign;
+}
+
 static inline int64_t plane2d_eval(const int32_t *coeffs_for_tile,
                                    uint32_t lx, uint32_t ly) {
     int64_t a = (int64_t)coeffs_for_tile[0];
     int64_t b = (int64_t)coeffs_for_tile[1];
     int64_t c = (int64_t)coeffs_for_tile[2];
     int64_t sum = a + b * (int64_t)lx + c * (int64_t)ly;
-    if (sum >= 0) return  (sum + 128) / 256;
-    else          return -(((-sum) + 128) / 256);
+    return round_div256_i64(sum);
 }
+
+/* ----- AVX2 tile kernels -------------------------------------------------- */
+/*
+ * 8-wide int32 round_div256 + store for the NORES and general tile paths.
+ * The accumulator starts at (a + c*ly) for each row and steps by b per
+ * pixel. The 8 lanes carry {acc, acc+b, acc+2b, ..., acc+7b} and step
+ * by 8b each iteration.
+ */
+#ifdef TDC_PLANE2D_HAVE_AVX2
+
+static inline __m256i avx2_round_div256_epi32(__m256i acc) {
+    __m256i sign    = _mm256_srai_epi32(acc, 31);
+    __m256i abs_acc = _mm256_sub_epi32(_mm256_xor_si256(acc, sign), sign);
+    __m256i q       = _mm256_srli_epi32(
+                          _mm256_add_epi32(abs_acc, _mm256_set1_epi32(128)),
+                          8);
+    return _mm256_sub_epi32(_mm256_xor_si256(q, sign), sign);
+}
+
+static void plane2d_nores_tile_avx2_u32(
+        uint32_t *out, int64_t nx,
+        uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1,
+        int32_t a32, int32_t b32, int32_t c32)
+{
+    __m256i vb8  = _mm256_set1_epi32(b32 * 8);
+    __m256i init = _mm256_set_epi32(
+        b32 * 7, b32 * 6, b32 * 5, b32 * 4,
+        b32 * 3, b32 * 2, b32 * 1, 0);
+
+    for (uint32_t py = y0; py < y1; ++py) {
+        uint32_t *row = out + (int64_t)py * nx;
+        int32_t base = a32 + c32 * (int32_t)(py - y0);
+        __m256i vacc = _mm256_add_epi32(_mm256_set1_epi32(base), init);
+        uint32_t px = x0;
+        for (; px + 8 <= x1; px += 8) {
+            __m256i pred = avx2_round_div256_epi32(vacc);
+            _mm256_storeu_si256((__m256i *)(row + px), pred);
+            vacc = _mm256_add_epi32(vacc, vb8);
+        }
+        /* Scalar tail */
+        if (px < x1) {
+            int32_t acc = base + b32 * (int32_t)(px - x0);
+            for (; px < x1; ++px) {
+                row[px] = (uint32_t)round_div256_i32(acc);
+                acc += b32;
+            }
+        }
+    }
+}
+
+static void plane2d_nores_tile_avx2_u16(
+        uint16_t *out, int64_t nx,
+        uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1,
+        int32_t a32, int32_t b32, int32_t c32)
+{
+    __m256i vb8  = _mm256_set1_epi32(b32 * 8);
+    __m256i init = _mm256_set_epi32(
+        b32 * 7, b32 * 6, b32 * 5, b32 * 4,
+        b32 * 3, b32 * 2, b32 * 1, 0);
+
+    for (uint32_t py = y0; py < y1; ++py) {
+        uint16_t *row = out + (int64_t)py * nx;
+        int32_t base = a32 + c32 * (int32_t)(py - y0);
+        __m256i vacc = _mm256_add_epi32(_mm256_set1_epi32(base), init);
+        uint32_t px = x0;
+        for (; px + 8 <= x1; px += 8) {
+            __m256i pred = avx2_round_div256_epi32(vacc);
+            /* Pack 8×i32 → 8×i16: _mm256_packs_epi32 interleaves lanes,
+             * so we need a permute to get the right order. */
+            __m256i packed = _mm256_packs_epi32(pred, _mm256_setzero_si256());
+            packed = _mm256_permute4x64_epi64(packed, 0xD8); /* 0,2,1,3 */
+            _mm_storeu_si128((__m128i *)(row + px),
+                             _mm256_castsi256_si128(packed));
+            vacc = _mm256_add_epi32(vacc, vb8);
+        }
+        if (px < x1) {
+            int32_t acc = base + b32 * (int32_t)(px - x0);
+            for (; px < x1; ++px) {
+                row[px] = (uint16_t)round_div256_i32(acc);
+                acc += b32;
+            }
+        }
+    }
+}
+
+static void plane2d_nores_tile_avx2_u8(
+        uint8_t *out, int64_t nx,
+        uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1,
+        int32_t a32, int32_t b32, int32_t c32)
+{
+    __m256i vb8  = _mm256_set1_epi32(b32 * 8);
+    __m256i init = _mm256_set_epi32(
+        b32 * 7, b32 * 6, b32 * 5, b32 * 4,
+        b32 * 3, b32 * 2, b32 * 1, 0);
+
+    for (uint32_t py = y0; py < y1; ++py) {
+        uint8_t *row = out + (int64_t)py * nx;
+        int32_t base = a32 + c32 * (int32_t)(py - y0);
+        __m256i vacc = _mm256_add_epi32(_mm256_set1_epi32(base), init);
+        uint32_t px = x0;
+        for (; px + 8 <= x1; px += 8) {
+            __m256i pred = avx2_round_div256_epi32(vacc);
+            /* i32 → i16 → u8 narrow: two-step pack. */
+            __m256i p16 = _mm256_packs_epi32(pred, _mm256_setzero_si256());
+            p16 = _mm256_permute4x64_epi64(p16, 0xD8);
+            __m128i lo16 = _mm256_castsi256_si128(p16);
+            __m128i p8 = _mm_packus_epi16(lo16, _mm_setzero_si128());
+            /* Store lower 8 bytes. */
+            _mm_storel_epi64((__m128i *)(row + px), p8);
+            vacc = _mm256_add_epi32(vacc, vb8);
+        }
+        if (px < x1) {
+            int32_t acc = base + b32 * (int32_t)(px - x0);
+            for (; px < x1; ++px) {
+                row[px] = (uint8_t)round_div256_i32(acc);
+                acc += b32;
+            }
+        }
+    }
+}
+
+/* General-case with residual (res != 0): AVX2 u32 path. */
+static void plane2d_res_tile_avx2_u32(
+        uint32_t *out, const uint32_t *res, int64_t nx,
+        uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1,
+        int32_t a32, int32_t b32, int32_t c32)
+{
+    __m256i vb8  = _mm256_set1_epi32(b32 * 8);
+    __m256i init = _mm256_set_epi32(
+        b32 * 7, b32 * 6, b32 * 5, b32 * 4,
+        b32 * 3, b32 * 2, b32 * 1, 0);
+
+    for (uint32_t py = y0; py < y1; ++py) {
+        int64_t row_off = (int64_t)py * nx;
+        uint32_t *orow = out + row_off;
+        const uint32_t *rrow = res + row_off;
+        int32_t base = a32 + c32 * (int32_t)(py - y0);
+        __m256i vacc = _mm256_add_epi32(_mm256_set1_epi32(base), init);
+        uint32_t px = x0;
+        for (; px + 8 <= x1; px += 8) {
+            __m256i pred = avx2_round_div256_epi32(vacc);
+            __m256i rv   = _mm256_loadu_si256((const __m256i *)(rrow + px));
+            _mm256_storeu_si256((__m256i *)(orow + px),
+                                _mm256_add_epi32(rv, pred));
+            vacc = _mm256_add_epi32(vacc, vb8);
+        }
+        if (px < x1) {
+            int32_t acc = base + b32 * (int32_t)(px - x0);
+            for (; px < x1; ++px) {
+                int64_t idx = row_off + (int64_t)px;
+                orow[px] = res[idx] + (uint32_t)round_div256_i32(acc);
+                acc += b32;
+            }
+        }
+    }
+}
+
+#endif /* TDC_PLANE2D_HAVE_AVX2 */
 
 /* ----- Structural coefficient predictor ---------------------------------- */
 /*
@@ -289,12 +477,30 @@ static inline void plane2d_predict_from_top(const int32_t prev[3],
  * 12 KB of side_meta alone and was the dominant term in the final block
  * size. See SPEEDUP-TODO P0.1.
  */
-#define PLANE2D_META_HDR_BYTES 6u   /* u16 + u32 */
+/* Side-meta header:
+ *   u16  tile_size
+ *   u32  n_tiles
+ *   u8   flags           (see PLANE2D_FLAG_*)
+ *   u8   reserved        (MBZ; decoder rejects non-zero)
+ *
+ * Header bytes bumped from 6 → 8 in-place (no format version bump —
+ * allowed by the prototype-phase policy in MEMORY.md). The flag byte
+ * carries the zero-residual marker used by the Phase 1 decode fast
+ * path. Old 6-byte blocks no longer decode. */
+#define PLANE2D_META_HDR_BYTES 8u
+
+/* Flag bit set by the encoder when every residual byte is zero. Tells
+ * the decoder to skip the per-pixel residual read+add entirely and
+ * write predictor values straight into the output. Saves one full
+ * pass over the uncompressed output buffer on piecewise-planar inputs
+ * where the plane fit is exact. */
+#define PLANE2D_FLAG_NO_RESIDUAL 0x01u
 
 static tdc_status plane2d_side_write(tdc_buffer *side_out,
                                      uint16_t        tile_size,
                                      uint32_t        tiles_x,
                                      uint32_t        tiles_y,
+                                     uint8_t         flags,
                                      const int32_t  *coeffs) {
     uint32_t n_tiles = tiles_x * tiles_y;
 
@@ -309,6 +515,8 @@ static tdc_status plane2d_side_write(tdc_buffer *side_out,
     uint8_t *base = side_out->data;
     tdc_le_store_u16(base + 0, tile_size);
     tdc_le_store_u32(base + 2, n_tiles);
+    base[6] = flags;
+    base[7] = 0u;           /* reserved */
     uint8_t *wp = base + PLANE2D_META_HDR_BYTES;
 
     /* We need the first tile in each row to fall back to the top-row
@@ -456,9 +664,10 @@ static tdc_status plane2d_encode(const tdc_block *in,
 
     if (n == 0) {
         /* Self-describing empty record: header with n_tiles == 0, no
-         * varint payload. */
+         * varint payload. Flags are zero — empty rasters don't need
+         * the no-residual fast path because there's nothing to walk. */
         tdc_status st = plane2d_side_write(side_out, tile_size,
-                                           0u, 0u, NULL);
+                                           0u, 0u, 0u, NULL);
         if (st != TDC_OK) return st;
         residual_out->size = 0;
         return TDC_OK;
@@ -515,11 +724,35 @@ static tdc_status plane2d_encode(const tdc_block *in,
         }
     }
 
+    /* Scan residual for all-zero. On piecewise-planar input the plane
+     * fit is exact and every residual byte is zero; setting
+     * PLANE2D_FLAG_NO_RESIDUAL signals two things:
+     *   (a) the model side meta carries the flag so the decoder's
+     *       tile inner loop can skip the per-pixel residual load (a
+     *       ~12% speedup on its own), and
+     *   (b) the model emits a zero-byte residual stream, which the
+     *       driver recognizes as the whole-pipeline skip case: the
+     *       block record sets TDC_BLOCK_FLAG_ZERO_RESIDUAL, and the
+     *       xform + entropy chains are never invoked. On decode the
+     *       driver reconstructs a zero-filled residual of the correct
+     *       size before handing it to plane2d_decode.
+     * First-nonzero early-out keeps the scan cost negligible on non-
+     * planar inputs. */
+    uint8_t flags = 0u;
+    {
+        size_t i = 0;
+        for (; i < bytes; ++i) { if (dst_p[i]) break; }
+        if (i == bytes) {
+            flags |= PLANE2D_FLAG_NO_RESIDUAL;
+        }
+    }
+    residual_out->size = (flags & PLANE2D_FLAG_NO_RESIDUAL) ? 0u : bytes;
+
     /* Serialize the side metadata as a delta-varint stream, then free
      * the scratch coefficient array. side_out->size is set by
      * plane2d_side_write to the exact stream length. */
-    residual_out->size = bytes;
-    st = plane2d_side_write(side_out, tile_size, t.tiles_x, t.tiles_y, coeffs);
+    st = plane2d_side_write(side_out, tile_size, t.tiles_x, t.tiles_y,
+                            flags, coeffs);
     (void)residual_out->realloc_fn(residual_out->user, coeffs, 0);
     if (st != TDC_OK) return st;
 
@@ -572,20 +805,23 @@ static tdc_status plane2d_decode(tdc_block      *out,
 
     int64_t n     = nx * ny;
     size_t  bytes = (size_t)n * elem_size;
-    if (residual_size != bytes) return TDC_E_CORRUPT;
 
-    /* Empty raster is a special case: the side_meta is the 6-byte header
+    /* Empty raster is a special case: the side_meta is the 8-byte header
      * with tile_size > 0 and n_tiles == 0, and there is no varint stream
-     * to walk. Handle it inline. */
+     * to walk. Residual must be empty. Handle inline. */
     if (n == 0) {
         if (side_size != (size_t)PLANE2D_META_HDR_BYTES) return TDC_E_CORRUPT;
+        if (residual_size != 0)                          return TDC_E_CORRUPT;
         tdc_meta_reader hdr = tdc_meta_reader_init(side_meta, side_size);
         uint16_t ts = tdc_meta_read_u16(&hdr);
         uint32_t nt = tdc_meta_read_u32(&hdr);
-        if (!hdr.ok || ts == 0u || nt != 0u) return TDC_E_CORRUPT;
+        uint8_t  fl = tdc_meta_read_u8(&hdr);
+        uint8_t  rs = tdc_meta_read_u8(&hdr);
+        if (!hdr.ok || ts == 0u || nt != 0u || rs != 0u) return TDC_E_CORRUPT;
+        (void)fl;   /* flags irrelevant on empty raster */
         return TDC_OK;
     }
-    if (!out->data || !residuals) return TDC_E_INVAL;
+    if (!out->data) return TDC_E_INVAL;
 
     /* Parse the header, then walk the side_meta and the raster tile by
      * tile. For each tile we read three zigzag-LEB128 deltas, apply the
@@ -595,9 +831,22 @@ static tdc_status plane2d_decode(tdc_block      *out,
      * table, only the current tile and the one-row-worth of "previous
      * column 0" state needed for top-prediction at row transitions. */
     tdc_meta_reader r = tdc_meta_reader_init(side_meta, side_size);
-    uint16_t tile_size = tdc_meta_read_u16(&r);
+    uint16_t tile_size    = tdc_meta_read_u16(&r);
     uint32_t n_tiles_meta = tdc_meta_read_u32(&r);
-    if (!r.ok || tile_size == 0u) return TDC_E_CORRUPT;
+    uint8_t  flags        = tdc_meta_read_u8(&r);
+    uint8_t  reserved     = tdc_meta_read_u8(&r);
+    if (!r.ok || tile_size == 0u || reserved != 0u) return TDC_E_CORRUPT;
+
+    /* Residual is always the full uncompressed-size stream (same contract
+     * as every other model). PLANE2D_FLAG_NO_RESIDUAL is a decoder-only
+     * hint: it tells the tile loop the residual is all-zero so it can
+     * skip the per-pixel load+add. The bytes still flow through the
+     * entropy+xform chain. End-to-end residual-skip requires a driver
+     * change (src/api/decode.c enforces walk_bytes == uncompressed_size)
+     * and is out of scope for Phase 1 — see PLANE2D-DECODE-SPEEDUP.md. */
+    if (residual_size != bytes) return TDC_E_CORRUPT;
+    if (!residuals)             return TDC_E_INVAL;
+    int no_residual = (flags & PLANE2D_FLAG_NO_RESIDUAL) != 0;
 
     plane2d_tiling t = plane2d_tile_count(nx, ny, tile_size);
     if (t.tiles_x == 0u || t.tiles_y == 0u) return TDC_E_CORRUPT;
@@ -630,24 +879,151 @@ static tdc_status plane2d_decode(tdc_block      *out,
      * to plane2d_eval so encode and decode agree bit-for-bit; the
      * encoder still calls plane2d_eval so the two paths compute the
      * same rounded values. */
+    /* AVX2 dispatch for the int32-safe NORES path. Falls back to scalar
+     * when AVX2 is not compiled in or when T_U isn't one of the three
+     * supported widths (can't happen for the three case labels, but the
+     * macro is generic). */
+#ifdef TDC_PLANE2D_HAVE_AVX2
+    #define PLANE2D_NORES_I32_DISPATCH(T_U) do { \
+        if (sizeof(T_U) == 4u) { \
+            plane2d_nores_tile_avx2_u32((uint32_t *)out_typed, nx, \
+                                        x0, y0, x1, y1, cf[0], cf[1], cf[2]); \
+        } else if (sizeof(T_U) == 2u) { \
+            plane2d_nores_tile_avx2_u16((uint16_t *)out_typed, nx, \
+                                        x0, y0, x1, y1, cf[0], cf[1], cf[2]); \
+        } else if (sizeof(T_U) == 1u) { \
+            plane2d_nores_tile_avx2_u8((uint8_t *)out_typed, nx, \
+                                       x0, y0, x1, y1, cf[0], cf[1], cf[2]); \
+        } \
+    } while (0)
+    #define PLANE2D_RES_I32_DISPATCH(T_U) do { \
+        if (sizeof(T_U) == 4u) { \
+            plane2d_res_tile_avx2_u32((uint32_t *)out_typed, \
+                                      (const uint32_t *)res_typed, nx, \
+                                      x0, y0, x1, y1, cf[0], cf[1], cf[2]); \
+        } else { \
+            int32_t a32 = cf[0], b32 = cf[1], c32 = cf[2]; \
+            for (uint32_t py = y0; py < y1; ++py) { \
+                int64_t row_off = (int64_t)py * nx; \
+                int32_t base = a32 + c32 * (int32_t)(py - y0); \
+                int32_t acc  = base; \
+                for (uint32_t px = x0; px < x1; ++px) { \
+                    int64_t idx = row_off + (int64_t)px; \
+                    int32_t pred = round_div256_i32(acc); \
+                    out_typed[idx] = (T_U)((T_U)res_typed[idx] + (T_U)pred); \
+                    acc += b32; \
+                } \
+            } \
+        } \
+    } while (0)
+#else
+    #define PLANE2D_NORES_I32_DISPATCH(T_U) do { \
+        int32_t a32 = cf[0], b32 = cf[1], c32 = cf[2]; \
+        for (uint32_t py = y0; py < y1; ++py) { \
+            int64_t row_off = (int64_t)py * nx; \
+            int32_t base = a32 + c32 * (int32_t)(py - y0); \
+            int32_t acc  = base; \
+            for (uint32_t px = x0; px < x1; ++px) { \
+                out_typed[row_off + (int64_t)px] = \
+                    (T_U)round_div256_i32(acc); \
+                acc += b32; \
+            } \
+        } \
+    } while (0)
+    #define PLANE2D_RES_I32_DISPATCH(T_U) do { \
+        int32_t a32 = cf[0], b32 = cf[1], c32 = cf[2]; \
+        for (uint32_t py = y0; py < y1; ++py) { \
+            int64_t row_off = (int64_t)py * nx; \
+            int32_t base = a32 + c32 * (int32_t)(py - y0); \
+            int32_t acc  = base; \
+            for (uint32_t px = x0; px < x1; ++px) { \
+                int64_t idx = row_off + (int64_t)px; \
+                int32_t pred = round_div256_i32(acc); \
+                out_typed[idx] = (T_U)((T_U)res_typed[idx] + (T_U)pred); \
+                acc += b32; \
+            } \
+        } \
+    } while (0)
+#endif
+
+    /* Phase 2: branch-free rounding, constant-tile + int32 fast paths.
+     *
+     * Three tiers:
+     *   (a) cf_b == 0 && cf_c == 0: compute pred once, memset-style fill.
+     *   (b) |cf_a| + |cf_b|*(tw-1) + |cf_c|*(th-1) <= INT32_MAX: int32
+     *       accumulator, branch-free round_div256_i32. Compiler can
+     *       auto-vectorize with 4-wide SSE2 or 8-wide AVX2.
+     *   (c) Fallback: int64 accumulator, branch-free round_div256_i64.
+     *
+     * The guard (b) is tested once per tile. */
+
     #define PLANE2D_DEC_TILE_BODY(T_U) do { \
         T_U       *out_typed = (T_U *)out->data; \
         const T_U *res_typed = (const T_U *)residuals; \
         int64_t cf_a = (int64_t)cf[0]; \
         int64_t cf_b = (int64_t)cf[1]; \
         int64_t cf_c = (int64_t)cf[2]; \
-        for (uint32_t py = y0; py < y1; ++py) { \
-            int64_t row_off = (int64_t)py * nx; \
-            uint32_t ly     = py - y0; \
-            int64_t base = cf_a + cf_c * (int64_t)ly; \
-            int64_t acc  = base; \
-            for (uint32_t px = x0; px < x1; ++px) { \
-                int64_t idx  = row_off + (int64_t)px; \
-                int64_t pred; \
-                if (acc >= 0) pred =  (acc + 128) / 256; \
-                else          pred = -(((-acc) + 128) / 256); \
-                out_typed[idx] = (T_U)((T_U)res_typed[idx] + (T_U)pred); \
-                acc += cf_b; \
+        uint32_t tw = x1 - x0, th = y1 - y0; \
+        int64_t abs_a = cf_a < 0 ? -cf_a : cf_a; \
+        int64_t abs_b = cf_b < 0 ? -cf_b : cf_b; \
+        int64_t abs_c = cf_c < 0 ? -cf_c : cf_c; \
+        int64_t max_acc = abs_a + abs_b * (int64_t)(tw > 0 ? tw - 1 : 0) \
+                                + abs_c * (int64_t)(th > 0 ? th - 1 : 0); \
+        if (cf_b == 0 && cf_c == 0) { \
+            T_U val = (T_U)round_div256_i64(cf_a); \
+            for (uint32_t py = y0; py < y1; ++py) { \
+                int64_t row_off = (int64_t)py * nx; \
+                for (uint32_t px = x0; px < x1; ++px) \
+                    out_typed[row_off + (int64_t)px] = \
+                        (T_U)((T_U)res_typed[row_off + (int64_t)px] + val); \
+            } \
+        } else if (max_acc <= INT32_MAX) { \
+            PLANE2D_RES_I32_DISPATCH(T_U); \
+        } else { \
+            for (uint32_t py = y0; py < y1; ++py) { \
+                int64_t row_off = (int64_t)py * nx; \
+                int64_t base = cf_a + cf_c * (int64_t)(py - y0); \
+                int64_t acc  = base; \
+                for (uint32_t px = x0; px < x1; ++px) { \
+                    int64_t idx = row_off + (int64_t)px; \
+                    int64_t pred = round_div256_i64(acc); \
+                    out_typed[idx] = (T_U)((T_U)res_typed[idx] + (T_U)pred); \
+                    acc += cf_b; \
+                } \
+            } \
+        } \
+    } while (0)
+
+    #define PLANE2D_DEC_TILE_BODY_NORES(T_U) do { \
+        T_U *out_typed = (T_U *)out->data; \
+        int64_t cf_a = (int64_t)cf[0]; \
+        int64_t cf_b = (int64_t)cf[1]; \
+        int64_t cf_c = (int64_t)cf[2]; \
+        uint32_t tw = x1 - x0, th = y1 - y0; \
+        int64_t abs_a = cf_a < 0 ? -cf_a : cf_a; \
+        int64_t abs_b = cf_b < 0 ? -cf_b : cf_b; \
+        int64_t abs_c = cf_c < 0 ? -cf_c : cf_c; \
+        int64_t max_acc = abs_a + abs_b * (int64_t)(tw > 0 ? tw - 1 : 0) \
+                                + abs_c * (int64_t)(th > 0 ? th - 1 : 0); \
+        if (cf_b == 0 && cf_c == 0) { \
+            T_U val = (T_U)round_div256_i64(cf_a); \
+            for (uint32_t py = y0; py < y1; ++py) { \
+                int64_t row_off = (int64_t)py * nx; \
+                for (uint32_t px = x0; px < x1; ++px) \
+                    out_typed[row_off + (int64_t)px] = val; \
+            } \
+        } else if (max_acc <= INT32_MAX) { \
+            PLANE2D_NORES_I32_DISPATCH(T_U); \
+        } else { \
+            for (uint32_t py = y0; py < y1; ++py) { \
+                int64_t row_off = (int64_t)py * nx; \
+                int64_t base = cf_a + cf_c * (int64_t)(py - y0); \
+                int64_t acc  = base; \
+                for (uint32_t px = x0; px < x1; ++px) { \
+                    out_typed[row_off + (int64_t)px] = \
+                        (T_U)round_div256_i64(acc); \
+                    acc += cf_b; \
+                } \
             } \
         } \
     } while (0)
@@ -680,7 +1056,14 @@ static tdc_status plane2d_decode(tdc_block      *out,
             uint32_t x1 = x0 + tile_size; if (x1 > (uint32_t)nx) x1 = (uint32_t)nx;
             uint32_t y1 = y0 + tile_size; if (y1 > (uint32_t)ny) y1 = (uint32_t)ny;
 
-            switch (elem_size) {
+            if (no_residual) {
+                switch (elem_size) {
+                    case 1u: PLANE2D_DEC_TILE_BODY_NORES(uint8_t);  break;
+                    case 2u: PLANE2D_DEC_TILE_BODY_NORES(uint16_t); break;
+                    case 4u: PLANE2D_DEC_TILE_BODY_NORES(uint32_t); break;
+                    default: return TDC_E_DTYPE;
+                }
+            } else switch (elem_size) {
                 case 1u: PLANE2D_DEC_TILE_BODY(uint8_t);  break;
                 case 2u: PLANE2D_DEC_TILE_BODY(uint16_t); break;
                 case 4u: PLANE2D_DEC_TILE_BODY(uint32_t); break;
@@ -698,6 +1081,9 @@ static tdc_status plane2d_decode(tdc_block      *out,
         }
     }
     #undef PLANE2D_DEC_TILE_BODY
+    #undef PLANE2D_DEC_TILE_BODY_NORES
+    #undef PLANE2D_NORES_I32_DISPATCH
+    #undef PLANE2D_RES_I32_DISPATCH
 
     /* The varint stream must consume the full side_meta exactly. */
     if (r.off != side_size) return TDC_E_CORRUPT;

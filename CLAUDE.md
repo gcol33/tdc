@@ -183,9 +183,9 @@ Compressed-loop optimization is benchmarked, not theorized. Before
 "improving" any inner loop, check `vectra/CLAUDE.md` for documented dead
 ends. As of now:
 
-- **No batched parse-then-copy in LZ2 fast path** — measured 6-7% slower
+- **No batched parse-then-copy in LZ fast path** — measured 6-7% slower
   in vectra benchmarks. Re-evaluate only after a real entropy stage
-  (FSE/Huffman) lives in front of LZ2.
+  (FSE/Huffman) lives in front of LZ.
 - **No Robin Hood hashing** in `JoinHT`/`VecHashTable` style structures —
   measured 12-29% regression in vectra. FNV-1a + 70% load distributes
   well enough that average probe length doesn't justify Robin Hood's

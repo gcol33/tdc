@@ -24,7 +24,7 @@ encode `n_nonzero`, `energy`, and `side_meta bytes`, then ran the bench.
 - `side_meta=12,294 B`. Flat `n_tiles * 3 * i32` layout pays 12 bytes
   per tile regardless of content. With 1024 tiles that's most of the
   compressed block.
-- LZ2 payload on 4 MiB of zeros was 16,461 B. Not tdc's fault in a
+- LZ payload on 4 MiB of zeros was 16,461 B. Not tdc's fault in a
   direct sense but worth noting — see the P0.3 entry in SPEEDUP-TODO.
 
 So the instrumentation flipped the diagnosis. The interesting lever
@@ -98,7 +98,7 @@ never materializes the coefficient table. Decode MB/s went 494 → 835.
 
 ### What is parked
 
-LZ2 match-length varint (see SPEEDUP-TODO P0.3). On this bench,
+LZ match-length varint (see SPEEDUP-TODO P0.3). On this bench,
 payload is 16,461 B because each 255-byte stride of the 4 MiB
 back-reference costs one output byte. Replacing the chain with LEB128
 would drop the payload to ~4 bytes and make the block ~3-4 KB total.
@@ -206,7 +206,7 @@ After the P0 pass, two pipelines were still visibly trailing zstd on
 decode even though tdc's ratio was competitive:
 
 - `DELTA+ZZ+BSHUF+HUF` on i16 walk: 222 MB/s decode vs zstd L3 693.
-- `PLANE2D+BSHUF+LZ2` on i32 split-planes: 489 MB/s decode vs zstd L3
+- `PLANE2D+BSHUF+LZ` on i32 split-planes: 489 MB/s decode vs zstd L3
   3808 (zstd is bandwidth-bound on a 13-byte payload, we're not —
   still, the gap was too wide to attribute only to that).
 
@@ -247,10 +247,10 @@ stack; no allocator plumbing needed.
 | pipeline / input                 | dec before | dec after | Δ      |
 |----------------------------------|-----------:|----------:|-------:|
 | DELTA+ZZ+BSHUF+HUF  walk i16     |      222   |     385   | +74%   |
-| DELTA+ZZ+BSHUF+LZ2+HUF walk i16  |      162   |     411   | +154%  |
+| DELTA+ZZ+BSHUF+LZ+HUF walk i16  |      162   |     411   | +154%  |
 
-The LZ2+HUF chain wins more than HUF alone because on that pipeline
-the Huffman decode was a larger share of total wallclock — LZ2 decode
+The LZ+HUF chain wins more than HUF alone because on that pipeline
+the Huffman decode was a larger share of total wallclock — LZ decode
 was already fast, so fixing Huffman moved the whole bar.
 
 **PLANE2D decode (`src/model/plane2d.c`).** Two changes in the same
@@ -273,7 +273,7 @@ pass:
 
 | pipeline / input            | dec before | dec after | Δ    |
 |-----------------------------|-----------:|----------:|-----:|
-| PLANE2D+BSHUF+LZ2 i32 split |      489   |     868   | +78% |
+| PLANE2D+BSHUF+LZ i32 split |      489   |     868   | +78% |
 
 Encode side picks up the integer eval for free because
 `plane2d_encode` calls the same `plane2d_eval` helper during residual
@@ -322,7 +322,7 @@ computation — 333 → 398 MB/s on the same bench, no loop changes.
 
 ### The question
 
-After the Huffman + PLANE2D pass, PLANE2D+BSHUF+LZ2 on i32 was still at
+After the Huffman + PLANE2D pass, PLANE2D+BSHUF+LZ on i32 was still at
 868 MB/s decode vs zstd L3's 3808 MB/s. I went in assuming the model
 stage was the next lever. The stage timers (`TDC_STAGE_TIMERS=1`) said
 otherwise, and the diagnosis flipped.
@@ -333,7 +333,7 @@ Per-stage decode breakdown on the 4 MiB i32 split-plane block:
 
 | stage   | wallclock | throughput |
 |---------|----------:|-----------:|
-| entropy (LZ2)  |  0.6 ms |  ~6500 MB/s |
+| entropy (LZ)  |  0.6 ms |  ~6500 MB/s |
 | **xform (BSHUF inverse)** | **2.6 ms** | **~1500 MB/s** |
 | model (plane2d decode)    |  1.1 ms |  ~3600 MB/s |
 
@@ -378,15 +378,15 @@ with the scalar path kept as fallback for exotic widths and targets.
 
 | pipeline                             | dec before | dec after | Δ    |
 |--------------------------------------|-----------:|----------:|-----:|
-| PLANE2D+BSHUF+LZ2 i32                |      868   |    1509   | +74% |
-| RAW+BSHUF+LZ2 i32 ramp               |     1508   |    2443   | +62% |
-| DELTA1D+ZZ+BSHUF+LZ2 walk i16        |     1154   |    1824   | +58% |
-| DELTA1D+ZZ+BSHUF+LZ2+HUF walk i16    |      288   |     478   | +66% |
+| PLANE2D+BSHUF+LZ i32                |      868   |    1509   | +74% |
+| RAW+BSHUF+LZ i32 ramp               |     1508   |    2443   | +62% |
+| DELTA1D+ZZ+BSHUF+LZ walk i16        |     1154   |    1824   | +58% |
+| DELTA1D+ZZ+BSHUF+LZ+HUF walk i16    |      288   |     478   | +66% |
 | DELTA1D+ZZ+BSHUF+HUFFMAN walk i16    |      381   |     424   | +11% |
-| PRED2D(PAETH)+BSHUF+LZ2 u16          |      278   |     317   | +14% |
+| PRED2D(PAETH)+BSHUF+LZ u16          |      278   |     317   | +14% |
 
 The big +50–75% gains are on pipelines where BSHUF was a dominant
-term in the decode wallclock (LZ2 decode of the residual stream is
+term in the decode wallclock (LZ decode of the residual stream is
 fast, so anything that was previously BSHUF-bound now pulls through
 the entropy/xform pair much faster). Pipelines where the entropy
 stage itself dominates — Huffman-only and FSE-only walk cases —
@@ -400,15 +400,15 @@ are exercised by the round-trip suite. No new tests were required.
 
 ### Where this leaves the zstd comparison
 
-- **PLANE2D+BSHUF+LZ2 i32**: tdc 1509 vs zstd L3 3808 — gap halved
+- **PLANE2D+BSHUF+LZ i32**: tdc 1509 vs zstd L3 3808 — gap halved
   (was -77%, now -60%). The remaining gap is bandwidth: zstd
   memcpies ~13 bytes of compressed input, tdc does a real 4 MiB
   BSHUF pass plus the model reconstruction. Closing it further
-  needs a model-side SIMD plane2d eval (still parked) **and** LZ2
+  needs a model-side SIMD plane2d eval (still parked) **and** LZ
   decode that stays fast on the ~4 MiB zero-run output.
-- **DELTA1D+ZZ+BSHUF+LZ2 walk i16**: tdc 1824 vs zstd best 1009 —
+- **DELTA1D+ZZ+BSHUF+LZ walk i16**: tdc 1824 vs zstd best 1009 —
   tdc is now 1.81× ahead (was 1.25×).
-- **RAW+BSHUF+LZ2 ramp i32**: tdc 2443 vs zstd L3 1641 — tdc 1.49×
+- **RAW+BSHUF+LZ ramp i32**: tdc 2443 vs zstd L3 1641 — tdc 1.49×
   ahead. This case used to be basically tied.
 
 ### Dead ends not retried
@@ -420,7 +420,7 @@ are exercised by the round-trip suite. No new tests were required.
   2-byte case and a second unpack stage for the 4-byte case. Left
   for a follow-up pass — encode isn't the dominant cost in tdc's
   write-once/read-many target workloads, and the user's original
-  summary explicitly parked encode throughput as the "LZ2 match
+  summary explicitly parked encode throughput as the "LZ match
   finder on noisy residuals" algorithmic floor, not a SIMD problem.
 - **`elem_size == 16` for SIMD path**. Not needed — tdc has no
   16-byte fixed-width dtype. If one is ever added (e.g. complex128
@@ -433,7 +433,7 @@ are exercised by the round-trip suite. No new tests were required.
   decoder is at ~3.6 GB/s model-stage throughput and SIMD would
   plausibly take it to 6+ GB/s. Low priority now that BSHUF is no
   longer the ceiling; PLANE2D decode total is bandwidth-contending
-  with LZ2 decode output and full SIMD on the model stage would
+  with LZ decode output and full SIMD on the model stage would
   only move total throughput by ~15%.
 - **FSE precomputed slot table.** FSE walk decode still at ~262
   MB/s. Packed-u32 slot table (`sym << 24 | cum << 12 | freq-1`)

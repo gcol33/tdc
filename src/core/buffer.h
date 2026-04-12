@@ -6,8 +6,8 @@
  * every encode path needs.
  *
  * Lifted from the three independent copies that previously lived in
- * src/entropy/lz2.c, src/transform/shuffle.c, and src/transform/quantize.c
- * (lz2_buf_reserve / shuffle_buf_reserve / quantize_buf_reserve). All three
+ * src/entropy/lz.c, src/transform/shuffle.c, and src/transform/quantize.c
+ * (lz_buf_reserve / shuffle_buf_reserve / quantize_buf_reserve). All three
  * had identical bodies. Per the project's "always clean, always scaling"
  * rule, the next stage that needed it (zigzag) is the threshold to
  * extract instead of copy-pasting a fourth time.

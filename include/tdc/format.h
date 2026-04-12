@@ -169,6 +169,16 @@ typedef struct {
 
 #define TDC_BLOCK_FLAG_HAS_VALIDITY  0x0001u  /* validity bitmap follows payload */
 #define TDC_BLOCK_FLAG_LOSSY         0x0002u  /* set if any transform was lossy */
+#define TDC_BLOCK_FLAG_ZERO_RESIDUAL 0x0004u  /* model emitted an all-zero residual;
+                                                 xform + entropy chains are skipped,
+                                                 payload_size and xform_params_size
+                                                 are 0, and the decoder reconstructs
+                                                 a zero-filled residual of size
+                                                 uncompressed_size before handing
+                                                 to the model. Used as a whole-
+                                                 pipeline fast path for cases
+                                                 where the model fits the data
+                                                 exactly. */
 
 typedef struct {
     uint32_t magic;

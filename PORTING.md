@@ -22,7 +22,7 @@ get tangled with call-site rewiring.
 
 | # | Stage     | What                                              | Status |
 |---|-----------|---------------------------------------------------|--------|
-| 1 | entropy   | LZ2 → `tdc/src/entropy/lz2.c`                     | DONE   |
+| 1 | entropy   | LZ → `tdc/src/entropy/lz.c`                     | DONE   |
 | 2 | transform | byte-shuffle → `tdc/src/transform/shuffle.c`      | DONE   |
 | 3 | transform | (optional) bit-shuffle → `tdc/src/transform/bitshuffle.c` | later  |
 | 4 | transform | quantize → `tdc/src/transform/quantize.c`         | DONE   |
@@ -62,8 +62,8 @@ These are now baked in. Don't relitigate:
    tdc_<stage>_<name>_vt = { .id = ..., .name = ..., ... };` (no
    `static`; the extern is in the internal header).
 5. **Static helpers** in backend `.c` files: `static`, snake_case,
-   `<stage>_<purpose>` prefix (e.g. `lz2_decode_fast`,
-   `lz2_encode_literal_only`).
+   `<stage>_<purpose>` prefix (e.g. `lz_decode_fast`,
+   `lz_encode_literal_only`).
 6. **Encoder fallback policy**: every entropy/transform encode must
    ALWAYS produce a valid output stream of its own format, even on
    incompressible input. Vectra returned NULL and let the caller pick
@@ -74,14 +74,14 @@ These are now baked in. Don't relitigate:
 
 ---
 
-## Done — Session 1: LZ2
+## Done — Session 1: LZ
 
 **Files created**
-- `tdc/src/entropy/lz2.c` — full encoder + decoder behind
-  `tdc_entropy_lz2_vt`.
+- `tdc/src/entropy/lz.c` — full encoder + decoder behind
+  `tdc_entropy_lz_vt`.
 - `tdc/src/entropy/entropy_internal.h` — internal extern list for
   entropy vtables.
-- `tdc/tests/test_lz2_roundtrip.c` — 1 MB mixed buffer round-trip,
+- `tdc/tests/test_lz_roundtrip.c` — 1 MB mixed buffer round-trip,
   match-heavy compression check, edge cases (0/1/3 bytes, periodic).
 - `tdc/CLAUDE.md` — project brief.
 - `tdc/PORTING.md` — this file.
@@ -89,32 +89,32 @@ These are now baked in. Don't relitigate:
 **Files modified**
 - `tdc/src/core/registry.c` — switch dispatch for `tdc_entropy_get`;
   stub `tdc_model_get`/`tdc_xform_get` returning NULL.
-- `tdc/CMakeLists.txt` — added `test_lz2_roundtrip` ctest entry.
+- `tdc/CMakeLists.txt` — added `test_lz_roundtrip` ctest entry.
 - `tdc/include/tdc/format.h` — **proper fix**, see "Format header fix"
   below.
 
 **Vectra source extracted** (read-only, no edits to vectra)
-- `vectra/src/vtr_codec.c` lines **411–916** — `LZ2_*` macros,
-  `lz2_hash4`, `lz2_wildcopy16`, `LZ2Seq`, `lz2_seq_encoded_size`,
-  `lz2_vtr_compress`, `lz2_decompress_fast`, `lz2_decompress_safe`,
-  `lz2_vtr_decompress_core`. Inner matcher and decode loops are
+- `vectra/src/vtr_codec.c` lines **411–916** — `LZ_*` macros,
+  `lz_hash4`, `lz_wildcopy16`, `LZSeq`, `lz_seq_encoded_size`,
+  `lz_vtr_compress`, `lz_decompress_fast`, `lz_decompress_safe`,
+  `lz_vtr_decompress_core`. Inner matcher and decode loops are
   byte-identical; outer wrapping changed (allocation, fallback policy,
   error returns).
 
 **Deviations from vectra**
 1. All scratch (htab 256 KB, seqs, lit_buf) goes through `realloc_fn`.
-2. Incompressible / sub-min-match input emits a literal-only LZ2 stream
+2. Incompressible / sub-min-match input emits a literal-only LZ stream
    (`n_seq=0, literals_size=src_size, raw bytes`) instead of returning
-   NULL. The on-disk LZ2 format is unchanged — vectra's safe decoder
+   NULL. The on-disk LZ format is unchanged — vectra's safe decoder
    already handles that shape via the trailing-literal block.
 3. `encode_bound = src_size + 8` (the literal-only fallback size).
-4. `lz2_decode_safe` returns `TDC_E_CORRUPT` instead of `vectra_error`
+4. `lz_decode_safe` returns `TDC_E_CORRUPT` instead of `vectra_error`
    on invalid back-references.
 
 **Test results** (`ctest -C Debug --output-on-failure`)
 ```
 1/2 smoke ............ Passed
-2/2 lz2_roundtrip .... Passed
+2/2 lz_roundtrip .... Passed
 [mixed 1MB]      1048576 -> 542499  (51.7%)
 [match-heavy]     524288 ->  16157  ( 3.1%)
 [literal-heavy]   524288 -> 524296  (100.0% — hits literal-only fallback)
@@ -122,7 +122,7 @@ These are now baked in. Don't relitigate:
 [periodic 64B]        64 ->     29  (45.3%)
 ```
 
-### Format header fix (collateral, not LZ2)
+### Format header fix (collateral, not LZ)
 
 `tdc_container_header` declared as 64 bytes in `format.h` but did
 NOT pack to 64 bytes under MSVC default alignment — `int64_t
@@ -191,13 +191,13 @@ in `format.h`.
 6. **Decode allocates nothing.** It writes directly into the
    caller-supplied `dst`, so there's no `realloc_fn` traffic on the
    decode side. Encode goes through a `shuffle_buf_reserve` helper that
-   mirrors `lz2_buf_reserve` exactly (will be a candidate for extraction
+   mirrors `lz_buf_reserve` exactly (will be a candidate for extraction
    into `core/` once a third stage needs it).
 
 **Test results** (`ctest -C Debug --output-on-failure`)
 ```
 1/3 smoke .................... Passed
-2/3 lz2_roundtrip ............ Passed
+2/3 lz_roundtrip ............ Passed
 3/3 byte_shuffle_roundtrip ... Passed
   [spot-check] f64 layout verified (4 elems, 8-byte lanes)
   [f64 1024 elems]    8192 bytes round-trip OK   (SSE2 fast path)
@@ -277,7 +277,7 @@ above was settled.
 **Test results** (`ctest -C Debug --output-on-failure`)
 ```
 1/4 smoke ................................. Passed
-2/4 lz2_roundtrip ......................... Passed
+2/4 lz_roundtrip ......................... Passed
 3/4 byte_shuffle_roundtrip ................ Passed
 4/4 quantize_roundtrip .................... Passed
   [f64->i16 1024 elems] max_err=0.000500 OK   (= 1/(2*scale), as expected)
@@ -290,7 +290,7 @@ above was settled.
 
 **Notes for next session**
 - `quantize_buf_reserve` is now the third copy of the same pattern
-  (lz2, shuffle, quantize). The next stage that needs it is the lift
+  (lz, shuffle, quantize). The next stage that needs it is the lift
   threshold — extract into `src/core/buffer.h` (or similar) instead of
   copy-pasting a fourth time.
 
@@ -317,7 +317,7 @@ above was settled.
   registry-wiring assertion.
 
 **Files modified**
-- `tdc/src/entropy/lz2.c` — `lz2_buf_reserve` deleted; both call
+- `tdc/src/entropy/lz.c` — `lz_buf_reserve` deleted; both call
   sites now go through `tdc_buf_reserve`. `#include "../core/buffer.h"`.
 - `tdc/src/transform/shuffle.c` — `shuffle_buf_reserve` deleted;
   call site now uses `tdc_buf_reserve`. `#include "../core/buffer.h"`.
@@ -368,7 +368,7 @@ above was settled.
 **Test results** (`ctest -C Debug --output-on-failure`)
 ```
 1/5 smoke ......................................... Passed
-2/5 lz2_roundtrip ................................. Passed
+2/5 lz_roundtrip ................................. Passed
 3/5 byte_shuffle_roundtrip ........................ Passed
 4/5 quantize_roundtrip ............................ Passed
 5/5 zigzag_roundtrip .............................. Passed
@@ -445,7 +445,7 @@ above was settled.
    `size == 0`, not via a NULL pointer or a special tag.
 4. **`residual_dtype == in->dtype`.** Delta is a relabelling, not a
    width change. The chain driver downstream (zigzag → byte-shuffle →
-   LZ2) gets the same width and signedness it would have seen on the
+   LZ) gets the same width and signedness it would have seen on the
    raw input. This matches the existing convention in `quantize.c`
    and `zigzag.c` that every stage is explicit about its output dtype.
 5. **Validity bitmap ignored.** vectra's caller carries validity
@@ -463,7 +463,7 @@ above was settled.
 **Test results** (`ctest -C Debug --output-on-failure`)
 ```
 1/6 smoke ............................. Passed
-2/6 lz2_roundtrip ..................... Passed
+2/6 lz_roundtrip ..................... Passed
 3/6 byte_shuffle_roundtrip ............ Passed
 4/6 quantize_roundtrip ................ Passed
 5/6 zigzag_roundtrip .................. Passed
@@ -725,7 +725,7 @@ landed the driver and the supporting plumbing it needed.
   chain terminator, and zero trailing dim slots beyond rank.
 - `tdc/src/entropy/none.c` — implemented `tdc_entropy_none_vt`
   (memcpy passthrough). Was a stub before this session; needed so
-  test cases without LZ2 can drive the pipeline.
+  test cases without LZ can drive the pipeline.
 - `tdc/src/entropy/entropy_internal.h` — added
   `extern const tdc_entropy_vt tdc_entropy_none_vt;`.
 - `tdc/src/core/registry.c` — `TDC_ENTROPY_NONE` now returns
@@ -850,7 +850,7 @@ publicly is what those headers have always promised would exist.
 **Test results** (`ctest -C Debug --output-on-failure`)
 ```
 1/9 smoke ............................. Passed
-2/9 lz2_roundtrip ..................... Passed
+2/9 lz_roundtrip ..................... Passed
 3/9 byte_shuffle_roundtrip ............ Passed
 4/9 quantize_roundtrip ................ Passed
 5/9 zigzag_roundtrip .................. Passed
@@ -864,13 +864,13 @@ publicly is what those headers have always promised would exist.
 ```
 tdc_encode_block / tdc_decode_block round-trips:
   RAW + NONE | vec1d i32 n=16                                 OK  enc=128 bytes
-  RAW + LZ2  | vec1d f64 n=256                                OK  enc=1166 bytes
-  RAW + LZ2  | vol3d u8 4x4x4                                 OK  enc=136 bytes
-  RAW + LZ2  | vec1d i16 n=0 (empty)                          OK  enc=72 bytes
-  DELTA1D + LZ2 | vec1d i32 n=4096 ramp                       OK  enc=582 bytes
-  DELTA1D + ZIGZAG + BYTE_SHUFFLE + LZ2 | vec1d i16 n=1024    OK  enc=139 bytes
-  PRED2D(PAETH) + BYTE_SHUFFLE + LZ2 | rast2d u16 64x64       OK  enc=380 bytes
-  PRED2D(AUTO) + LZ2 | rast2d i16 32x32 neg-grad              OK  enc=199 bytes
+  RAW + LZ  | vec1d f64 n=256                                OK  enc=1166 bytes
+  RAW + LZ  | vol3d u8 4x4x4                                 OK  enc=136 bytes
+  RAW + LZ  | vec1d i16 n=0 (empty)                          OK  enc=72 bytes
+  DELTA1D + LZ | vec1d i32 n=4096 ramp                       OK  enc=582 bytes
+  DELTA1D + ZIGZAG + BYTE_SHUFFLE + LZ | vec1d i16 n=1024    OK  enc=139 bytes
+  PRED2D(PAETH) + BYTE_SHUFFLE + LZ | rast2d u16 64x64       OK  enc=380 bytes
+  PRED2D(AUTO) + LZ | rast2d i16 32x32 neg-grad              OK  enc=199 bytes
 rejection tests:
   decode rejects dtype mismatch                              OK
   decode rejects truncated src                               OK
@@ -880,7 +880,7 @@ test_pipeline_roundtrip: OK
 
 Sanity-check ratios from the working cases:
 - `DELTA1D ramp 16384 → 582` bytes: constant deltas of 3 collapse
-  through LZ2 to ~3.5% of raw.
+  through LZ to ~3.5% of raw.
 - `DELTA1D + ZIGZAG + SHUFFLE 2048 → 139` bytes: alternating ±5/±3
   sawtooth → small zigzagged residuals → byte-shuffled high lanes
   collapse → 6.8% of raw. Confirms the chain is composing as
@@ -1000,7 +1000,7 @@ record layout — better to churn the layout once than three times.
 **Test results** (`ctest -C Debug --output-on-failure`)
 ```
 1/9 smoke ............................. Passed
-2/9 lz2_roundtrip ..................... Passed
+2/9 lz_roundtrip ..................... Passed
 3/9 byte_shuffle_roundtrip ............ Passed
 4/9 quantize_roundtrip ................ Passed
 5/9 zigzag_roundtrip .................. Passed
@@ -1014,25 +1014,25 @@ record layout — better to churn the layout once than three times.
 last four lines):
 ```
 RAW + NONE | vec1d i32 n=16                                  OK  enc=144 bytes
-RAW + LZ2  | vec1d f64 n=256                                 OK  enc=1182 bytes
-RAW + LZ2  | vol3d u8 4x4x4                                  OK  enc=152 bytes
-RAW + LZ2  | vec1d i16 n=0 (empty)                           OK  enc=88 bytes
-DELTA1D + LZ2 | vec1d i32 n=4096 ramp                        OK  enc=598 bytes
-DELTA1D + ZIGZAG + BYTE_SHUFFLE + LZ2 | vec1d i16 n=1024     OK  enc=155 bytes
-PRED2D(PAETH) + BYTE_SHUFFLE + LZ2 | rast2d u16 64x64        OK  enc=396 bytes
-PRED2D(AUTO) + LZ2 | rast2d i16 32x32 neg-grad               OK  enc=215 bytes
-PLANE2D + BYTE_SHUFFLE + LZ2 | rast2d u16 96x64 (split planes, ts=32) OK  enc=547 bytes
-PLANE2D + LZ2 | rast2d i32 50x37 (unaligned, ts=16)          OK  enc=467 bytes
-RAW + QUANTIZE(i16) + LZ2 | vec1d f32 n=256 (TLV)            OK
-RAW + LZ2 | vec1d i32 n=64 + validity bitmap                 OK
+RAW + LZ  | vec1d f64 n=256                                 OK  enc=1182 bytes
+RAW + LZ  | vol3d u8 4x4x4                                  OK  enc=152 bytes
+RAW + LZ  | vec1d i16 n=0 (empty)                           OK  enc=88 bytes
+DELTA1D + LZ | vec1d i32 n=4096 ramp                        OK  enc=598 bytes
+DELTA1D + ZIGZAG + BYTE_SHUFFLE + LZ | vec1d i16 n=1024     OK  enc=155 bytes
+PRED2D(PAETH) + BYTE_SHUFFLE + LZ | rast2d u16 64x64        OK  enc=396 bytes
+PRED2D(AUTO) + LZ | rast2d i16 32x32 neg-grad               OK  enc=215 bytes
+PLANE2D + BYTE_SHUFFLE + LZ | rast2d u16 96x64 (split planes, ts=32) OK  enc=547 bytes
+PLANE2D + LZ | rast2d i32 50x37 (unaligned, ts=16)          OK  enc=467 bytes
+RAW + QUANTIZE(i16) + LZ | vec1d f32 n=256 (TLV)            OK
+RAW + LZ | vec1d i32 n=64 + validity bitmap                 OK
 ```
 
 Compression ratios from the new cases:
-- `PLANE2D + BYTE_SHUFFLE + LZ2 u16 96x64 split planes ts=32 → 547`
+- `PLANE2D + BYTE_SHUFFLE + LZ u16 96x64 split planes ts=32 → 547`
   bytes: 4.5% of 12 288. The split-plane raster is constructed with
   two distinct linear gradients on left/right halves, exactly the
   shape PLANE_2D is designed to nail.
-- `PLANE2D + LZ2 i32 50x37 unaligned ts=16 → 467` bytes: 6.3% of
+- `PLANE2D + LZ i32 50x37 unaligned ts=16 → 467` bytes: 6.3% of
   7 400. Unaligned dims (50 % 16 != 0, 37 % 16 != 0) exercise the
   partial-tile code path. Round-trip is exact.
 - `QUANTIZE(i16) f32 n=256` round-trips end-to-end via the TLV
@@ -1066,7 +1066,7 @@ design:
 - DICT_1D's residual is **always** `TDC_DT_U32`, regardless of
   dictionary cardinality. Picking a data-dependent index width
   (u8/u16/u32) would force per-block model state on disk for no
-  meaningful win — downstream BYTE_SHUFFLE + LZ2 collapses the high
+  meaningful win — downstream BYTE_SHUFFLE + LZ collapses the high
   zero bytes of the u32 stream in the common low-cardinality case.
 
 **Files written**
@@ -1094,7 +1094,7 @@ design:
 
   Vectra's RLE-on-indices step is intentionally NOT ported. Vectra
   needed it because no entropy stage followed the model; tdc lets
-  LZ2 (or any future entropy backend) handle index runs. Vectra's
+  LZ (or any future entropy backend) handle index runs. Vectra's
   cardinality cap and fallback path are also gone — tdc has no
   fallback path, so the "all unique" case is just the worst case
   of the single dictionary path (n entries in the dict, residual is
@@ -1125,8 +1125,8 @@ design:
   passes the same `residual_dtype`. For every model except
   DICT_1D this is identical to the previous behavior.
 - `tests/test_pipeline_roundtrip.c` — new
-  `case_dict1d_byte_shuffle_lz2()` exercising the full driver
-  pipeline (DICT_1D + BYTE_SHUFFLE + LZ2) on a 16-row string block,
+  `case_dict1d_byte_shuffle_lz()` exercising the full driver
+  pipeline (DICT_1D + BYTE_SHUFFLE + LZ) on a 16-row string block,
   and the existing `case_encode_rejects_unknown_model` retargeted
   from `TDC_MODEL_DICT_1D` (now registered) to `TDC_MODEL_STACK_2D`
   (still unregistered).
@@ -1332,7 +1332,7 @@ Legacy LZ_VTR:
 
 - `vectra/tests/testthat/test-compression.R` — remove any test cases
   that explicitly request `ratio` / `deflate`.
-- Any benchmark scripts in the vectra repo root that compare LZ2 vs
+- Any benchmark scripts in the vectra repo root that compare LZ vs
   deflate become single-mode benchmarks.
 
 ### What stays
@@ -1341,7 +1341,7 @@ Legacy LZ_VTR:
   TIFF format requirement, not optional.
 - `csv_reader.c`: gzip CSV streams via zlib — CSV interop.
 - The `-lz` linker flag in both `Makevars` files.
-- The `vtr_codec.h` `VTR_COMP_NONE` and `VTR_COMP_SHUFFLE_LZ2` tags.
+- The `vtr_codec.h` `VTR_COMP_NONE` and `VTR_COMP_SHUFFLE_LZ` tags.
 
 ### Verification
 
@@ -1355,7 +1355,7 @@ After ripping:
    compression test cases were updated).
 5. `Rscript -e 'devtools::check(args = "--no-manual")'` clean.
 6. A round-trip on a fresh `write_vtr() -> tbl() -> collect()` works
-   end-to-end (this exercises the LZ2 path that LZ2-in-tdc replaces
+   end-to-end (this exercises the LZ path that LZ-in-tdc replaces
    in the wiring session).
 
 ### Order of operations with the wiring session
@@ -1364,8 +1364,8 @@ Recommended atomic sequence inside the wiring session:
 
 1. Vendor `tdc/include/` + `tdc/src/` into `vectra/src/tdc/`.
 2. Update Makevars to compile the vendored tdc sources.
-3. Replace `vtr_lz2_*` call sites in `vtr_codec.c` /
-   `vtr1.c` / `scan.c` with `tdc_entropy_lz2_vt.encode/decode`.
+3. Replace `vtr_lz_*` call sites in `vtr_codec.c` /
+   `vtr1.c` / `scan.c` with `tdc_entropy_lz_vt.encode/decode`.
 4. **Then** rip the deflate branches and the legacy LZ_VTR path
    from the same files. (Doing it in this order means the wiring
    change and the rip touch overlapping line ranges in one logical
@@ -1384,10 +1384,10 @@ When all the stages tdc needs are extracted:
    add tdc as a git submodule — decide at that point).
 2. Update `vectra/src/Makevars` and `Makevars.win` to compile the
    vendored tdc sources alongside vectra's own.
-3. Replace `vtr_lz2_compress` / `vtr_lz2_decompress_into` /
+3. Replace `vtr_lz_compress` / `vtr_lz_decompress_into` /
    `vtr_byte_shuffle*` / etc. call sites in
    `vectra/src/vtr_codec.c`, `vectra/src/vtr1.c`, `vectra/src/scan.c`
-   with `tdc_entropy_lz2_vt.encode/decode` and friends (or with the
+   with `tdc_entropy_lz_vt.encode/decode` and friends (or with the
    higher-level `tdc_encode_block` / `tdc_decode_block` if the api
    driver is ready).
 4. Old `.vtr` files won't be readable — that's the deal (no
@@ -1454,7 +1454,7 @@ If you've just `/clear`'d and are picking this up:
    the session goal.
 4. Read the corresponding "Next — Session N" section for the shape
    of the work and the gotchas.
-5. The LZ2 extraction (`tdc/src/entropy/lz2.c` +
+5. The LZ extraction (`tdc/src/entropy/lz.c` +
    `tdc/src/entropy/entropy_internal.h` + the test) is the
    reference template for every subsequent extraction. Mirror its
    structure.

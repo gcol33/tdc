@@ -68,7 +68,7 @@ static int blk_xform_id_valid(uint16_t id) {
 static int blk_entropy_id_valid(uint16_t id) {
     /* NONE is allowed as chain terminator; otherwise must be a known id. */
     return id == TDC_ENTROPY_NONE ||
-           (id >= TDC_ENTROPY_LZ2 && id <= TDC_ENTROPY_LANE);
+           (id >= TDC_ENTROPY_LZ && id <= TDC_ENTROPY_LANE);
 }
 
 tdc_status tdc_block_record_validate(const tdc_block_record *r) {

@@ -13,8 +13,8 @@
  *
  * Covers:
  *   - RAW model, no entropy (simplest pipeline)
- *   - RAW model + LZ2 entropy
- *   - DELTA_1D + ZIGZAG + LZ2 (multi-stage pipeline)
+ *   - RAW model + LZ entropy
+ *   - DELTA_1D + ZIGZAG + LZ (multi-stage pipeline)
  *   - Empty block (n == 0)
  *   - Rejection: NULL scratch, NULL realloc_fn
  */
@@ -168,7 +168,7 @@ static int test_raw_passthrough(void) {
     return rt_ex("RAW passthrough (no entropy)", &blk, &spec);
 }
 
-static int test_raw_lz2(void) {
+static int test_raw_lz(void) {
     /* Highly compressible: repeated pattern. */
     int32_t data[256];
     for (int i = 0; i < 256; ++i) data[i] = i % 4;
@@ -182,13 +182,13 @@ static int test_raw_lz2(void) {
     blk.shape.stride[0] = 1;
 
     tdc_codec_spec spec = tdc_codec_spec_raw();
-    spec.entropy[0] = TDC_ENTROPY_LZ2;
-    return rt_ex("RAW + LZ2", &blk, &spec);
+    spec.entropy[0] = TDC_ENTROPY_LZ;
+    return rt_ex("RAW + LZ", &blk, &spec);
 }
 
-static int test_delta_zigzag_lz2(void) {
+static int test_delta_zigzag_lz(void) {
     /* Linear ramp: DELTA_1D produces near-constant residuals, ZIGZAG maps
-     * them to small unsigned values, LZ2 compresses the repetition. */
+     * them to small unsigned values, LZ compresses the repetition. */
     int32_t data[128];
     for (int i = 0; i < 128; ++i) data[i] = i * 7 + 3;
 
@@ -204,8 +204,8 @@ static int test_delta_zigzag_lz2(void) {
     spec.model      = TDC_MODEL_DELTA_1D;
     spec.xform[0]   = TDC_XFORM_ZIGZAG;
     spec.xform[1]   = TDC_XFORM_BYTE_SHUFFLE;
-    spec.entropy[0] = TDC_ENTROPY_LZ2;
-    return rt_ex("DELTA_1D + ZIGZAG + BSHUF + LZ2", &blk, &spec);
+    spec.entropy[0] = TDC_ENTROPY_LZ;
+    return rt_ex("DELTA_1D + ZIGZAG + BSHUF + LZ", &blk, &spec);
 }
 
 static int test_empty_block(void) {
@@ -221,7 +221,7 @@ static int test_empty_block(void) {
     return rt_ex("empty block (n=0)", &blk, &spec);
 }
 
-static int test_f64_raw_lz2(void) {
+static int test_f64_raw_lz(void) {
     /* Float data with byte shuffle to expose lane structure. */
     double data[64];
     for (int i = 0; i < 64; ++i) data[i] = (double)i * 0.5;
@@ -236,8 +236,8 @@ static int test_f64_raw_lz2(void) {
 
     tdc_codec_spec spec = tdc_codec_spec_raw();
     spec.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
-    spec.entropy[0] = TDC_ENTROPY_LZ2;
-    return rt_ex("f64 RAW + BSHUF + LZ2", &blk, &spec);
+    spec.entropy[0] = TDC_ENTROPY_LZ;
+    return rt_ex("f64 RAW + BSHUF + LZ", &blk, &spec);
 }
 
 /* ----- Rejection tests -------------------------------------------------- */
@@ -303,10 +303,10 @@ static int test_rejections(void) {
 int main(void) {
     printf("test_decode_ex\n");
     if (test_raw_passthrough())    return 1;
-    if (test_raw_lz2())           return 1;
-    if (test_delta_zigzag_lz2())  return 1;
+    if (test_raw_lz())           return 1;
+    if (test_delta_zigzag_lz())  return 1;
     if (test_empty_block())       return 1;
-    if (test_f64_raw_lz2())       return 1;
+    if (test_f64_raw_lz())       return 1;
     if (test_rejections())        return 1;
     printf("ALL OK\n");
     return 0;

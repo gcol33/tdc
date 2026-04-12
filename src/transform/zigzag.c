@@ -30,9 +30,9 @@
  * to grow to.
  *
  * NEW in tdc v0 — vectra never had an explicit zigzag step (it relied
- * on LZ2 to handle signed bytes). Adding zigzag in front of LZ2 should
+ * on LZ to handle signed bytes). Adding zigzag in front of LZ should
  * improve compression of residual streams from delta and 2D predictors,
- * because LZ2's literal stream tokenizes by raw byte and the high bytes
+ * because LZ's literal stream tokenizes by raw byte and the high bytes
  * of small negative integers are 0xFF... rather than 0x00.
  *
  * Decode dtype convention:

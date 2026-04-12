@@ -355,7 +355,7 @@ static void unshuffle_dispatch(uint8_t *dst, const uint8_t *src,
 
 /* Output-buffer growth uses the shared tdc_buf_reserve helper from
  * src/core/buffer.h. The previous local shuffle_buf_reserve copy was
- * lifted along with the lz2 and quantize copies into a single source
+ * lifted along with the lz and quantize copies into a single source
  * of truth. */
 
 /* ----- Vtable hooks ------------------------------------------------------- */

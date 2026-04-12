@@ -13,7 +13,7 @@
  * The residual_dtype reported to the chain is the input dtype unchanged
  * — the residual stream has the same width and signedness as the input.
  * Slowly varying or monotonic columns produce small-magnitude residuals
- * which feed zigzag → byte-shuffle → LZ2 well.
+ * which feed zigzag → byte-shuffle → LZ well.
  *
  * Side metadata: NONE. The seed value lives in residual[0]. side_out is
  * left at size = 0 on encode and a non-zero side_size on decode is
@@ -64,7 +64,7 @@
  * exercises and what real signed integer rasters / time-series tend to use.
  * Scalar fallback is the byte-by-byte loop in the switch below.
  *
- * Acceptance: DELTA1D+LZ2 decode on the i32 ramp ≥ 6 GB/s, i.e. **above**
+ * Acceptance: DELTA1D+LZ decode on the i32 ramp ≥ 6 GB/s, i.e. **above**
  * the API memcpy ceiling — which is the right outcome when the entropy
  * stage produces fewer bytes than the output. SPEEDUP-TODO P2.2.
  */

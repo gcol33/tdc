@@ -26,7 +26,7 @@
  * to a "plain" path. With every input string distinct, the dictionary
  * holds n_elems entries and the residual is the monotone sequence
  * 0,1,...,n-1; that is the worst case but still a valid round trip.
- * Downstream BYTE_SHUFFLE + LZ2 collapses the high zero bytes of the
+ * Downstream BYTE_SHUFFLE + LZ collapses the high zero bytes of the
  * u32 indices for the common low-cardinality case.
  *
  * Residual dtype is fixed at TDC_DT_U32 regardless of dictionary size.
@@ -53,7 +53,7 @@
  * layout, and the RLE wrapper are rewritten for tdc:
  *   - realloc_fn allocation everywhere (no malloc, no longjmp)
  *   - residual is plain u32 indices (vectra RLE'd because no entropy
- *     stage followed; tdc lets LZ2 handle runs)
+ *     stage followed; tdc lets LZ handle runs)
  *   - cardinality cap removed (no fallback path in tdc)
  *   - side meta carries an explicit dict_total_bytes field for cheaper
  *     bounds checking on decode

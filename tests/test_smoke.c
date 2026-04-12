@@ -6,7 +6,7 @@
  *
  * Real round-trip tests will land here once src/api/encode.c and
  * src/api/decode.c are implemented:
- *   - test_lz2_roundtrip       (entropy stage isolated)
+ *   - test_lz_roundtrip       (entropy stage isolated)
  *   - test_byte_shuffle        (transform stage isolated)
  *   - test_pred2d              (model stage isolated, on a synthetic raster)
  *   - test_pipeline_full       (model + transform chain + entropy)

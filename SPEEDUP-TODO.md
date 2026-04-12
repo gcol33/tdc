@@ -14,7 +14,7 @@ Items are ordered by impact-per-effort. Each item has:
 
 ---
 
-## N0 — LZ2 mega-run overhead on constant-value residuals — RESOLVED
+## N0 — LZ mega-run overhead on constant-value residuals — RESOLVED
 
 **Resolved 2026-04-10.** The combination of P0.3 (LEB128 match-length
 encoding) + the structural predictor side-meta rewrite (2026-04-08)
@@ -22,8 +22,8 @@ already met and exceeded the acceptance target. Re-bench on 2026-04-10:
 
 | codec                    | ratio      | enc MB/s | dec MB/s |
 |--------------------------|----------:|---------:|---------:|
-| tdc PLANE2D+BSHUF+LZ2    | 1316.48x  |    392   |   1493   |
-| tdc DELTA1D+LZ2 (ramp)   | 159783.01x|   2006   |   3871   |
+| tdc PLANE2D+BSHUF+LZ    | 1316.48x  |    392   |   1493   |
+| tdc DELTA1D+LZ (ramp)   | 159783.01x|   2006   |   3871   |
 | zstd L1 (split-planes)   |  327.25x  |  16779   |   5813   |
 
 tdc now beats zstd L1 by 4× on ratio for the split-planes case.
@@ -32,7 +32,7 @@ walk (dec 1652 MB/s, was 1240) or noisy-gradient (dec 313, was 315).
 All 24 ctests pass.
 
 **Root cause of the stale 145x number.** The N0 symptom was written
-when the LZ2 payload on a 4 MiB zero stream was still 16,461 bytes
+when the LZ payload on a 4 MiB zero stream was still 16,461 bytes
 (chained-255 match-length encoding) and side_meta was 12,294 bytes
 (flat i32 layout). Both bottlenecks were fixed in the P0.1–P0.3 range
 and the side-meta rewrite, but SPEEDUP-TODO was not updated. The
@@ -47,10 +47,10 @@ No additional work (RLE escape, TDC_XFORM_RLE) was needed.
 
 **Symptom.** Both real f64 time series (USGS streamflow, NASA POWER T2M)
 show zstd winning on ratio by 30–50% because tdc has no f64-aware model.
-BSHUF+LZ2 is a floor, not a model — it can't exploit the smooth
+BSHUF+LZ is a floor, not a model — it can't exploit the smooth
 temporal structure that zstd's match-finder picks up at byte level.
 
-| dataset              | tdc best (BSHUF+LZ2) | zstd L19 |
+| dataset              | tdc best (BSHUF+LZ) | zstd L19 |
 |----------------------|----------------------:|---------:|
 | USGS streamflow f64  |                 3.00x |    4.50x |
 | NASA POWER T2M f64   |                 2.15x |    3.48x |
@@ -62,7 +62,7 @@ purely on the ratio axis.
 integer-reinterpret delta) would collapse the smooth temporal
 correlation into a low-entropy residual stream. The mantissa bits
 of adjacent samples share long common prefixes when the signal is
-smooth; XOR-delta turns those into leading zeros that LZ2/Huffman
+smooth; XOR-delta turns those into leading zeros that LZ/Huffman
 compress well.
 
 **Action.**
@@ -96,12 +96,12 @@ at decode ≥ 2000 MB/s. On NASA POWER T2M: ratio ≥ 3.0x (vs current
 
 | pipeline          | ratio |
 |-------------------|------:|
-| RAW + LZ2         | 2.15x |
-| RAW + BSHUF + LZ2 | 1.14x |
+| RAW + LZ         | 2.15x |
+| RAW + BSHUF + LZ | 1.14x |
 
-BSHUF shreds the seasonal byte-level repetition that LZ2 was finding.
+BSHUF shreds the seasonal byte-level repetition that LZ was finding.
 The byte-lane transpose scatters correlated bytes across lanes, turning
-a compressible pattern into noise for LZ2.
+a compressible pattern into noise for LZ.
 
 **Hypothesis.** BSHUF helps when per-lane structure dominates (integer
 ramps, integer rasters) but hurts when cross-byte repetition dominates
@@ -129,9 +129,9 @@ or auto-spec includes BSHUF without a preceding model stage.
 
 | pipeline                    | ratio |
 |-----------------------------|------:|
-| RAW + BSHUF + LZ2           | 1.37x |
-| PRED2D(PAETH) + BSHUF + LZ2 | 1.21x |
-| PLANE2D + BSHUF + LZ2       | 1.28x |
+| RAW + BSHUF + LZ           | 1.37x |
+| PRED2D(PAETH) + BSHUF + LZ | 1.21x |
+| PLANE2D + BSHUF + LZ       | 1.28x |
 
 Both 2D model paths score **worse** than plain BSHUF. The predictor
 side-metadata overhead exceeds what the model earns back on small
@@ -154,7 +154,7 @@ residual energy with and without the model could detect this.
    suite.
 
 **Acceptance.** On SRTM DEM: auto selects "no model" and matches the
-1.37x BSHUF+LZ2 floor. On the synthetic gradient: auto selects PRED2D
+1.37x BSHUF+LZ floor. On the synthetic gradient: auto selects PRED2D
 and matches the 1.64x result. No ratio regression on any existing
 bench case.
 
@@ -198,10 +198,10 @@ more ILP doesn't help because the backend is already fully issued at
 
 ## What we are NOT going to do (yet)
 
-- **Replace LZ2 with FSE/Huffman.** LZ2 is near-memcpy on decode. The
-  losing cases are model-bound, not entropy-bound. Chaining (LZ2+HUF,
-  LZ2+FSE) is shipped for users who want more ratio at throughput cost.
-- **Tune LZ2 inner loops.** `vectra/CLAUDE.md` documents dead ends
+- **Replace LZ with FSE/Huffman.** LZ is near-memcpy on decode. The
+  losing cases are model-bound, not entropy-bound. Chaining (LZ+HUF,
+  LZ+FSE) is shipped for users who want more ratio at throughput cost.
+- **Tune LZ inner loops.** `vectra/CLAUDE.md` documents dead ends
   (batched parse-then-copy: -7%, Robin Hood hashing: -12-29%).
 - **GPU offload.** No bench evidence the CPU pipeline is pegged on
   something the GPU could fix.

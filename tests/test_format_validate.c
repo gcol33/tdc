@@ -187,7 +187,7 @@ static int test_container_header_rejects(void) {
 /* ----- tdc_block_record_validate (smoke) ---------------------------------- */
 
 static int test_block_record_smoke(void) {
-    /* Build a minimal valid record: RAW + NONE chain + LZ2, RASTER_2D
+    /* Build a minimal valid record: RAW + NONE chain + LZ, RASTER_2D
      * 16x16 of i32. Mirrors what api/encode.c writes for the simplest
      * happy case. */
     tdc_block_record r;
@@ -196,7 +196,7 @@ static int test_block_record_smoke(void) {
     r.version           = TDC_BLOCK_VERSION;
     r.flags             = 0;
     r.model_id          = (uint16_t)TDC_MODEL_RAW;
-    r.entropy_ids[0]    = (uint16_t)TDC_ENTROPY_LZ2;
+    r.entropy_ids[0]    = (uint16_t)TDC_ENTROPY_LZ;
     r.dtype             = (uint8_t)TDC_DT_I32;
     r.layout            = (uint8_t)TDC_LAYOUT_RASTER_2D;
     r.rank              = 2;

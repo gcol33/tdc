@@ -694,7 +694,7 @@ DEFINE_PRED2D_TYPED(u32, uint32_t, uint32_t, int64_t, paeth64)
  * the scalar kernel after the wavefront pair loop).
  *
  * Why 16-bit only: this is the dtype the bench loses on
- * (`PRED2D(PAETH)+BSHUF+LZ2 rast2d u16 2048x2048`). i32/u32 uses 64-bit
+ * (`PRED2D(PAETH)+BSHUF+LZ rast2d u16 2048x2048`). i32/u32 uses 64-bit
  * paeth and gains less from the trick because each lane is wider; the
  * 8-bit case is rare in real raster data. If a future bench shows a
  * loser at another width, the same template applies — copy and adjust

@@ -20,11 +20,19 @@ option(TDC_BUILD_TESTS "Build tdc tests" ON)
 option(TDC_BUILD_BENCH "Build tdc throughput bench" ON)
 option(TDC_HAVE_ZLIB   "Enable TDC_ENTROPY_DEFLATE backend (requires zlib)" OFF)
 
+option(TDC_ENABLE_AVX2 "Enable AVX2 intrinsics (requires AVX2-capable CPU)" ON)
+
 if(MSVC)
     add_compile_options(/W4 /permissive-)
+    if(TDC_ENABLE_AVX2)
+        add_compile_options(/arch:AVX2)
+    endif()
 else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes
                         -Wmissing-prototypes -Wcast-align)
+    if(TDC_ENABLE_AVX2)
+        add_compile_options(-mavx2)
+    endif()
 endif()
 
 # ----- Source layout (kept in lock-step with the design tree) ---------------
@@ -56,8 +64,9 @@ set(TDC_SOURCES
     src/symbols/runs.c
 
     src/entropy/none.c
-    src/entropy/lz2.c
-    src/entropy/lz2_opt.c
+    src/entropy/lz.c
+    src/entropy/lz_opt.c
+    src/entropy/lz_streams.c
     src/entropy/deflate.c
     src/entropy/huffman.c
     src/entropy/fse.c
@@ -96,13 +105,17 @@ if(TDC_BUILD_TESTS)
     target_link_libraries(tdc_smoke PRIVATE tdc)
     add_test(NAME smoke COMMAND tdc_smoke)
 
-    add_executable(test_lz2_roundtrip tests/test_lz2_roundtrip.c)
-    target_link_libraries(test_lz2_roundtrip PRIVATE tdc)
-    add_test(NAME lz2_roundtrip COMMAND test_lz2_roundtrip)
+    add_executable(test_lz_roundtrip tests/test_lz_roundtrip.c)
+    target_link_libraries(test_lz_roundtrip PRIVATE tdc)
+    add_test(NAME lz_roundtrip COMMAND test_lz_roundtrip)
 
-    add_executable(test_lz2_opt_roundtrip tests/test_lz2_opt_roundtrip.c)
-    target_link_libraries(test_lz2_opt_roundtrip PRIVATE tdc)
-    add_test(NAME lz2_opt_roundtrip COMMAND test_lz2_opt_roundtrip)
+    add_executable(test_lz_opt_roundtrip tests/test_lz_opt_roundtrip.c)
+    target_link_libraries(test_lz_opt_roundtrip PRIVATE tdc)
+    add_test(NAME lz_opt_roundtrip COMMAND test_lz_opt_roundtrip)
+
+    add_executable(test_lz_streams_roundtrip tests/test_lz_streams_roundtrip.c)
+    target_link_libraries(test_lz_streams_roundtrip PRIVATE tdc)
+    add_test(NAME lz_streams_roundtrip COMMAND test_lz_streams_roundtrip)
 
     add_executable(test_huffman_roundtrip tests/test_huffman_roundtrip.c)
     target_link_libraries(test_huffman_roundtrip PRIVATE tdc)
@@ -204,8 +217,11 @@ if(TDC_BUILD_BENCH)
 
     add_executable(bench_pred3d_avg3 bench/bench_pred3d_avg3.c)
 
-    add_executable(bench_lz2_opt bench/bench_lz2_opt.c)
-    target_link_libraries(bench_lz2_opt PRIVATE tdc)
+    add_executable(bench_lz_opt bench/bench_lz_opt.c)
+    target_link_libraries(bench_lz_opt PRIVATE tdc)
+
+    add_executable(bench_plane_decode bench/bench_plane_decode.c)
+    target_link_libraries(bench_plane_decode PRIVATE tdc)
     # Round-trip smoke gate: runs every bench pipeline once on a tiny block
     # and asserts bytes match. Sub-second; catches any pipeline that breaks
     # round-trip between bench runs. SPEEDUP-TODO P3.2.

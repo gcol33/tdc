@@ -14,7 +14,7 @@
  *   - dtypes:   i16, i32, u8, f32 (representative of integer, signed, unsigned, float)
  *   - chains:   empty, [BYTE_SHUFFLE], [ZIGZAG], [ZIGZAG, BYTE_SHUFFLE],
  *               [QUANTIZE] (params surfaced via TLV)
- *   - entropy:  NONE, LZ2
+ *   - entropy:  NONE, LZ
  *   - sizes:    empty (n == 0), small (16), medium (4096)
  *   - features: validity bitmap pass-through
  *
@@ -121,9 +121,9 @@ static int rt(const char           *label,
 
 /* ----- Spec builders ----------------------------------------------------- */
 
-static tdc_codec_spec spec_raw_lz2(void) {
+static tdc_codec_spec spec_raw_lz(void) {
     tdc_codec_spec s = tdc_codec_spec_raw();
-    s.entropy[0] = TDC_ENTROPY_LZ2;
+    s.entropy[0] = TDC_ENTROPY_LZ;
     return s;
 }
 
@@ -131,38 +131,38 @@ static tdc_codec_spec spec_raw_none(void) {
     return tdc_codec_spec_raw(); /* model=RAW, entropy=NONE */
 }
 
-static tdc_codec_spec spec_delta_zigzag_shuffle_lz2(void) {
+static tdc_codec_spec spec_delta_zigzag_shuffle_lz(void) {
     tdc_codec_spec s = {0};
     s.model    = TDC_MODEL_DELTA_1D;
     s.xform[0] = TDC_XFORM_ZIGZAG;
     s.xform[1] = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0]  = TDC_ENTROPY_LZ2;
+    s.entropy[0]  = TDC_ENTROPY_LZ;
     return s;
 }
 
-static tdc_codec_spec spec_delta_lz2(void) {
+static tdc_codec_spec spec_delta_lz(void) {
     tdc_codec_spec s = {0};
     s.model   = TDC_MODEL_DELTA_1D;
-    s.entropy[0] = TDC_ENTROPY_LZ2;
+    s.entropy[0] = TDC_ENTROPY_LZ;
     return s;
 }
 
-static tdc_codec_spec spec_pred2d_paeth_shuffle_lz2(tdc_pred2d_params *params) {
+static tdc_codec_spec spec_pred2d_paeth_shuffle_lz(tdc_pred2d_params *params) {
     params->kind = TDC_PRED2D_PAETH;
     tdc_codec_spec s = {0};
     s.model        = TDC_MODEL_PRED_2D;
     s.model_params = params;
     s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0]      = TDC_ENTROPY_LZ2;
+    s.entropy[0]      = TDC_ENTROPY_LZ;
     return s;
 }
 
-static tdc_codec_spec spec_pred2d_auto_lz2(tdc_pred2d_params *params) {
+static tdc_codec_spec spec_pred2d_auto_lz(tdc_pred2d_params *params) {
     params->kind = TDC_PRED2D_AUTO;
     tdc_codec_spec s = {0};
     s.model        = TDC_MODEL_PRED_2D;
     s.model_params = params;
-    s.entropy[0]      = TDC_ENTROPY_LZ2;
+    s.entropy[0]      = TDC_ENTROPY_LZ;
     return s;
 }
 
@@ -184,7 +184,7 @@ static int case_raw_vector_i32_none(void) {
     return rt("RAW + NONE | vec1d i32 n=16", &b, &s);
 }
 
-static int case_raw_vector_f64_lz2(void) {
+static int case_raw_vector_f64_lz(void) {
     double data[256];
     for (int i = 0; i < 256; ++i) data[i] = (double)i * 0.5 - 64.0;
 
@@ -196,11 +196,11 @@ static int case_raw_vector_f64_lz2(void) {
     b.shape.dim[0] = 256;
     tdc_shape_set_contiguous(&b.shape);
 
-    tdc_codec_spec s = spec_raw_lz2();
-    return rt("RAW + LZ2  | vec1d f64 n=256", &b, &s);
+    tdc_codec_spec s = spec_raw_lz();
+    return rt("RAW + LZ  | vec1d f64 n=256", &b, &s);
 }
 
-static int case_raw_volume_u8_lz2(void) {
+static int case_raw_volume_u8_lz(void) {
     /* 4x4x4 volume of u8: gradient pattern. */
     uint8_t data[64];
     for (int i = 0; i < 64; ++i) data[i] = (uint8_t)(i * 3);
@@ -213,8 +213,8 @@ static int case_raw_volume_u8_lz2(void) {
     b.shape.dim[0] = 4; b.shape.dim[1] = 4; b.shape.dim[2] = 4;
     tdc_shape_set_contiguous(&b.shape);
 
-    tdc_codec_spec s = spec_raw_lz2();
-    return rt("RAW + LZ2  | vol3d u8 4x4x4", &b, &s);
+    tdc_codec_spec s = spec_raw_lz();
+    return rt("RAW + LZ  | vol3d u8 4x4x4", &b, &s);
 }
 
 static int case_raw_empty(void) {
@@ -226,11 +226,11 @@ static int case_raw_empty(void) {
     b.shape.dim[0] = 0;
     tdc_shape_set_contiguous(&b.shape);
 
-    tdc_codec_spec s = spec_raw_lz2();
-    return rt("RAW + LZ2  | vec1d i16 n=0 (empty)", &b, &s);
+    tdc_codec_spec s = spec_raw_lz();
+    return rt("RAW + LZ  | vec1d i16 n=0 (empty)", &b, &s);
 }
 
-static int case_delta_lz2_smooth(void) {
+static int case_delta_lz_smooth(void) {
     /* 4096 i32 with a slow ramp -> small deltas, very compressible. */
     enum { N = 4096 };
     int32_t *data = (int32_t *)malloc(sizeof(int32_t) * N);
@@ -245,13 +245,13 @@ static int case_delta_lz2_smooth(void) {
     b.shape.dim[0] = N;
     tdc_shape_set_contiguous(&b.shape);
 
-    tdc_codec_spec s = spec_delta_lz2();
-    int rc = rt("DELTA1D + LZ2 | vec1d i32 n=4096 ramp", &b, &s);
+    tdc_codec_spec s = spec_delta_lz();
+    int rc = rt("DELTA1D + LZ | vec1d i32 n=4096 ramp", &b, &s);
     free(data);
     return rc;
 }
 
-static int case_delta_zigzag_shuffle_lz2(void) {
+static int case_delta_zigzag_shuffle_lz(void) {
     /* Mixed-sign deltas exercise the zigzag step. */
     enum { N = 1024 };
     int16_t *data = (int16_t *)malloc(sizeof(int16_t) * N);
@@ -270,13 +270,13 @@ static int case_delta_zigzag_shuffle_lz2(void) {
     b.shape.dim[0] = N;
     tdc_shape_set_contiguous(&b.shape);
 
-    tdc_codec_spec s = spec_delta_zigzag_shuffle_lz2();
-    int rc = rt("DELTA1D + ZIGZAG + BYTE_SHUFFLE + LZ2 | vec1d i16 n=1024", &b, &s);
+    tdc_codec_spec s = spec_delta_zigzag_shuffle_lz();
+    int rc = rt("DELTA1D + ZIGZAG + BYTE_SHUFFLE + LZ | vec1d i16 n=1024", &b, &s);
     free(data);
     return rc;
 }
 
-static int case_pred2d_paeth_shuffle_lz2(void) {
+static int case_pred2d_paeth_shuffle_lz(void) {
     /* 64x64 u16 raster: smooth gradient that PAETH predicts well. */
     enum { NX = 64, NY = 64 };
     uint16_t *data = (uint16_t *)malloc(sizeof(uint16_t) * NX * NY);
@@ -294,8 +294,8 @@ static int case_pred2d_paeth_shuffle_lz2(void) {
     tdc_shape_set_contiguous(&b.shape);
 
     tdc_pred2d_params params;
-    tdc_codec_spec s = spec_pred2d_paeth_shuffle_lz2(&params);
-    int rc = rt("PRED2D(PAETH) + BYTE_SHUFFLE + LZ2 | rast2d u16 64x64", &b, &s);
+    tdc_codec_spec s = spec_pred2d_paeth_shuffle_lz(&params);
+    int rc = rt("PRED2D(PAETH) + BYTE_SHUFFLE + LZ | rast2d u16 64x64", &b, &s);
     free(data);
     return rc;
 }
@@ -328,8 +328,8 @@ static int case_plane2d_smooth_u16(void) {
     s.model        = TDC_MODEL_PLANE_2D;
     s.model_params = &params;
     s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0]      = TDC_ENTROPY_LZ2;
-    int rc = rt("PLANE2D + BYTE_SHUFFLE + LZ2 | rast2d u16 96x64 (split planes, ts=32)", &b, &s);
+    s.entropy[0]      = TDC_ENTROPY_LZ;
+    int rc = rt("PLANE2D + BYTE_SHUFFLE + LZ | rast2d u16 96x64 (split planes, ts=32)", &b, &s);
     free(data);
     return rc;
 }
@@ -356,8 +356,8 @@ static int case_plane2d_unaligned_i32(void) {
     tdc_codec_spec s = {0};
     s.model        = TDC_MODEL_PLANE_2D;
     s.model_params = &params;
-    s.entropy[0]      = TDC_ENTROPY_LZ2;
-    int rc = rt("PLANE2D + LZ2 | rast2d i32 50x37 (unaligned, ts=16)", &b, &s);
+    s.entropy[0]      = TDC_ENTROPY_LZ;
+    int rc = rt("PLANE2D + LZ | rast2d i32 50x37 (unaligned, ts=16)", &b, &s);
     free(data);
     return rc;
 }
@@ -367,7 +367,7 @@ static int case_plane2d_unaligned_i32(void) {
  * comparison is on the *quantized-then-dequantized* values, so we encode,
  * decode, and compare against a hand-quantized reference rather than the
  * original floats. */
-static int case_quantize_via_driver_lz2(void) {
+static int case_quantize_via_driver_lz(void) {
     enum { N = 256 };
     float orig[N];
     float ref [N];
@@ -397,7 +397,7 @@ static int case_quantize_via_driver_lz2(void) {
     s.model           = TDC_MODEL_RAW;
     s.xform[0]        = TDC_XFORM_QUANTIZE;
     s.xform_params[0] = &qp;
-    s.entropy[0]         = TDC_ENTROPY_LZ2;
+    s.entropy[0]         = TDC_ENTROPY_LZ;
 
     /* The generic rt() helper compares against b.data, but quantize is
      * lossy, so we replace b.data with the dequantized reference for the
@@ -436,7 +436,7 @@ static int case_quantize_via_driver_lz2(void) {
             return 1;
         }
     }
-    fprintf(stdout, "  %-60s OK\n", "RAW + QUANTIZE(i16) + LZ2 | vec1d f32 n=256 (TLV)");
+    fprintf(stdout, "  %-60s OK\n", "RAW + QUANTIZE(i16) + LZ | vec1d f32 n=256 (TLV)");
     return 0;
 }
 
@@ -464,7 +464,7 @@ static int case_validity_passthrough(void) {
     b.validity    = validity;
     tdc_shape_set_contiguous(&b.shape);
 
-    tdc_codec_spec s = spec_raw_lz2();
+    tdc_codec_spec s = spec_raw_lz();
 
     tdc_buffer enc = make_buffer();
     if (tdc_encode_block(&b, &s, &enc) != TDC_OK) {
@@ -493,7 +493,7 @@ static int case_validity_passthrough(void) {
         fprintf(stderr, "FAIL: validity_passthrough data mismatch\n");
         return 1;
     }
-    fprintf(stdout, "  %-60s OK\n", "RAW + LZ2 | vec1d i32 n=64 + validity bitmap");
+    fprintf(stdout, "  %-60s OK\n", "RAW + LZ | vec1d i32 n=64 + validity bitmap");
     return 0;
 }
 
@@ -515,8 +515,8 @@ static int case_pred2d_auto_i16(void) {
     tdc_shape_set_contiguous(&b.shape);
 
     tdc_pred2d_params params;
-    tdc_codec_spec s = spec_pred2d_auto_lz2(&params);
-    int rc = rt("PRED2D(AUTO) + LZ2 | rast2d i16 32x32 neg-grad", &b, &s);
+    tdc_codec_spec s = spec_pred2d_auto_lz(&params);
+    int rc = rt("PRED2D(AUTO) + LZ | rast2d i16 32x32 neg-grad", &b, &s);
     free(data);
     return rc;
 }
@@ -534,7 +534,7 @@ static int case_decode_rejects_dtype_mismatch(void) {
     tdc_shape_set_contiguous(&b.shape);
 
     tdc_buffer enc = make_buffer();
-    tdc_codec_spec s = spec_raw_lz2();
+    tdc_codec_spec s = spec_raw_lz();
     ASSERT_OR_DIE(tdc_encode_block(&b, &s, &enc) == TDC_OK, "encode");
 
     /* Decode with wrong dtype: should be rejected. */
@@ -564,7 +564,7 @@ static int case_decode_rejects_truncated(void) {
     tdc_shape_set_contiguous(&b.shape);
 
     tdc_buffer enc = make_buffer();
-    tdc_codec_spec s = spec_raw_lz2();
+    tdc_codec_spec s = spec_raw_lz();
     ASSERT_OR_DIE(tdc_encode_block(&b, &s, &enc) == TDC_OK, "encode");
 
     /* Truncate to header only — payload bytes are missing. */
@@ -595,7 +595,7 @@ static int case_encode_rejects_unknown_model(void) {
 
     tdc_codec_spec s = {0};
     s.model   = (tdc_model_id)0x00FF;  /* deliberately invalid id */
-    s.entropy[0] = TDC_ENTROPY_LZ2;
+    s.entropy[0] = TDC_ENTROPY_LZ;
 
     tdc_buffer enc = make_buffer();
     tdc_status st = tdc_encode_block(&b, &s, &enc);
@@ -612,9 +612,9 @@ static int case_encode_rejects_unknown_model(void) {
  * carry an offsets[] sidecar and a packed byte heap, and the decode
  * destination has to provide both. This case builds those by hand and
  * exercises tdc_encode_block/tdc_decode_block end-to-end with DICT_1D
- * + BYTE_SHUFFLE + LZ2.
+ * + BYTE_SHUFFLE + LZ.
  */
-static int case_dict1d_byte_shuffle_lz2(void) {
+static int case_dict1d_byte_shuffle_lz(void) {
     static const char *rows[16] = {
         "alpha", "beta",  "gamma", "alpha",
         "beta",  "alpha", "delta", "alpha",
@@ -651,11 +651,11 @@ static int case_dict1d_byte_shuffle_lz2(void) {
     tdc_codec_spec spec = {0};
     spec.model    = TDC_MODEL_DICT_1D;
     spec.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
-    spec.entropy[0]  = TDC_ENTROPY_LZ2;
+    spec.entropy[0]  = TDC_ENTROPY_LZ;
 
     tdc_buffer enc = make_buffer();
     tdc_status st  = tdc_encode_block(&src, &spec, &enc);
-    ASSERT_OR_DIE(st == TDC_OK, "DICT_1D + BSHUF + LZ2 encode");
+    ASSERT_OR_DIE(st == TDC_OK, "DICT_1D + BSHUF + LZ encode");
     ASSERT_OR_DIE(enc.size > TDC_BLOCK_HEADER_SIZE, "encoded size sanity");
 
     /* Decode dst: caller must provide offsets and a heap large enough.
@@ -674,7 +674,7 @@ static int case_dict1d_byte_shuffle_lz2(void) {
     dst.shape.stride[0] = 1;
 
     st = tdc_decode_block(enc.data, enc.size, &dst);
-    ASSERT_OR_DIE(st == TDC_OK, "DICT_1D + BSHUF + LZ2 decode");
+    ASSERT_OR_DIE(st == TDC_OK, "DICT_1D + BSHUF + LZ decode");
 
     /* Value equality. */
     for (int i = 0; i < N; ++i) {
@@ -689,7 +689,7 @@ static int case_dict1d_byte_shuffle_lz2(void) {
     }
 
     fprintf(stdout, "  %-60s OK  enc=%zu bytes\n",
-            "DICT_1D + BYTE_SHUFFLE + LZ2 | vec1d string n=16", enc.size);
+            "DICT_1D + BYTE_SHUFFLE + LZ | vec1d string n=16", enc.size);
 
     free(dst_heap);
     free(in_heap);
@@ -763,10 +763,10 @@ static int case_delta_zigzag_shuffle_fse_only(void) {
     return rc;
 }
 
-/* LZ2 then Huffman: the entropy-after-entropy case. LZ2 turns the
+/* LZ then Huffman: the entropy-after-entropy case. LZ turns the
  * residual stream into (literals + match tokens); Huffman then re-codes
- * LZ2's output bytes by symbol frequency. */
-static int case_pred2d_lz2_huffman_chain(void) {
+ * LZ's output bytes by symbol frequency. */
+static int case_pred2d_lz_huffman_chain(void) {
     enum { NX = 128, NY = 96 };
     uint16_t *data = (uint16_t *)malloc(sizeof(uint16_t) * NX * NY);
     if (!data) return 1;
@@ -789,16 +789,16 @@ static int case_pred2d_lz2_huffman_chain(void) {
     s.model        = TDC_MODEL_PRED_2D;
     s.model_params = &params;
     s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0]   = TDC_ENTROPY_LZ2;
+    s.entropy[0]   = TDC_ENTROPY_LZ;
     s.entropy[1]   = TDC_ENTROPY_HUFFMAN;
-    int rc = rt("PRED2D + BSHUF + LZ2 + HUFFMAN | rast2d u16 128x96", &b, &s);
+    int rc = rt("PRED2D + BSHUF + LZ + HUFFMAN | rast2d u16 128x96", &b, &s);
     free(data);
     return rc;
 }
 
-/* FSE then LZ2: the inverse order. Tests that the driver doesn't care
+/* FSE then LZ: the inverse order. Tests that the driver doesn't care
  * which direction the entropy coders are chained. */
-static int case_raw_fse_lz2_chain(void) {
+static int case_raw_fse_lz_chain(void) {
     enum { N = 1024 };
     uint8_t *data = (uint8_t *)malloc(N);
     if (!data) return 1;
@@ -815,13 +815,13 @@ static int case_raw_fse_lz2_chain(void) {
     tdc_codec_spec s = {0};
     s.model      = TDC_MODEL_RAW;
     s.entropy[0] = TDC_ENTROPY_FSE;
-    s.entropy[1] = TDC_ENTROPY_LZ2;
-    int rc = rt("RAW + FSE + LZ2 | vec1d u8 n=1024", &b, &s);
+    s.entropy[1] = TDC_ENTROPY_LZ;
+    int rc = rt("RAW + FSE + LZ | vec1d u8 n=1024", &b, &s);
     free(data);
     return rc;
 }
 
-/* Three-stage chain: LZ2 -> FSE -> HUFFMAN. Not necessarily a good idea
+/* Three-stage chain: LZ -> FSE -> HUFFMAN. Not necessarily a good idea
  * ratio-wise, but the driver must handle it correctly. */
 static int case_delta_three_stage_chain(void) {
     enum { N = 4096 };
@@ -841,10 +841,10 @@ static int case_delta_three_stage_chain(void) {
     s.model      = TDC_MODEL_DELTA_1D;
     s.xform[0]   = TDC_XFORM_ZIGZAG;
     s.xform[1]   = TDC_XFORM_BYTE_SHUFFLE;
-    s.entropy[0] = TDC_ENTROPY_LZ2;
+    s.entropy[0] = TDC_ENTROPY_LZ;
     s.entropy[1] = TDC_ENTROPY_FSE;
     s.entropy[2] = TDC_ENTROPY_HUFFMAN;
-    int rc = rt("DELTA1D + ZZ + BSHUF + LZ2 + FSE + HUFFMAN | vec1d i32 n=4096", &b, &s);
+    int rc = rt("DELTA1D + ZZ + BSHUF + LZ + FSE + HUFFMAN | vec1d i32 n=4096", &b, &s);
     free(data);
     return rc;
 }
@@ -954,24 +954,24 @@ int main(void) {
 
     fprintf(stdout, "tdc_encode_block / tdc_decode_block round-trips:\n");
     rc |= case_raw_vector_i32_none();
-    rc |= case_raw_vector_f64_lz2();
-    rc |= case_raw_volume_u8_lz2();
+    rc |= case_raw_vector_f64_lz();
+    rc |= case_raw_volume_u8_lz();
     rc |= case_raw_empty();
-    rc |= case_delta_lz2_smooth();
-    rc |= case_delta_zigzag_shuffle_lz2();
-    rc |= case_pred2d_paeth_shuffle_lz2();
+    rc |= case_delta_lz_smooth();
+    rc |= case_delta_zigzag_shuffle_lz();
+    rc |= case_pred2d_paeth_shuffle_lz();
     rc |= case_pred2d_auto_i16();
     rc |= case_plane2d_smooth_u16();
     rc |= case_plane2d_unaligned_i32();
-    rc |= case_quantize_via_driver_lz2();
+    rc |= case_quantize_via_driver_lz();
     rc |= case_validity_passthrough();
-    rc |= case_dict1d_byte_shuffle_lz2();
+    rc |= case_dict1d_byte_shuffle_lz();
 
     fprintf(stdout, "entropy chain cases:\n");
     rc |= case_delta_zigzag_shuffle_huffman_only();
     rc |= case_delta_zigzag_shuffle_fse_only();
-    rc |= case_pred2d_lz2_huffman_chain();
-    rc |= case_raw_fse_lz2_chain();
+    rc |= case_pred2d_lz_huffman_chain();
+    rc |= case_raw_fse_lz_chain();
     rc |= case_delta_three_stage_chain();
 
     fprintf(stdout, "float + lane entropy pipeline cases:\n");

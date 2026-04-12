@@ -55,7 +55,7 @@ Models (every entry has either a vectra extraction or a v0 implementation):
 
 Transforms: `RAW`, `QUANTIZE`, `ZIGZAG`, `BYTE_SHUFFLE`.
 
-Entropy: `NONE`, `LZ2` (native, separated-stream), `DEFLATE` (zlib, optional).
+Entropy: `NONE`, `LZ` (native, separated-stream), `DEFLATE` (zlib, optional).
 
 ## Source layout
 

@@ -78,11 +78,11 @@ typedef enum {
 /* Entropy coders */
 typedef enum {
     TDC_ENTROPY_NONE    = 0x0000, /* memcpy passthrough */
-    TDC_ENTROPY_LZ2     = 0x0001, /* native LZ77, separated-stream, 64K window.
-                                   * Note: LZ2 is a byte-level matcher. On a
+    TDC_ENTROPY_LZ     = 0x0001, /* native LZ77, separated-stream, 64K window.
+                                   * Note: LZ is a byte-level matcher. On a
                                    * multi-byte dtype with no exact byte
                                    * repetitions (e.g. an i32 ramp `1000+i*3`),
-                                   * RAW+LZ2 returns ~1.0x. Put a model OR a
+                                   * RAW+LZ returns ~1.0x. Put a model OR a
                                    * BYTE_SHUFFLE in front to expose the
                                    * per-lane structure. */
     TDC_ENTROPY_DEFLATE = 0x0002, /* zlib deflate; optional link, "ratio" mode */
@@ -92,10 +92,17 @@ typedef enum {
                                    * byte lanes, applies an independent sub-coder
                                    * per lane (AUTO picks Huffman/FSE/STORE per
                                    * lane based on Shannon entropy sampling). */
-    TDC_ENTROPY_LZ2_OPT = 0x0006  /* LZ2 with optimal (dynamic-programming)
+    TDC_ENTROPY_LZ_OPT = 0x0006, /* LZ with optimal (dynamic-programming)
                                    * parser. Emits the SAME on-disk format as
-                                   * TDC_ENTROPY_LZ2 — decoder is shared. Slower
+                                   * TDC_ENTROPY_LZ — decoder is shared. Slower
                                    * encode, smaller output on structured data. */
+    TDC_ENTROPY_LZ_STREAMS = 0x0007 /* LZ parse split into 4 separated,
+                                      * entropy-coded streams (literal bytes,
+                                      * lit_len u32, match_len u32, match_off
+                                      * u32). Each stream picks NONE/HUFFMAN/FSE
+                                      * via Shannon entropy. Same parser as LZ,
+                                      * different serializer — NOT compatible
+                                      * with the single-stream decoder. */
 } tdc_entropy_id;
 
 /* ----- Per-stage params ---------------------------------------------------- */
@@ -183,7 +190,7 @@ typedef struct {
     int inter_slice;        /* 1 = subtract previous slice before in-plane prediction */
 } tdc_stack2d_params;
 
-/* TDC_ENTROPY_LZ2 / DEFLATE */
+/* TDC_ENTROPY_LZ / DEFLATE */
 typedef struct {
     int level;             /* 0 = default; range is backend-specific */
 } tdc_entropy_level;
@@ -226,13 +233,13 @@ typedef struct {
  *   model      = TDC_MODEL_PRED_2D
  *   xform[0]   = TDC_XFORM_ZIGZAG
  *   xform[1]   = TDC_XFORM_BYTE_SHUFFLE
- *   entropy[0] = TDC_ENTROPY_LZ2            <-- single-stage entropy
+ *   entropy[0] = TDC_ENTROPY_LZ            <-- single-stage entropy
  *
  *   model      = TDC_MODEL_DELTA_1D
  *   xform[0]   = TDC_XFORM_ZIGZAG
  *   xform[1]   = TDC_XFORM_BYTE_SHUFFLE
- *   entropy[0] = TDC_ENTROPY_LZ2
- *   entropy[1] = TDC_ENTROPY_HUFFMAN        <-- LZ2 output re-coded by Huffman
+ *   entropy[0] = TDC_ENTROPY_LZ
+ *   entropy[1] = TDC_ENTROPY_HUFFMAN        <-- LZ output re-coded by Huffman
  */
 
 typedef struct {
