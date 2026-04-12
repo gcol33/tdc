@@ -53,7 +53,7 @@
  * in lz_internal.h — they're shared with the optimal parser in lz_opt.c.
  * The constants below are specific to this file's greedy matcher. */
 
-#define LZ_HASH_BITS  16
+#define LZ_HASH_BITS  18
 #define LZ_HASH_SIZE  (1 << LZ_HASH_BITS)
 /* Match length is encoded as 4 bits in the tag + a varint extension
  * (chained 255-byte chunks, same shape as the literal-length encoding).
@@ -136,9 +136,11 @@ static inline void lz_wildcopy16(uint8_t *dst, const uint8_t *src, uint32_t len)
  *     M (0-14):  match_length - 3
  *     M (15):    extended — LEB128 unsigned varint (7 bits of payload + 1
  *                continuation bit per byte)
- *   uint16_t offset_m1 (little-endian)
+ *   uint16_le offset (2 bytes base, with 0xFFFF overflow sentinel)
+ *     offset 1-65535:   2 bytes (uint16 of offset-1)
+ *     offset 65536+:    2 + LEB128 bytes (sentinel + LEB128 of offset-65536)
  *
- * Common case: 3 bytes (tag + 2-byte offset).
+ * Common case: 3 bytes (tag + 2-byte offset), same as the original format.
  *
  * Why LEB128 on match length but chained-255 on literal length:
  * match length can legitimately hit millions of bytes (a 4 MiB run of
@@ -208,7 +210,7 @@ tdc_status tdc_lz_serialize_sequences(const uint8_t *src, uint32_t src_size,
         if (seqs[i].match_off == 0 || seqs[i].match_off > LZ_MAX_OFFSET) return TDC_E_CORRUPT;
         uint32_t ll = seqs[i].lit_len;
         uint32_t ml_m3 = seqs[i].match_len - LZ_MIN_MATCH;
-        seq_hdr_size += lz_seq_encoded_size(ll, ml_m3);
+        seq_hdr_size += lz_seq_encoded_size(ll, ml_m3, seqs[i].match_off);
         total_lit += ll;
         consumed += ll + seqs[i].match_len;
     }
@@ -259,9 +261,8 @@ tdc_status tdc_lz_serialize_sequences(const uint8_t *src, uint32_t src_size,
             *p++ = (uint8_t)extra;
         }
 
-        /* Offset */
-        uint16_t off_m1 = (uint16_t)(seqs[i].match_off - 1);
-        memcpy(p, &off_m1, 2); p += 2;
+        /* Offset — LEB128(offset - 1) */
+        p = lz_offset_write(p, seqs[i].match_off);
     }
 
     /* Write literals — contiguous regions in src between match ends. */
@@ -439,7 +440,7 @@ static tdc_status lz_encode_core(const uint8_t *src, uint32_t src_size,
  * sequences ahead into a small stack array, then run a pure copy loop
  * over the parsed descriptors) was tried in vectra and measured ~6-7%
  * slower at every batch size. The reason is structural: LZ's parse is
- * just a tag byte + occasional varint extension + 2-byte offset — so
+ * just a tag byte + occasional varint extension + varint offset — so
  * cheap that out-of-order execution already overlaps the next sequence's
  * parse with the current sequence's wildcopy. Forcing a phase split
  * serializes parse and copy, costing the OoO overlap without recovering
@@ -488,9 +489,8 @@ static inline void lz_decode_fast(
         }
         uint32_t mlen = match_len_m3 + LZ_MIN_MATCH;
 
-        uint16_t off_m1;
-        memcpy(&off_m1, sp, 2); sp += 2;
-        uint32_t off = (uint32_t)off_m1 + 1;
+        uint32_t off;
+        sp = lz_offset_read(sp, &off);
 
         /* Bail to safe path if this sequence would exceed bounds. The +15
          * margin accounts for the unconditional 16-byte wildcopy below.
@@ -596,9 +596,8 @@ static tdc_status lz_decode_safe(
         }
         uint32_t mlen = match_len_m3 + LZ_MIN_MATCH;
 
-        uint16_t off_m1;
-        memcpy(&off_m1, sp, 2); sp += 2;
-        uint32_t off = (uint32_t)off_m1 + 1;
+        uint32_t off;
+        sp = lz_offset_read(sp, &off);
 
         /* Copy literals (clamped) */
         if (lit_len > 0) {

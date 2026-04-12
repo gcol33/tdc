@@ -6,22 +6,104 @@
  *   tdc_xform_get   (tdc/transform.h)
  *   tdc_entropy_get (tdc/entropy.h)
  *
- * v0 has no public registration API. Adding a model/transform/entropy
- * means adding a vtable to the appropriate src/{model,transform,entropy}/
- * file, declaring it in the matching internal header, and listing it in
- * the switch below.
+ * Core backends are dispatched by the static switches below. User-defined
+ * backends (id range 0xFF00-0xFFFF) are registered at runtime via the
+ * plugin API in tdc/plugin.h and looked up in the default case of each
+ * switch.
  *
- * Stages with no implementations yet (model, transform) return NULL for
- * every id; the encode/decode driver translates that into TDC_E_UNSUPPORTED.
+ * Adding a CORE backend means adding a vtable to the appropriate
+ * src/{model,transform,entropy}/ file, declaring it in the matching
+ * internal header, and listing it in the switch below.
  */
 
 #include "tdc/model.h"
 #include "tdc/transform.h"
 #include "tdc/entropy.h"
+#include "tdc/plugin.h"
 
 #include "../entropy/entropy_internal.h"
 #include "../model/model_internal.h"
 #include "../transform/transform_internal.h"
+
+#include <string.h>
+
+/* ----- Plugin registry (user-defined backends) ----------------------------- */
+/*
+ * Each stage has a fixed-capacity array of (id, vtable pointer) pairs.
+ * Registration appends; lookup is a linear scan (n <= TDC_PLUGIN_MAX_SLOTS).
+ * Not thread-safe — all registration must precede concurrent encode/decode.
+ */
+
+typedef struct { uint16_t id; const void *vt; } plugin_slot;
+
+static plugin_slot s_model_slots[TDC_PLUGIN_MAX_SLOTS];
+static int         s_model_count;
+
+static plugin_slot s_xform_slots[TDC_PLUGIN_MAX_SLOTS];
+static int         s_xform_count;
+
+static plugin_slot s_entropy_slots[TDC_PLUGIN_MAX_SLOTS];
+static int         s_entropy_count;
+
+/* Shared validation + insert. Returns TDC_OK on success. */
+static tdc_status plugin_register(uint16_t id, const void *vt,
+                                  plugin_slot *slots, int *count) {
+    if (!vt)
+        return TDC_E_INVAL;
+    if (id < TDC_PLUGIN_ID_MIN || id > TDC_PLUGIN_ID_MAX)
+        return TDC_E_INVAL;
+    for (int i = 0; i < *count; ++i) {
+        if (slots[i].id == id)
+            return TDC_E_INVAL;     /* duplicate */
+    }
+    if (*count >= TDC_PLUGIN_MAX_SLOTS)
+        return TDC_E_NOMEM;
+    slots[*count].id = id;
+    slots[*count].vt = vt;
+    ++(*count);
+    return TDC_OK;
+}
+
+/* Shared lookup. Returns NULL if not found. */
+static const void *plugin_lookup(uint16_t id,
+                                 const plugin_slot *slots, int count) {
+    for (int i = 0; i < count; ++i) {
+        if (slots[i].id == id)
+            return slots[i].vt;
+    }
+    return NULL;
+}
+
+/* ----- Public registration functions -------------------------------------- */
+
+tdc_status tdc_model_register(tdc_model_id id, const tdc_model_vt *vt) {
+    if (vt && (uint16_t)vt->id != (uint16_t)id)
+        return TDC_E_INVAL;
+    return plugin_register((uint16_t)id, vt, s_model_slots, &s_model_count);
+}
+
+tdc_status tdc_xform_register(tdc_xform_id id, const tdc_xform_vt *vt) {
+    if (vt && (uint16_t)vt->id != (uint16_t)id)
+        return TDC_E_INVAL;
+    return plugin_register((uint16_t)id, vt, s_xform_slots, &s_xform_count);
+}
+
+tdc_status tdc_entropy_register(tdc_entropy_id id, const tdc_entropy_vt *vt) {
+    if (vt && (uint16_t)vt->id != (uint16_t)id)
+        return TDC_E_INVAL;
+    return plugin_register((uint16_t)id, vt, s_entropy_slots, &s_entropy_count);
+}
+
+void tdc_plugin_clear(void) {
+    s_model_count   = 0;
+    s_xform_count   = 0;
+    s_entropy_count = 0;
+    memset(s_model_slots,   0, sizeof(s_model_slots));
+    memset(s_xform_slots,   0, sizeof(s_xform_slots));
+    memset(s_entropy_slots, 0, sizeof(s_entropy_slots));
+}
+
+/* ----- Core lookup functions ---------------------------------------------- */
 
 const tdc_model_vt *tdc_model_get(tdc_model_id id) {
     switch (id) {
@@ -33,7 +115,9 @@ const tdc_model_vt *tdc_model_get(tdc_model_id id) {
         case TDC_MODEL_STACK_2D: return &tdc_model_stack2d_vt;
         case TDC_MODEL_PRED_3D:  return &tdc_model_pred3d_vt;
         case TDC_MODEL_PLANE_2D: return &tdc_model_plane2d_vt;
-        default:                 return NULL;
+        default:
+            return (const tdc_model_vt *)plugin_lookup(
+                (uint16_t)id, s_model_slots, s_model_count);
     }
 }
 
@@ -44,7 +128,9 @@ const tdc_xform_vt *tdc_xform_get(tdc_xform_id id) {
         case TDC_XFORM_QUANTIZE:     return &tdc_xform_quantize_vt;
         case TDC_XFORM_ZIGZAG:       return &tdc_xform_zigzag_vt;
         case TDC_XFORM_BIT_SHUFFLE:  return &tdc_xform_bit_shuffle_vt;
-        default:                     return NULL;
+        default:
+            return (const tdc_xform_vt *)plugin_lookup(
+                (uint16_t)id, s_xform_slots, s_xform_count);
     }
 }
 
@@ -62,6 +148,8 @@ const tdc_entropy_vt *tdc_entropy_get(tdc_entropy_id id) {
         case TDC_ENTROPY_HUFFMAN: return &tdc_entropy_huffman_vt;
         case TDC_ENTROPY_FSE:     return &tdc_entropy_fse_vt;
         case TDC_ENTROPY_LANE:    return &tdc_entropy_lane_vt;
-        default:                  return NULL;
+        default:
+            return (const tdc_entropy_vt *)plugin_lookup(
+                (uint16_t)id, s_entropy_slots, s_entropy_count);
     }
 }

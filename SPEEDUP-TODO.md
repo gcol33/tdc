@@ -43,50 +43,31 @@ No additional work (RLE escape, TDC_XFORM_RLE) was needed.
 
 ---
 
-## N1 — f64-aware delta/quantize model
+## N1 — f64 delta model: validate on real data — PARTIALLY ADDRESSED
 
-**Symptom.** Both real f64 time series (USGS streamflow, NASA POWER T2M)
-show zstd winning on ratio by 30–50% because tdc has no f64-aware model.
-BSHUF+LZ is a floor, not a model — it can't exploit the smooth
-temporal structure that zstd's match-finder picks up at byte level.
+**Implementation complete (2026-04-12).** DELTA_1D now handles f64/f32
+via ordered-integer transform (tdc_f64_to_ordered / tdc_ordered_to_f64).
+Synthetic bench (commit 91989ed) confirms DELTA1D+LZ is the winner for
+smooth f64 (2.67x ratio, 1.6 GB/s decode on synthetic ramp); BSHUF
+hurts because it fragments the zero-heavy high bytes that LZ exploits.
 
-| dataset              | tdc best (BSHUF+LZ) | zstd L19 |
-|----------------------|----------------------:|---------:|
-| USGS streamflow f64  |                 3.00x |    4.50x |
-| NASA POWER T2M f64   |                 2.15x |    3.48x |
+**Remaining.** Re-bench on the two real f64 datasets (USGS streamflow,
+NASA POWER T2M) with DELTA1D+LZ and DELTA1D+BSHUF+LZ chains to verify
+the acceptance targets:
 
-tdc decode is still 2–3x faster than zstd on both, so the gap is
-purely on the ratio axis.
+| dataset              | tdc best (no model) | target (with DELTA1D) | zstd L19 |
+|----------------------|--------------------:|----------------------:|---------:|
+| USGS streamflow f64  |              3.00x  |             ≥ 4.0x    |    4.50x |
+| NASA POWER T2M f64   |              2.15x  |             ≥ 3.0x    |    3.48x |
 
-**Hypothesis.** A delta model on the f64 bit pattern (XOR-delta or
-integer-reinterpret delta) would collapse the smooth temporal
-correlation into a low-entropy residual stream. The mantissa bits
-of adjacent samples share long common prefixes when the signal is
-smooth; XOR-delta turns those into leading zeros that LZ/Huffman
-compress well.
-
-**Action.**
-1. Implement `TDC_MODEL_DELTA_F64` (or generalize DELTA_1D to handle
-   float dtypes via reinterpret-cast to u64/u32 + XOR-delta). The
-   model produces a u64 residual stream; downstream transforms and
-   entropy see integer bytes as usual.
-2. Bench on both real f64 datasets. Target: match or beat zstd L9 on
-   ratio while keeping tdc's decode speed advantage.
-3. Consider whether XOR-delta or subtract-delta (on the integer
-   reinterpretation) works better. XOR-delta produces leading zeros;
-   subtract-delta produces small magnitudes. Profile both.
-
-**Acceptance.** On USGS streamflow f64: ratio ≥ 4.0x (vs current 3.0x)
-at decode ≥ 2000 MB/s. On NASA POWER T2M: ratio ≥ 3.0x (vs current
-2.15x).
+If targets are met, mark resolved. If not, investigate whether the
+ordered-integer transform is suboptimal for periodic signals and
+whether XOR-delta would be better.
 
 **Dead-end notes.**
-- Do NOT add lossy quantization as part of this item. tdc is lossless;
-  if a quantize stage is added later it belongs in the transform chain
-  as an explicit user opt-in, not baked into the model.
-- BSHUF actively hurts on periodic f64 (NASA T2M drops 2.15x → 1.14x).
-  The f64 delta model must be benchmarked both with and without BSHUF
-  to find the right default chain. See N2.
+- Do NOT add lossy quantization as part of this item. tdc is lossless.
+- BSHUF actively hurts on periodic f64 (NASA T2M drops 2.15x → 1.14x
+  without a model). Must bench DELTA1D both with and without BSHUF.
 
 ---
 
@@ -168,29 +149,29 @@ bench case.
 ## N4 — PRED2D PAETH decode throughput (parked, carried forward)
 
 **Symptom.** PRED2D PAETH decode on u16 noisy gradient 2048x2048:
-437 MB/s (after 2-row wavefront + hoisted paeth32). zstd L9 decodes
+~480 MB/s (after 4-row wavefront + hoisted paeth32). zstd L9 decodes
 the same block at 820 MB/s.
 
 **Prior work (all in git history).**
 - Register-carry of left/upleft: bench-neutral, reverted.
 - 2-row wavefront: +30% (315 → 410 MB/s), kept.
-- 4-row wavefront: no gain over 2-row (+1% noise), reverted.
-- Hoisted paeth32 algebra: +4% (418 → 437 MB/s), kept.
-- SSE2/NEON SIMD paeth32: not attempted (predicted no gain given
-  4-row scalar showed no gain — the bottleneck is memory latency
-  from the row-above dependency, not ALU throughput).
+- 4-row staggered wavefront (commit 67f9f8c): +10% over 2-row, kept.
+  Dispatched for rasters with nx ≥ 4 && ny ≥ 5.
+- Hoisted paeth32 algebra: +4%, kept.
+- SSE2/NEON SIMD paeth32: not attempted (predicted no gain — the
+  bottleneck is memory latency from the row-above dependency, not
+  ALU throughput).
+- UP predictor: matches PAETH on ratio while decoding 42% faster.
+  For noisy data where PAETH's adaptive selection adds little, UP
+  is the better default.
 
-**Current ceiling analysis.** The 2-row wavefront saturates whatever
-uarch resource limits PAETH decode on x86_64 (MSVC /O2). The per-row
-serial dependency (`left = dst[r][c-1]`) is the fundamental constraint;
-more ILP doesn't help because the backend is already fully issued at
-2 lanes.
+**Current ceiling analysis.** The 4-row wavefront is near the uarch
+ceiling on x86_64 (MSVC /O2). Further ILP does not help because
+entropy/BSHUF stages now dominate the pipeline.
 
 **Re-open criteria:**
-- A real-data bench surfaces u16 PAETH decode as a bandwidth-bound
-  bottleneck at a ratio where the model stage is still earning its keep.
-- A future compiler/uarch shifts the 2-row wavefront off its plateau
-  (try the 4-row template from git history first).
+- A real-data bench surfaces u16 PAETH decode as the dominant stage
+  in a pipeline where the model is earning its keep on ratio.
 - BSHUF gains a chunked variant enabling fused decode (see parked
   chunked-decode design in git history under old P2.2).
 

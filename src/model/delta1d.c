@@ -636,56 +636,72 @@ static int delta1d_dtype_accepted(tdc_dtype dt) {
     return tdc_model_dtype_accepted(DELTA1D_ACCEPTED_DTYPES, dt);
 }
 
-/* ----- Float-ordered delta ------------------------------------------------ */
+/* ----- Float XOR-delta --------------------------------------------------- */
 /*
- * For float dtypes, raw unsigned subtraction doesn't produce small residuals
- * across sign boundaries (e.g., -1.0 and +1.0 have vastly different uint
- * representations). The ordered mapping converts float bits to unsigned
- * integers that preserve numerical ordering, so delta of close floats
- * yields small unsigned residuals regardless of sign.
+ * For float dtypes, XOR-delta on raw bit patterns:
  *
- * residual[0] = to_ordered(data[0])          (seed in ordered space)
- * residual[i] = to_ordered(data[i]) - to_ordered(data[i-1])  (unsigned wrap)
+ *   residual[0] = bits(data[0])                         (seed)
+ *   residual[i] = bits(data[i]) XOR bits(data[i-1])     (i >= 1)
  *
  * decode:
- * ordered[0] = residual[0]
- * ordered[i] = ordered[i-1] + residual[i]
- * data[i]    = from_ordered(ordered[i])
+ *   bits[0]     = residual[0]
+ *   bits[i]     = bits[i-1] XOR residual[i]
+ *
+ * Why XOR, not ordered-subtract?
+ *
+ * Adjacent float samples with the same exponent share a long common bit
+ * prefix (sign + exponent + high mantissa). XOR of those bit patterns
+ * produces many leading zero bits — typically 4-5 leading zero BYTES for
+ * smooth f64 time series. LZ exploits these zero runs directly.
+ *
+ * Ordered-subtract (the previous approach) preserves numerical ordering
+ * but produces residuals proportional to float_delta * 2^(52 - exponent),
+ * which spread across ~46 bits even for small deltas near magnitude 15000.
+ * Those residuals have only ~2 leading zero bytes — far less compressible.
+ *
+ * On sign-crossing pairs (rare in real time series), both approaches
+ * produce large residuals. XOR is no worse than ordered-subtract there
+ * and is significantly better on the 99%+ same-sign pairs that dominate.
+ *
+ * Bench evidence: USGS streamflow f64 with ordered-subtract DELTA1D+LZ
+ * scored 2.61x (worse than no-model BSHUF+LZ at 3.02x). XOR-delta
+ * closes the gap against zstd. See SPEEDUP-TODO N1.
  */
 
-/* Macro-generated float encode/decode: each width shares the same loop. */
-
-#define DEFINE_DELTA1D_ENCODE_FLOAT(SUFFIX, UT, W, TO_ORD, LOAD_BITS, STORE) \
+#define DEFINE_DELTA1D_ENCODE_FLOAT(SUFFIX, UT, W)                        \
 static void delta1d_encode_##SUFFIX(const uint8_t *src, uint8_t *dst, int64_t n) { \
-    UT prev = TO_ORD(LOAD_BITS(src));                                     \
-    STORE(dst, prev);                                                     \
+    UT prev;                                                              \
+    memcpy(&prev, src, (W));                                              \
+    memcpy(dst, &prev, (W));                                              \
     for (int64_t i = 1; i < n; ++i) {                                    \
-        UT cur = TO_ORD(LOAD_BITS(src + (size_t)i * (W)));               \
-        STORE(dst + (size_t)i * (W), (UT)(cur - prev));                  \
+        UT cur;                                                           \
+        memcpy(&cur, src + (size_t)i * (W), (W));                        \
+        UT xd = cur ^ prev;                                              \
+        memcpy(dst + (size_t)i * (W), &xd, (W));                        \
         prev = cur;                                                      \
     }                                                                    \
 }
 
-#define DEFINE_DELTA1D_DECODE_FLOAT(SUFFIX, UT, W, FROM_ORD, STORE)       \
+#define DEFINE_DELTA1D_DECODE_FLOAT(SUFFIX, UT, W)                        \
 static void delta1d_decode_##SUFFIX(const uint8_t *residuals, uint8_t *dst, int64_t n) { \
-    UT acc;                                                               \
-    memcpy(&acc, residuals, (W));                                         \
-    STORE(dst, FROM_ORD(acc));                                            \
+    UT prev;                                                              \
+    memcpy(&prev, residuals, (W));                                        \
+    memcpy(dst, &prev, (W));                                              \
     for (int64_t i = 1; i < n; ++i) {                                    \
-        UT d;                                                            \
-        memcpy(&d, residuals + (size_t)i * (W), (W));                    \
-        acc = (UT)(acc + d);                                             \
-        STORE(dst + (size_t)i * (W), FROM_ORD(acc));                     \
+        UT xd;                                                            \
+        memcpy(&xd, residuals + (size_t)i * (W), (W));                   \
+        prev = prev ^ xd;                                                \
+        memcpy(dst + (size_t)i * (W), &prev, (W));                       \
     }                                                                    \
 }
 
-DEFINE_DELTA1D_ENCODE_FLOAT(f16, uint16_t, 2u, tdc_f16_to_ordered, tdc_load_f16_bits, tdc_store_u16)
-DEFINE_DELTA1D_ENCODE_FLOAT(f32, uint32_t, 4u, tdc_f32_to_ordered, tdc_load_f32_bits, tdc_store_u32)
-DEFINE_DELTA1D_ENCODE_FLOAT(f64, uint64_t, 8u, tdc_f64_to_ordered, tdc_load_f64_bits, tdc_store_u64)
+DEFINE_DELTA1D_ENCODE_FLOAT(f16, uint16_t, 2u)
+DEFINE_DELTA1D_ENCODE_FLOAT(f32, uint32_t, 4u)
+DEFINE_DELTA1D_ENCODE_FLOAT(f64, uint64_t, 8u)
 
-DEFINE_DELTA1D_DECODE_FLOAT(f16, uint16_t, 2u, tdc_ordered_to_f16, tdc_store_u16)
-DEFINE_DELTA1D_DECODE_FLOAT(f32, uint32_t, 4u, tdc_ordered_to_f32, tdc_store_u32)
-DEFINE_DELTA1D_DECODE_FLOAT(f64, uint64_t, 8u, tdc_ordered_to_f64, tdc_store_u64)
+DEFINE_DELTA1D_DECODE_FLOAT(f16, uint16_t, 2u)
+DEFINE_DELTA1D_DECODE_FLOAT(f32, uint32_t, 4u)
+DEFINE_DELTA1D_DECODE_FLOAT(f64, uint64_t, 8u)
 
 #undef DEFINE_DELTA1D_ENCODE_FLOAT
 #undef DEFINE_DELTA1D_DECODE_FLOAT

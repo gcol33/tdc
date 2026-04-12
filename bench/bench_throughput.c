@@ -665,6 +665,43 @@ static int run_from_file(const char *path, const char *dtype_s,
         s.entropy[0] = TDC_ENTROPY_LZ;
         rc |= run_case("RAW + LZ", block_desc, &b, &s);
     }
+    /* RAW + LZ+HUF / LZ+FSE — entropy-coded LZ without byte shuffle. */
+    {
+        tdc_codec_spec slh = tdc_codec_spec_raw();
+        slh.entropy[0] = TDC_ENTROPY_LZ;
+        slh.entropy[1] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("RAW + LZ+HUF", block_desc, &b, &slh);
+    }
+    {
+        tdc_codec_spec slf = tdc_codec_spec_raw();
+        slf.entropy[0] = TDC_ENTROPY_LZ;
+        slf.entropy[1] = TDC_ENTROPY_FSE;
+        rc |= run_case("RAW + LZ+FSE", block_desc, &b, &slf);
+    }
+    /* RAW + LZ_OPT — optimal parser, better match quality. */
+    {
+        tdc_codec_spec so = tdc_codec_spec_raw();
+        so.entropy[0] = TDC_ENTROPY_LZ_OPT;
+        rc |= run_case("RAW + LZ_OPT", block_desc, &b, &so);
+    }
+    {
+        tdc_codec_spec soh = tdc_codec_spec_raw();
+        soh.entropy[0] = TDC_ENTROPY_LZ_OPT;
+        soh.entropy[1] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("RAW + LZ_OPT+HUF", block_desc, &b, &soh);
+    }
+    {
+        tdc_codec_spec sof = tdc_codec_spec_raw();
+        sof.entropy[0] = TDC_ENTROPY_LZ_OPT;
+        sof.entropy[1] = TDC_ENTROPY_FSE;
+        rc |= run_case("RAW + LZ_OPT+FSE", block_desc, &b, &sof);
+    }
+    /* RAW + LZ_STREAMS — per-stream entropy, streams-aware optimal parser. */
+    {
+        tdc_codec_spec ss = tdc_codec_spec_raw();
+        ss.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        rc |= run_case("RAW + LZ_STREAMS", block_desc, &b, &ss);
+    }
     /* RAW + BSHUF + LZ — exposes per-lane structure on multi-byte dtypes. */
     if (tdc_dtype_size(dtype) > 1) {
         tdc_codec_spec s = tdc_codec_spec_raw();
@@ -736,6 +773,46 @@ static int run_from_file(const char *path, const char *dtype_s,
         sf.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
         sf.entropy[0] = TDC_ENTROPY_FSE;
         rc |= run_case("DELTA1D+BSHUF+FSE", block_desc, &b, &sf);
+
+        /* LZ chained with entropy back-end. */
+        tdc_codec_spec slh = {0};
+        slh.model    = TDC_MODEL_DELTA_1D;
+        slh.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        slh.entropy[0] = TDC_ENTROPY_LZ;
+        slh.entropy[1] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("DELTA1D+BSHUF+LZ+HUF", block_desc, &b, &slh);
+
+        tdc_codec_spec slf = {0};
+        slf.model    = TDC_MODEL_DELTA_1D;
+        slf.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        slf.entropy[0] = TDC_ENTROPY_LZ;
+        slf.entropy[1] = TDC_ENTROPY_FSE;
+        rc |= run_case("DELTA1D+BSHUF+LZ+FSE", block_desc, &b, &slf);
+
+        /* LZ_STREAMS — per-stream entropy coding. */
+        tdc_codec_spec sls = {0};
+        sls.model    = TDC_MODEL_DELTA_1D;
+        sls.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        sls.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        rc |= run_case("DELTA1D+BSHUF+LZ_STREAMS", block_desc, &b, &sls);
+
+        /* No model: BSHUF + alternative entropy. */
+        tdc_codec_spec bslh = tdc_codec_spec_raw();
+        bslh.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        bslh.entropy[0] = TDC_ENTROPY_LZ;
+        bslh.entropy[1] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("RAW+BSHUF+LZ+HUF", block_desc, &b, &bslh);
+
+        tdc_codec_spec bslf = tdc_codec_spec_raw();
+        bslf.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        bslf.entropy[0] = TDC_ENTROPY_LZ;
+        bslf.entropy[1] = TDC_ENTROPY_FSE;
+        rc |= run_case("RAW+BSHUF+LZ+FSE", block_desc, &b, &bslf);
+
+        tdc_codec_spec bsls = tdc_codec_spec_raw();
+        bsls.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        bsls.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        rc |= run_case("RAW+BSHUF+LZ_STREAMS", block_desc, &b, &bsls);
     }
     /* PRED2D + PLANE2D — only on 2D integer rasters. */
     if (layout == TDC_LAYOUT_RASTER_2D &&

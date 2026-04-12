@@ -15,16 +15,16 @@
  * the encode time.
  *
  * Phase 1 — static cost model. The literal cost is fixed at 8 bits/byte
- * and the match cost is 24 bits + 8*match_ext(L) bits, matching
- * tdc_lz_serialize_sequences exactly. Literal-run extension bytes
- * (chained-255 varint, one byte per bracket crossing) are folded into
- * a per-bracket penalty so the sliding-window DP remains additive.
+ * and the match cost is 8*(1 + offset_size) + 8*match_ext(L) bits,
+ * matching tdc_lz_serialize_sequences exactly. Literal-run extension
+ * bytes (chained-255 varint, one byte per bracket crossing) are folded
+ * into a per-bracket penalty so the sliding-window DP remains additive.
  *
  * Phase 2 (separate commit) will plumb entropy-aware literal costs
  * (per-symbol bit lengths from Huffman/FSE tables) into cost_literal().
  *
  * Structure:
- *   1. Hash-chain match finder (deflate-style, 64K window, depth ≤ 128).
+ *   1. Hash-chain match finder (deflate-style, 1 MiB window, depth ≤ 128).
  *   2. Forward DP with sliding-window minima per literal-run bracket.
  *   3. Backtrack → LZSeq array, serialized via the shared writer in
  *      lz.c (tdc_lz_serialize_sequences).
@@ -46,21 +46,21 @@
 
 /* ----- Tunable constants ------------------------------------------------- */
 
-#define LZ_OPT_HASH_BITS   16
+#define LZ_OPT_HASH_BITS   18
 #define LZ_OPT_HASH_SIZE   (1u << LZ_OPT_HASH_BITS)
 
-/* Chain walk depth limit. 32 matches deflate level 6; it bounds per-position
- * chain-walk cost without losing measurable compression on structured data
- * (long matches surface at the chain front, so deeper walks mostly find
- * dominated alternatives). */
-#define LZ_OPT_MAX_CHAIN   32u
+/* Chain walk depth limit. Bounds per-position chain-walk cost. 128 gives
+ * measurable gains on periodic f64 data (seasonal patterns) over the
+ * original 32 — deeper walks find matches at annual/multi-year offsets
+ * that the chain front doesn't surface. Diminishing returns past 128. */
+#define LZ_OPT_MAX_CHAIN   128u
 
 /* Per-candidate extension cap. Each chain candidate is extended by at most
  * this many bytes during the walk. Keeps chain-walk work bounded at
  * O(LZ_OPT_MAX_CHAIN × LZ_OPT_EXTEND_CAP) per position regardless of
  * input entropy. On periodic inputs the longest candidate would otherwise
  * extend to end-of-input, giving an O(N²) walk. */
-#define LZ_OPT_EXTEND_CAP  64u
+#define LZ_OPT_EXTEND_CAP  256u
 
 /* Commit-and-skip threshold. If the longest match at position r (after
  * greedy-extending past the cap) reaches this length, we emit the full
@@ -314,8 +314,9 @@ typedef struct {
  *
  * Transitions:
  *   For each r with matches[r].len >= LZ_MIN_MATCH:
+ *     hdr = 8*(1 + lz_offset_size(match_off))     // tag + varint offset
  *     For each L in [LZ_MIN_MATCH, matches[r].len]:
- *       candidate = best_start[r] + 24 + 8*match_ext(L)
+ *       candidate = best_start[r] + hdr + 8*match_ext(L)
  *       post_match[r + L] = min(., candidate)
  *
  * Final:
@@ -506,12 +507,16 @@ tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
         if (match_len < LZ_MIN_MATCH) continue;
         (void)cand_pos; /* full-extension handled inside find_longest */
 
+        /* Match header cost in bits: 1 tag byte + variable offset. The
+         * offset is the same for all L at this position, so compute once. */
+        uint32_t match_hdr_bits = 8u * (1u + lz_offset_size(match_off));
+
         /* Commit-and-skip path: on long matches, emit a single transition
          * (matching greedy's behaviour) and fast-forward past the match.
          * The next non-skipped r is at r + match_len. */
         if (match_len >= LZ_OPT_COMMIT_LEN) {
             uint32_t ext = lz_opt_match_ext(match_len);
-            int32_t cand = best_start + (int32_t)24u + (int32_t)(8u * ext);
+            int32_t cand = best_start + (int32_t)match_hdr_bits + (int32_t)(8u * ext);
             uint32_t end = r + match_len;
             if (cand < post_match[end]) {
                 post_match[end] = cand;
@@ -529,7 +534,7 @@ tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
          * so the inner loop is O(1) per r. */
         for (uint32_t L = LZ_MIN_MATCH; L <= match_len; L++) {
             uint32_t ext = lz_opt_match_ext(L);
-            int32_t cand = best_start + (int32_t)24u + (int32_t)(8u * ext);
+            int32_t cand = best_start + (int32_t)match_hdr_bits + (int32_t)(8u * ext);
             uint32_t end = r + L;
             if (cand < post_match[end]) {
                 post_match[end] = cand;
