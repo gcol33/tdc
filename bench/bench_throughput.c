@@ -401,6 +401,37 @@ static int case_pred2d_noisy_u16(void) {
         rc |= run_case("PRED2D+BSHUF+LZ+FSE", desc, &b, &s);
     }
 
+    /* --- UP predictor variants: SIMD-friendly, no left-pixel dependency --- */
+    tdc_pred2d_params up_params; up_params.kind = TDC_PRED2D_UP;
+
+    /* PRED2D(UP) + BSHUF + HUF */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &up_params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("PRED2D(UP)+BSHUF+HUF", desc, &b, &s);
+    }
+    /* PRED2D(UP) + BSHUF + FSE */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &up_params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_FSE;
+        rc |= run_case("PRED2D(UP)+BSHUF+FSE", desc, &b, &s);
+    }
+    /* PRED2D(UP) + BSHUF + LZ */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &up_params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        rc |= run_case("PRED2D(UP)+BSHUF+LZ", desc, &b, &s);
+    }
+
     free(data);
     return rc;
 }
