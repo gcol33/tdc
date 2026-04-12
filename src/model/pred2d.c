@@ -783,6 +783,191 @@ static void pred2d_dec_u16_paeth_wavefront(const uint16_t *res, uint16_t *dst,
     }
 }
 
+/* ----- 4-row wavefront PAETH decode (16-bit) ----------------------------- *
+ * Extends the 2-row wavefront to FOUR staggered rows, quadrupling the
+ * independent work available to the OoO scheduler. At iteration `c` the
+ * four lanes compute:
+ *
+ *   lane 0: (R,   c  )   left = L0,  up = dRm[c],   upleft = dRm[c-1]
+ *   lane 1: (R+1, c-1)   left = L1,  up = L0_prev,  upleft = P0
+ *   lane 2: (R+2, c-2)   left = L2,  up = L1_prev,  upleft = P1
+ *   lane 3: (R+3, c-3)   left = L3,  up = L2_prev,  upleft = P2
+ *
+ * where L[i] is lane i's output from the PREVIOUS iteration (carried),
+ * and P[i] is lane i's output from TWO iterations ago. Within a single
+ * iteration all four paeth+add chains are independent — they share data
+ * only across iterations via the 7 carried scalars (L0..L3, P0..P2).
+ *
+ * Requires nx >= 4 for the triangular prologue. The caller (dispatch)
+ * gates this; rasters with nx < 4 use the 2-row wavefront instead.
+ *
+ * Trailing 0-3 rows after the last complete quad are decoded with scalar
+ * paeth — at most 3 rows out of potentially thousands, so the overhead
+ * is negligible.
+ */
+static void pred2d_dec_u16_paeth_wf4(const uint16_t *res, uint16_t *dst,
+                                      int64_t nx, int64_t ny) {
+    /* Row 0: LEFT predictor (no row above). */
+    dst[0] = res[0];
+    for (int64_t c = 1; c < nx; ++c)
+        dst[c] = (uint16_t)(res[c] + dst[c - 1]);
+
+    int64_t row = 1;
+
+    /* ---------- 4-row wavefront groups ---------- */
+    for (; row + 3 < ny; row += 4) {
+        const uint16_t *rR  = res + row       * nx;
+        const uint16_t *rR1 = res + (row + 1) * nx;
+        const uint16_t *rR2 = res + (row + 2) * nx;
+        const uint16_t *rR3 = res + (row + 3) * nx;
+        uint16_t       *dR  = dst + row       * nx;
+        uint16_t       *dR1 = dst + (row + 1) * nx;
+        uint16_t       *dR2 = dst + (row + 2) * nx;
+        uint16_t       *dR3 = dst + (row + 3) * nx;
+        const uint16_t *dRm = dst + (row - 1) * nx;
+
+        /* Col 0 of all 4 rows: paeth(0, up, 0) = up. */
+        int32_t c0_R  = (int32_t)(uint16_t)((int32_t)rR [0] + (int32_t)dRm[0]);
+        dR[0] = (uint16_t)c0_R;
+        int32_t c0_R1 = (int32_t)(uint16_t)((int32_t)rR1[0] + c0_R);
+        dR1[0] = (uint16_t)c0_R1;
+        int32_t c0_R2 = (int32_t)(uint16_t)((int32_t)rR2[0] + c0_R1);
+        dR2[0] = (uint16_t)c0_R2;
+        int32_t c0_R3 = (int32_t)(uint16_t)((int32_t)rR3[0] + c0_R2);
+        dR3[0] = (uint16_t)c0_R3;
+
+        /* Carried state: L[i] = last output of lane i (left for next iter),
+         * P[i] = output of lane i from one iter earlier (upleft for lane i+1). */
+        int32_t L0 = c0_R, L1 = c0_R1, L2 = c0_R2, L3 = c0_R3;
+        int32_t P0 = 0, P1 = 0, P2 = 0;
+
+        /* Prologue step 1 (c=1): 1 lane — row R col 1. */
+        {
+            int32_t pred = paeth32(L0, (int32_t)dRm[1], (int32_t)dRm[0]);
+            int32_t v = (int32_t)rR[1] + pred;
+            dR[1] = (uint16_t)v;
+            P0 = L0;
+            L0 = (int32_t)(uint16_t)v;
+        }
+
+        /* Prologue step 2 (c=2): 2 lanes — R col 2, R+1 col 1. */
+        {
+            int32_t pred0 = paeth32(L0, (int32_t)dRm[2], (int32_t)dRm[1]);
+            int32_t v0 = (int32_t)rR[2] + pred0;
+            dR[2] = (uint16_t)v0;
+
+            int32_t pred1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[1] + pred1;
+            dR1[1] = (uint16_t)v1;
+
+            P0 = L0; P1 = L1;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+        }
+
+        /* Prologue step 3 (c=3): 3 lanes — R col 3, R+1 col 2, R+2 col 1. */
+        {
+            int32_t pred0 = paeth32(L0, (int32_t)dRm[3], (int32_t)dRm[2]);
+            int32_t v0 = (int32_t)rR[3] + pred0;
+            dR[3] = (uint16_t)v0;
+
+            int32_t pred1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[2] + pred1;
+            dR1[2] = (uint16_t)v1;
+
+            int32_t pred2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[1] + pred2;
+            dR2[1] = (uint16_t)v2;
+
+            P0 = L0; P1 = L1; P2 = L2;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+        }
+
+        /* Steady state: all 4 lanes, c = 4..nx-1. */
+        for (int64_t c = 4; c < nx; ++c) {
+            int32_t pred0 = paeth32(L0, (int32_t)dRm[c], (int32_t)dRm[c - 1]);
+            int32_t v0 = (int32_t)rR[c] + pred0;
+            dR[c] = (uint16_t)v0;
+
+            int32_t pred1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[c - 1] + pred1;
+            dR1[c - 1] = (uint16_t)v1;
+
+            int32_t pred2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[c - 2] + pred2;
+            dR2[c - 2] = (uint16_t)v2;
+
+            int32_t pred3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[c - 3] + pred3;
+            dR3[c - 3] = (uint16_t)v3;
+
+            P0 = L0; P1 = L1; P2 = L2;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+        }
+
+        /* Epilogue: drain the staggered triangle (3 + 2 + 1 pixels). */
+
+        /* 3-lane: (R+1, nx-1), (R+2, nx-2), (R+3, nx-3). */
+        {
+            int32_t pred1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[nx - 1] + pred1;
+            dR1[nx - 1] = (uint16_t)v1;
+
+            int32_t pred2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[nx - 2] + pred2;
+            dR2[nx - 2] = (uint16_t)v2;
+
+            int32_t pred3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[nx - 3] + pred3;
+            dR3[nx - 3] = (uint16_t)v3;
+
+            P1 = L1; P2 = L2;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+        }
+        /* 2-lane: (R+2, nx-1), (R+3, nx-2). */
+        {
+            int32_t pred2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[nx - 1] + pred2;
+            dR2[nx - 1] = (uint16_t)v2;
+
+            int32_t pred3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[nx - 2] + pred3;
+            dR3[nx - 2] = (uint16_t)v3;
+
+            P2 = L2;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+        }
+        /* 1-lane: (R+3, nx-1). */
+        {
+            int32_t pred3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[nx - 1] + pred3;
+            dR3[nx - 1] = (uint16_t)v3;
+        }
+    }
+
+    /* Trailing rows (at most 3): scalar PAETH — negligible cost. */
+    for (; row < ny; ++row) {
+        const uint16_t *rr = res + row * nx;
+        uint16_t       *dr = dst + row * nx;
+        const uint16_t *da = dst + (row - 1) * nx;
+        dr[0] = (uint16_t)((int32_t)rr[0] + (int32_t)da[0]);
+        for (int64_t c = 1; c < nx; ++c) {
+            int32_t left   = (int32_t)dr[c - 1];
+            int32_t up     = (int32_t)da[c];
+            int32_t upleft = (int32_t)da[c - 1];
+            dr[c] = (uint16_t)((int32_t)rr[c] + paeth32(left, up, upleft));
+        }
+    }
+}
+
 /* Forward declarations for float path (defined after auto-select). */
 static void pred2d_encode_float(tdc_dtype dt, tdc_pred2d_kind kind,
                                 const uint8_t *src, uint8_t *res,
@@ -828,12 +1013,17 @@ static void pred2d_decode_sweep(tdc_dtype dt, tdc_pred2d_kind kind,
     }
     if (dt == TDC_DT_U16 && kind == TDC_PRED2D_PAETH && nx > 0 && ny > 0) {
         /* 4-row wavefront for large rasters (4-way ILP); 2-row wavefront
-         * otherwise. The 4-row quad-kernel requires nx >= 4 for its
+         * for smaller ones. The 4-row kernel needs nx >= 4 for its
          * triangular prologue and at least one full quad after row 0
          * (ny >= 5). Below that threshold the 2-row version is still a
          * strict improvement over scalar. */
-        pred2d_dec_u16_paeth_wavefront((const uint16_t *)res,
-                                        (uint16_t *)dst, nx, ny);
+        if (nx >= 4 && ny >= 5) {
+            pred2d_dec_u16_paeth_wf4((const uint16_t *)res,
+                                      (uint16_t *)dst, nx, ny);
+        } else {
+            pred2d_dec_u16_paeth_wavefront((const uint16_t *)res,
+                                            (uint16_t *)dst, nx, ny);
+        }
         return;
     }
     switch (dt) {
