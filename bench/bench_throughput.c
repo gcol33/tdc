@@ -174,6 +174,22 @@ static void fill_grad_u16(uint16_t *p, int ny, int nx) {
     }
 }
 
+/* Smooth monotonic f64 with small noise — simulates USGS/NASA lat/lon or
+ * elevation rows where consecutive values differ by a small, nearly
+ * constant increment. delta1d + ordered-integer mapping produces tiny
+ * uint64 residuals; byte shuffle groups the sparse high bytes together
+ * for entropy coding. */
+static void fill_smooth_f64(double *p, size_t n) {
+    uint32_t s = 0xBEEF1234u;
+    double v = 1000.0;
+    for (size_t i = 0; i < n; ++i) {
+        s = s * 1103515245u + 12345u;
+        double noise = ((double)((int)((s >> 16) & 0xFF) - 128)) * 1e-6;
+        v += 0.001 + noise;
+        p[i] = v;
+    }
+}
+
 /* Two-plane raster: PLANE2D shines here. */
 static void fill_split_planes_i32(int32_t *p, int ny, int nx) {
     for (int r = 0; r < ny; ++r) {
@@ -436,6 +452,75 @@ static int case_pred2d_noisy_u16(void) {
     return rc;
 }
 
+static int case_delta1d_f64(void) {
+    const size_t N = g_smoke ? 256u : (size_t)(2 * 1024 * 1024); /* 16 MiB f64 */
+    double *data = (double *)malloc(sizeof(double) * N);
+    if (!data) return 1;
+    fill_smooth_f64(data, N);
+
+    const char *desc = g_smoke ? "vec1d f64 256" : "vec1d f64 2M (smooth)";
+    tdc_block b = {0};
+    b.data        = data;
+    b.dtype       = TDC_DT_F64;
+    b.layout      = TDC_LAYOUT_VECTOR_1D;
+    b.shape.rank  = 1;
+    b.shape.dim[0] = (int64_t)N;
+    tdc_shape_set_contiguous(&b.shape);
+
+    int rc = 0;
+
+    /* DELTA1D + BSHUF + LZ — baseline for f64. */
+    {
+        tdc_codec_spec s = {0};
+        s.model    = TDC_MODEL_DELTA_1D;
+        s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0] = TDC_ENTROPY_LZ;
+        rc |= run_case("DELTA1D+BSHUF+LZ", desc, &b, &s);
+    }
+    /* DELTA1D + BSHUF + HUF */
+    {
+        tdc_codec_spec s = {0};
+        s.model    = TDC_MODEL_DELTA_1D;
+        s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("DELTA1D+BSHUF+HUF", desc, &b, &s);
+    }
+    /* DELTA1D + BSHUF + FSE */
+    {
+        tdc_codec_spec s = {0};
+        s.model    = TDC_MODEL_DELTA_1D;
+        s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0] = TDC_ENTROPY_FSE;
+        rc |= run_case("DELTA1D+BSHUF+FSE", desc, &b, &s);
+    }
+    /* DELTA1D + BSHUF + LZ + HUF */
+    {
+        tdc_codec_spec s = {0};
+        s.model    = TDC_MODEL_DELTA_1D;
+        s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0] = TDC_ENTROPY_LZ;
+        s.entropy[1] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("DELTA1D+BSHUF+LZ+HUF", desc, &b, &s);
+    }
+    /* DELTA1D + LZ (no shuffle) — reference. */
+    {
+        tdc_codec_spec s = {0};
+        s.model    = TDC_MODEL_DELTA_1D;
+        s.entropy[0] = TDC_ENTROPY_LZ;
+        rc |= run_case("DELTA1D+LZ", desc, &b, &s);
+    }
+    /* RAW + BSHUF + LZ — no model, just shuffle. */
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0] = TDC_ENTROPY_LZ;
+        rc |= run_case("RAW+BSHUF+LZ", desc, &b, &s);
+    }
+
+    free(data);
+    return rc;
+}
+
 static int case_plane2d_shuffle_lz(void) {
     const int NY = g_smoke ? 32 : 1024;
     const int NX = g_smoke ? 32 : 1024; /* 4 MiB i32 (or 4 KiB smoke) */
@@ -587,7 +672,8 @@ static int run_from_file(const char *path, const char *dtype_s,
         s.entropy[0]  = TDC_ENTROPY_LZ;
         rc |= run_case("RAW + BSHUF + LZ", block_desc, &b, &s);
     }
-    /* DELTA1D family — only on 1D integer dtypes. */
+    /* DELTA1D family — integer dtypes use zigzag+bshuf; float dtypes use
+     * ordered-integer residuals (uint64/32/16) with bshuf only (no zigzag). */
     if (layout == TDC_LAYOUT_VECTOR_1D &&
         dtype != TDC_DT_F32 && dtype != TDC_DT_F64) {
         tdc_codec_spec s = {0};
@@ -624,6 +710,32 @@ static int run_from_file(const char *path, const char *dtype_s,
         slh.entropy[0] = TDC_ENTROPY_LZ;
         slh.entropy[1] = TDC_ENTROPY_HUFFMAN;
         rc |= run_case("DELTA1D+ZZ+BSHUF+LZ+HUF", block_desc, &b, &slh);
+    }
+    /* DELTA1D on float dtypes — ordered-integer residuals, no zigzag. */
+    if (layout == TDC_LAYOUT_VECTOR_1D &&
+        (dtype == TDC_DT_F32 || dtype == TDC_DT_F64)) {
+        tdc_codec_spec s = {0};
+        s.model    = TDC_MODEL_DELTA_1D;
+        s.entropy[0] = TDC_ENTROPY_LZ;
+        rc |= run_case("DELTA1D+LZ", block_desc, &b, &s);
+
+        tdc_codec_spec sb = {0};
+        sb.model    = TDC_MODEL_DELTA_1D;
+        sb.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        sb.entropy[0] = TDC_ENTROPY_LZ;
+        rc |= run_case("DELTA1D+BSHUF+LZ", block_desc, &b, &sb);
+
+        tdc_codec_spec sh = {0};
+        sh.model    = TDC_MODEL_DELTA_1D;
+        sh.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        sh.entropy[0] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("DELTA1D+BSHUF+HUF", block_desc, &b, &sh);
+
+        tdc_codec_spec sf = {0};
+        sf.model    = TDC_MODEL_DELTA_1D;
+        sf.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        sf.entropy[0] = TDC_ENTROPY_FSE;
+        rc |= run_case("DELTA1D+BSHUF+FSE", block_desc, &b, &sf);
     }
     /* PRED2D + PLANE2D — only on 2D integer rasters. */
     if (layout == TDC_LAYOUT_RASTER_2D &&
@@ -719,6 +831,7 @@ int main(int argc, char **argv) {
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+HUFFMAN",    TDC_ENTROPY_HUFFMAN,  TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+FSE",        TDC_ENTROPY_FSE,      TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+LZ+HUF",   TDC_ENTROPY_LZ,      TDC_ENTROPY_HUFFMAN);
+    rc |= case_delta1d_f64();
     rc |= case_pred2d_noisy_u16();
     rc |= case_plane2d_shuffle_lz();
 
