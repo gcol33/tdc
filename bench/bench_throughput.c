@@ -696,6 +696,12 @@ static int run_from_file(const char *path, const char *dtype_s,
         sof.entropy[1] = TDC_ENTROPY_FSE;
         rc |= run_case("RAW + LZ_OPT+FSE", block_desc, &b, &sof);
     }
+    /* RAW + LZ_SPLIT — optimal parser + split descriptor/literal Huffman. */
+    {
+        tdc_codec_spec ssp = tdc_codec_spec_raw();
+        ssp.entropy[0] = TDC_ENTROPY_LZ_SPLIT;
+        rc |= run_case("RAW + LZ_SPLIT", block_desc, &b, &ssp);
+    }
     /* RAW + LZ_STREAMS — per-stream entropy, streams-aware optimal parser. */
     {
         tdc_codec_spec ss = tdc_codec_spec_raw();
@@ -788,6 +794,23 @@ static int run_from_file(const char *path, const char *dtype_s,
         slf.entropy[0] = TDC_ENTROPY_LZ;
         slf.entropy[1] = TDC_ENTROPY_FSE;
         rc |= run_case("DELTA1D+BSHUF+LZ+FSE", block_desc, &b, &slf);
+
+        /* LZ_OPT — optimal parser, no/with second-stage entropy. */
+        {
+            tdc_codec_spec so = {0};
+            so.model    = TDC_MODEL_DELTA_1D;
+            so.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            so.entropy[0] = TDC_ENTROPY_LZ_OPT;
+            so.entropy[1] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("DELTA1D+BSHUF+LZ_OPT+HUF", block_desc, &b, &so);
+        }
+        {
+            tdc_codec_spec so2 = {0};
+            so2.model    = TDC_MODEL_DELTA_1D;
+            so2.entropy[0] = TDC_ENTROPY_LZ_OPT;
+            so2.entropy[1] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("DELTA1D+LZ_OPT+HUF", block_desc, &b, &so2);
+        }
 
         /* LZ_STREAMS — per-stream entropy coding. */
         tdc_codec_spec sls = {0};

@@ -14,15 +14,6 @@
  * structured tabular data: 5–15% smaller output than greedy, at 5–10×
  * the encode time.
  *
- * Phase 1 — static cost model. The literal cost is fixed at 8 bits/byte
- * and the match cost is 8*(1 + offset_size) + 8*match_ext(L) bits,
- * matching tdc_lz_serialize_sequences exactly. Literal-run extension
- * bytes (chained-255 varint, one byte per bracket crossing) are folded
- * into a per-bracket penalty so the sliding-window DP remains additive.
- *
- * Phase 2 (separate commit) will plumb entropy-aware literal costs
- * (per-symbol bit lengths from Huffman/FSE tables) into cost_literal().
- *
  * Structure:
  *   1. Hash-chain match finder (deflate-style, 1 MiB window, depth ≤ 128).
  *   2. Forward DP with sliding-window minima per literal-run bracket.
@@ -38,6 +29,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>   /* malloc/free in lz_split_decode (decode-side temp buffers) */
 #include <limits.h>
 
 #if defined(_MSC_VER)
@@ -53,7 +45,7 @@
  * measurable gains on periodic f64 data (seasonal patterns) over the
  * original 32 — deeper walks find matches at annual/multi-year offsets
  * that the chain front doesn't surface. Diminishing returns past 128. */
-#define LZ_OPT_MAX_CHAIN   128u
+#define LZ_OPT_MAX_CHAIN   256u
 
 /* Per-candidate extension cap. Each chain candidate is extended by at most
  * this many bytes during the walk. Keeps chain-walk work bounded at
@@ -237,6 +229,68 @@ static void lz_opt_find_longest(const uint8_t *src, uint32_t src_size,
     *out_cand_pos = best_cand;
 }
 
+/* Multi-match finder: returns up to LZ_OPT_MAX_MATCHES candidates.
+ * Each entry is the closest (smallest offset) match at a strictly
+ * longer length. This provides the DP with multiple offset choices
+ * at different lengths, enabling offset-vs-length trade-offs. */
+#define LZ_OPT_MAX_MATCHES 6u
+
+typedef struct {
+    uint32_t len;
+    uint32_t off;
+} LzOptMatch;
+
+static uint32_t lz_opt_find_matches(const uint8_t *src, uint32_t src_size,
+                                     uint32_t pos,
+                                     const uint32_t *chain_head,
+                                     const uint32_t *chain_prev,
+                                     LzOptMatch *matches) {
+    uint32_t n_matches = 0u;
+
+    if (pos + LZ_MIN_MATCH + 1u > src_size) return 0u;
+
+    uint32_t h = lz_opt_hash4(src + pos);
+    uint32_t cand = chain_head[h];
+    uint32_t depth = 0u;
+    uint32_t min_pos = (pos > LZ_MAX_OFFSET) ? (pos - LZ_MAX_OFFSET) : 0u;
+    uint32_t max_remain = src_size - pos;
+    uint32_t cap = (max_remain < LZ_OPT_EXTEND_CAP) ? max_remain : LZ_OPT_EXTEND_CAP;
+
+    /* Track the best (closest) offset at each increasing-length level. */
+    uint32_t prev_best_len = LZ_MIN_MATCH - 1u;
+
+    while (cand != 0xFFFFFFFFu && cand < pos && cand >= min_pos &&
+           depth < LZ_OPT_MAX_CHAIN) {
+
+        if (src[cand] == src[pos]) {
+            uint32_t len = lz_opt_extend(src, pos, cand, cap);
+            if (len == cap && cap < max_remain && len > prev_best_len) {
+                len += lz_opt_extend(src, pos + cap, cand + cap,
+                                      max_remain - cap);
+            }
+            if (len >= LZ_MIN_MATCH && len > prev_best_len) {
+                uint32_t off = pos - cand;
+                /* New longest match — record it. If this candidate is
+                 * longer AND closer than the previous entry, just replace. */
+                if (n_matches > 0u && matches[n_matches - 1u].off >= off) {
+                    matches[n_matches - 1u].len = len;
+                    matches[n_matches - 1u].off = off;
+                } else if (n_matches < LZ_OPT_MAX_MATCHES) {
+                    matches[n_matches].len = len;
+                    matches[n_matches].off = off;
+                    n_matches++;
+                }
+                prev_best_len = len;
+            }
+        }
+
+        cand = chain_prev[cand];
+        depth++;
+    }
+
+    return n_matches;
+}
+
 /* ----- Monotonic deque (sliding-window min) ------------------------------ *
  *
  * Each bracket owns one deque tracking (position, g) pairs where
@@ -307,10 +361,10 @@ typedef struct {
  *                   position p is either 0 or immediately after a
  *                   completed match.
  *   best_start[r] = min cost of reaching r as a match-start position,
- *                   = min over p of (post_match[p] + 8*(r-p) +
+ *                   = min over p of (post_match[p] + S[r]-S[p] +
  *                                     8*bracket(r-p))
  *                   Computed via sliding-window minima of (post_match[p]
- *                   - 8*p) per bracket.
+ *                   - S[p]) per bracket, where S is the Huffman prefix sum.
  *
  * Transitions:
  *   For each r with matches[r].len >= LZ_MIN_MATCH:
@@ -320,7 +374,7 @@ typedef struct {
  *       post_match[r + L] = min(., candidate)
  *
  * Final:
- *   answer = min over p of (post_match[p] + 8*(N - p))
+ *   answer = min over p of (post_match[p] + S[N]-S[p])
  *            -- trailing literals, no header.
  */
 tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
@@ -601,37 +655,102 @@ tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
     return TDC_OK;
 }
 
-/* ----- STREAMS-aware optimal parse --------------------------------------- *
+/* ----- STREAMS-aware optimal parse with repcode-aware cost model --------- *
  *
  * The legacy tdc_lz_parse_optimal above uses the single-stream cost model
- * (8 bits per literal, 24 bits per match header, leb128 match_ext, bracket-
- * penalty lit-run extension). That's exactly what lz.c's serializer will
- * charge, so the parse is optimal for the single-stream format.
+ * (8 bits per literal, variable-width match header). For the multi-stream
+ * STREAMS format, the post-entropy costs differ:
  *
- * For the multi-stream STREAMS format those constants are wrong. After
- * entropy coding, the real per-symbol costs on structured workloads are:
- *   c_lit      ≈ 6  bits/byte  (measured H_lit ≈ 6.38 on shuffled doubles)
- *   c_match    ≈ 31 bits/seq   (c_ll + c_ml + c_mo, entropy-coded)
- *   match_ext  ≈ 0             (match_len folds into the ml stream)
- *   lit_ext    ≈ 0             (lit_len folds into the ll stream)
+ *   c_lit         ≈ 6   bits/byte  (measured H_lit on structured data)
+ *   c_match_rep   ≈ 12  bits/seq   (lit_len + match_len + rep code ~2 bits)
+ *   c_match_novel ≈ 37  bits/seq   (lit_len + match_len + full offset ~27 bits)
+ *   match_ext     ≈ 0              (match_len folds into the ml stream)
+ *   lit_ext       ≈ 0              (lit_len folds into the ll stream)
  *
- * Using the single-stream 8/24 model on a STREAMS parse causes a systematic
- * error: matches at L=3-4 get charged 24 bits but cost ~31 bits post-entropy,
- * while literals get charged 8 bits but cost ~6 bits. The DP over-prefers
- * short matches the serializer will then "waste" on entropy overhead.
+ * The key insight: after repcode encoding and per-stream entropy coding, a
+ * match at a recently-used offset (rep1/rep2/rep3) is ~3× cheaper than a
+ * match at a novel offset. The previous flat-cost model (31 bits/match for
+ * all offsets) caused the parser to emit thousands of short matches at
+ * diverse offsets, inflating the match_off stream to 44% of total output.
  *
- * With lit_ext = 0 the bracket/tail machinery collapses: the DP reduces to
- *   best_start[r] = r*c_lit + min over p of (post_match[p] - p*c_lit)
- * which is a prefix-minimum — O(1) per r, no deques, no tail Pareto set.
- * The whole DP is O(N) plus the match-finder work.
+ * This version tracks rep state (rep1, rep2, rep3) through the forward DP.
+ * At each position r, it checks:
+ *   1. The longest match from the hash chain (as before)
+ *   2. Matches at each rep offset (simple memcmp extension — cheap)
+ * Rep matches get charged c_match_rep; all others get c_match_novel.
  *
- * Cost units: we work in "8ths of a bit" so the per-literal and per-match
- * costs fit integer arithmetic without losing the fractional bits.
- * c_lit_8ths = 48 (6 bits × 8), c_match_8ths = 248 (31 bits × 8).
+ * Rep state is approximated: each position stores the rep state from the
+ * single best-cost path reaching it (not all Pareto-optimal rep states).
+ * This is the same approximation zstd's btopt uses.
+ *
+ * With lit_ext = 0, the DP remains a prefix-minimum — O(1) per r plus
+ * the match-finder work, now with up to 4 transitions per position
+ * (1 hash-chain + 3 rep candidates).
+ *
+ * Cost units: 8ths of a bit (integer arithmetic, no fractional loss).
  */
 
-#define LZ_OPT_STREAMS_LIT_COST   48   /* 6.0 bits per literal × 8 */
-#define LZ_OPT_STREAMS_MATCH_COST 248  /* 31.0 bits per match × 8 */
+#define LZ_OPT_STREAMS_LIT_COST     56   /* 7.0 bits × 8 (lit stream entropy) */
+#define LZ_OPT_STREAMS_REP_COST     80   /* 10.0 bits × 8: ll/ml/off syms + ll/ml extra */
+
+/* Offset-aware approximate cost for a novel (non-repcode) match.
+ * Base overhead: ll_sym + ml_sym + off_sym entropy ≈ 12 bits.
+ * Plus floor(log2(off)) extra bits for the offset's raw remainder.
+ * Units: 8ths of a bit (matching C_LIT and C_REP). */
+static inline int64_t lz_opt_novel_cost(uint32_t off) {
+    int64_t base = 96;  /* 12 bits × 8 */
+    if (off <= 1u) return base;
+    uint32_t lg = 0, t = off;
+    while (t > 1u) { t >>= 1; lg++; }
+    return base + (int64_t)lg * 8;
+}
+
+/* Initial repcode values (must match lz_streams.c). */
+#define LZ_OPT_REP_INIT_1   1u
+#define LZ_OPT_REP_INIT_2   4u
+#define LZ_OPT_REP_INIT_3   8u
+
+/* Rep state at each DP position. Stored in a parallel array. */
+typedef struct {
+    uint32_t r1, r2, r3;
+} Lz2OptRepState;
+
+/* Compute the new rep state after emitting a match with offset `off`. */
+static inline Lz2OptRepState lz_opt_rep_update(Lz2OptRepState st, uint32_t off) {
+    if (off == st.r1) return st;                                  /* no change */
+    if (off == st.r2) { st.r2 = st.r1; st.r1 = off; return st; } /* swap 1↔2 */
+    if (off == st.r3) { Lz2OptRepState n = {off, st.r1, st.r2}; return n; }
+    Lz2OptRepState n = {off, st.r1, st.r2};
+    return n;
+}
+
+/* Extend a rep match at position pos with back-reference pos-off.
+ * Returns match length (0 if offset is out of range or < LZ_MIN_MATCH). */
+static inline uint32_t lz_opt_rep_extend(const uint8_t *src, uint32_t src_size,
+                                          uint32_t pos, uint32_t off) {
+    if (off == 0u || off > pos) return 0u;
+    uint32_t cand = pos - off;
+    uint32_t max_len = src_size - pos;
+    return lz_opt_extend(src, pos, cand, max_len);
+}
+
+/* Emit a DP transition: if candidate cost < current best at `end`,
+ * update post_match, backtrack, and rep state. */
+static inline void lz_opt_streams_emit(
+    int64_t cand_cost, uint32_t end,
+    uint32_t prev_p, uint32_t r_start, uint32_t L, uint32_t off,
+    Lz2OptRepState new_rep,
+    int64_t *post_match, Lz2OptBacktrack *bt, Lz2OptRepState *rep_at)
+{
+    if (cand_cost < post_match[end]) {
+        post_match[end] = cand_cost;
+        bt[end].prev_p  = prev_p;
+        bt[end].r_start = r_start;
+        bt[end].L       = L;
+        bt[end].off     = off;
+        rep_at[end]     = new_rep;
+    }
+}
 
 tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
                                          tdc_buffer *dst,
@@ -648,18 +767,20 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
     int64_t *post_match = (int64_t *)lz_opt_alloc(dst, (size_t)(N + 1u) * sizeof(int64_t));
     Lz2OptBacktrack *bt = (Lz2OptBacktrack *)lz_opt_alloc(dst,
         (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
+    Lz2OptRepState *rep_at = (Lz2OptRepState *)lz_opt_alloc(dst,
+        (size_t)(N + 1u) * sizeof(Lz2OptRepState));
     uint32_t *chain_head = (uint32_t *)lz_opt_alloc(dst, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
     uint32_t *chain_prev = (uint32_t *)lz_opt_alloc(dst, (size_t)N * sizeof(uint32_t));
 
-    if (!post_match || !bt || !chain_head || !chain_prev) {
+    if (!post_match || !bt || !rep_at || !chain_head || !chain_prev) {
         lz_opt_free(dst, post_match);
         lz_opt_free(dst, bt);
+        lz_opt_free(dst, rep_at);
         lz_opt_free(dst, chain_head);
         lz_opt_free(dst, chain_prev);
         return TDC_E_NOMEM;
     }
 
-    /* LZ_OPT_INF is int32 but we're in int64-eighths. Use a big sentinel. */
     const int64_t INF64 = (int64_t)1 << 62;
     for (uint32_t i = 0u; i <= N; i++) post_match[i] = INF64;
     post_match[0] = 0;
@@ -667,23 +788,29 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
     memset(chain_head, 0xFF, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
     memset(chain_prev, 0xFF, (size_t)N * sizeof(uint32_t));
 
-    const int64_t C_LIT   = LZ_OPT_STREAMS_LIT_COST;
-    const int64_t C_MATCH = LZ_OPT_STREAMS_MATCH_COST;
+    /* Initialize rep state at position 0. */
+    Lz2OptRepState rep_init = {LZ_OPT_REP_INIT_1, LZ_OPT_REP_INIT_2, LZ_OPT_REP_INIT_3};
+    rep_at[0] = rep_init;
 
-    /* Running prefix-minimum of (post_match[p] - p*C_LIT), i.e. the best
-     * "anchor" reachable so far. Updated in lockstep with r. */
+    const int64_t C_LIT   = LZ_OPT_STREAMS_LIT_COST;
+    const int64_t C_REP   = LZ_OPT_STREAMS_REP_COST;
+
+    /* Running prefix-minimum of (post_match[p] - p*C_LIT). */
     int64_t  best_g = INF64;
     uint32_t best_g_p = 0u;
+    Lz2OptRepState best_g_rep = rep_init;
 
     uint32_t skip_until = 0u;
 
     for (uint32_t r = 0u; r < N; r++) {
-        /* Absorb p = r into the prefix-min (state after r literals-only). */
+        /* Absorb p = r into the prefix-min. Literal runs don't change rep
+         * state, so we inherit the rep from the best path ending at r. */
         if (post_match[r] < INF64) {
             int64_t g = post_match[r] - (int64_t)r * C_LIT;
             if (g < best_g) {
                 best_g = g;
                 best_g_p = r;
+                best_g_rep = rep_at[r];
             }
         }
 
@@ -691,6 +818,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
                                ? (best_g + (int64_t)r * C_LIT)
                                : INF64;
         uint32_t best_start_prev_p = best_g_p;
+        Lz2OptRepState cur_rep = best_g_rep;
 
         /* Fast-forward inside a committed long match — chain insert only. */
         if (r < skip_until) {
@@ -711,6 +839,25 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
             continue;
         }
 
+        /* ----- Rep-match candidates ------------------------------------ */
+        /* Check matches at rep1, rep2, rep3 offsets. These are cheap
+         * (just a memcmp extension) and get the lower C_REP cost.
+         * Emit all three as DP transitions — the DP picks the best. */
+        {
+            uint32_t reps[3] = {cur_rep.r1, cur_rep.r2, cur_rep.r3};
+            for (int ri = 0; ri < 3; ri++) {
+                uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps[ri]);
+                if (rlen < LZ_MIN_MATCH) continue;
+                int64_t cand_cost = best_start + C_REP;
+                Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep, reps[ri]);
+                /* For rep matches, longest is dominant (same cost for all L). */
+                lz_opt_streams_emit(cand_cost, r + rlen,
+                    best_start_prev_p, r, rlen, reps[ri], new_rep,
+                    post_match, bt, rep_at);
+            }
+        }
+
+        /* ----- Hash-chain match ---------------------------------------- */
         uint32_t match_len = 0u, match_off = 0u, cand_pos = 0u;
         lz_opt_find_longest(src, src_size, r, chain_head, chain_prev,
                              &match_len, &match_off, &cand_pos);
@@ -722,35 +869,27 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
             chain_head[hs] = r;
         }
 
-        if (match_len < LZ_MIN_MATCH) continue;
+        if (match_len >= LZ_MIN_MATCH) {
+            /* Is this hash-chain match at a rep offset? */
+            int is_rep = (match_off == cur_rep.r1 ||
+                          match_off == cur_rep.r2 ||
+                          match_off == cur_rep.r3);
+            int64_t c_match = is_rep ? C_REP : lz_opt_novel_cost(match_off);
+            Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep, match_off);
 
-        /* Commit-and-skip for long matches — one transition, skip inner L loop. */
-        if (match_len >= LZ_OPT_COMMIT_LEN) {
-            int64_t cand = best_start + C_MATCH;
-            uint32_t end = r + match_len;
-            if (cand < post_match[end]) {
-                post_match[end] = cand;
-                bt[end].prev_p = best_start_prev_p;
-                bt[end].r_start = r;
-                bt[end].L = match_len;
-                bt[end].off = match_off;
+            /* Commit-and-skip for long matches. */
+            if (match_len >= LZ_OPT_COMMIT_LEN) {
+                lz_opt_streams_emit(best_start + c_match, r + match_len,
+                    best_start_prev_p, r, match_len, match_off, new_rep,
+                    post_match, bt, rep_at);
+                skip_until = r + match_len;
+                continue;
             }
-            skip_until = end;
-            continue;
-        }
 
-        /* Every L in [LZ_MIN_MATCH, match_len] costs the same C_MATCH in
-         * the streams model (match_ext=0), so we only need to consider the
-         * full length — any shorter match reaches r+L' at the same cost but
-         * leaves more work ahead. Longest-match is dominant. */
-        int64_t cand = best_start + C_MATCH;
-        uint32_t end = r + match_len;
-        if (cand < post_match[end]) {
-            post_match[end] = cand;
-            bt[end].prev_p = best_start_prev_p;
-            bt[end].r_start = r;
-            bt[end].L = match_len;
-            bt[end].off = match_off;
+            /* Longest-match is dominant for same-cost matches. */
+            lz_opt_streams_emit(best_start + c_match, r + match_len,
+                best_start_prev_p, r, match_len, match_off, new_rep,
+                post_match, bt, rep_at);
         }
     }
 
@@ -781,6 +920,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
         if (!seqs) {
             lz_opt_free(dst, post_match);
             lz_opt_free(dst, bt);
+            lz_opt_free(dst, rep_at);
             lz_opt_free(dst, chain_head);
             lz_opt_free(dst, chain_prev);
             return TDC_E_NOMEM;
@@ -799,6 +939,260 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
 
     lz_opt_free(dst, post_match);
     lz_opt_free(dst, bt);
+    lz_opt_free(dst, rep_at);
+    lz_opt_free(dst, chain_head);
+    lz_opt_free(dst, chain_prev);
+
+    *out_seqs = seqs;
+    *out_seq_count = seq_count;
+    return TDC_OK;
+}
+
+/* --- Symbol index helpers for the priced parser -------------------------- */
+
+static inline uint8_t lz_opt_ml_sym(uint32_t match_len_m3) {
+    if (match_len_m3 <= 1u) return (uint8_t)match_len_m3;
+    uint32_t lg = 0, t = match_len_m3;
+    while (t > 1u) { t >>= 1; lg++; }
+    return (uint8_t)(lg + 1u);
+}
+
+static inline uint8_t lz_opt_off_sym_novel(uint32_t offset) {
+    uint32_t lg = 0, t = offset;
+    while (t > 1u) { t >>= 1; lg++; }
+    return (uint8_t)(lg + 3u);
+}
+
+/* --- Priced STREAMS parser (second pass) -------------------------------- */
+/*
+ * Same structure as tdc_lz_parse_optimal_streams but uses per-symbol costs
+ * from a first-pass frequency analysis. The prefix-min trick uses prefix
+ * sums of per-byte literal costs instead of position × C_LIT.
+ */
+tdc_status tdc_lz_parse_optimal_streams_priced(
+    const uint8_t *src, uint32_t src_size,
+    tdc_buffer *dst,
+    const LzsStreamsPrices *prices,
+    LZSeq **out_seqs, uint32_t *out_seq_count)
+{
+    *out_seqs = NULL;
+    *out_seq_count = 0u;
+
+    if (src_size < LZ_MIN_MATCH + 1u) return TDC_OK;
+
+    uint32_t N = src_size;
+
+    /* Precompute prefix sums of per-byte literal costs. */
+    int64_t *lit_prefix = (int64_t *)lz_opt_alloc(dst,
+        (size_t)(N + 1u) * sizeof(int64_t));
+    int64_t *post_match = (int64_t *)lz_opt_alloc(dst,
+        (size_t)(N + 1u) * sizeof(int64_t));
+    Lz2OptBacktrack *bt = (Lz2OptBacktrack *)lz_opt_alloc(dst,
+        (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
+    Lz2OptRepState *rep_at = (Lz2OptRepState *)lz_opt_alloc(dst,
+        (size_t)(N + 1u) * sizeof(Lz2OptRepState));
+    uint32_t *chain_head = (uint32_t *)lz_opt_alloc(dst,
+        LZ_OPT_HASH_SIZE * sizeof(uint32_t));
+    uint32_t *chain_prev = (uint32_t *)lz_opt_alloc(dst,
+        (size_t)N * sizeof(uint32_t));
+
+    if (!lit_prefix || !post_match || !bt || !rep_at || !chain_head || !chain_prev) {
+        lz_opt_free(dst, lit_prefix);
+        lz_opt_free(dst, post_match);
+        lz_opt_free(dst, bt);
+        lz_opt_free(dst, rep_at);
+        lz_opt_free(dst, chain_head);
+        lz_opt_free(dst, chain_prev);
+        return TDC_E_NOMEM;
+    }
+
+    /* Build literal cost prefix sums. */
+    lit_prefix[0] = 0;
+    for (uint32_t i = 0; i < N; i++)
+        lit_prefix[i + 1] = lit_prefix[i] + prices->lit[src[i]];
+
+    const int64_t INF64 = (int64_t)1 << 62;
+    for (uint32_t i = 0u; i <= N; i++) post_match[i] = INF64;
+    post_match[0] = 0;
+    memset(bt, 0, (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
+    memset(chain_head, 0xFF, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
+    memset(chain_prev, 0xFF, (size_t)N * sizeof(uint32_t));
+
+    Lz2OptRepState rep_init = {LZ_OPT_REP_INIT_1, LZ_OPT_REP_INIT_2, LZ_OPT_REP_INIT_3};
+    rep_at[0] = rep_init;
+
+    /* Running prefix-minimum of (post_match[p] - lit_prefix[p]). */
+    int64_t  best_g = INF64;
+    uint32_t best_g_p = 0u;
+    Lz2OptRepState best_g_rep = rep_init;
+
+    uint32_t skip_until = 0u;
+
+    for (uint32_t r = 0u; r < N; r++) {
+        if (post_match[r] < INF64) {
+            int64_t g = post_match[r] - lit_prefix[r];
+            if (g < best_g) {
+                best_g = g;
+                best_g_p = r;
+                best_g_rep = rep_at[r];
+            }
+        }
+
+        int64_t  best_start = (best_g < INF64)
+                               ? (best_g + lit_prefix[r])
+                               : INF64;
+        uint32_t best_start_prev_p = best_g_p;
+        Lz2OptRepState cur_rep = best_g_rep;
+
+        if (r < skip_until) {
+            if (r + LZ_MIN_MATCH + 1u <= src_size) {
+                uint32_t hs = lz_opt_hash4(src + r);
+                chain_prev[r] = chain_head[hs];
+                chain_head[hs] = r;
+            }
+            continue;
+        }
+
+        if (best_start >= INF64) {
+            if (r + LZ_MIN_MATCH + 1u <= src_size) {
+                uint32_t hs = lz_opt_hash4(src + r);
+                chain_prev[r] = chain_head[hs];
+                chain_head[hs] = r;
+            }
+            continue;
+        }
+
+        /* Rep-match candidates. */
+        {
+            uint32_t reps[3] = {cur_rep.r1, cur_rep.r2, cur_rep.r3};
+            for (int ri = 0; ri < 3; ri++) {
+                uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps[ri]);
+                if (rlen < LZ_MIN_MATCH) continue;
+                int64_t ml_c = (int64_t)prices->ml[lz_opt_ml_sym(rlen - LZ_MIN_MATCH)];
+                int64_t off_c = (int64_t)prices->off[ri];
+                int64_t cand_cost = best_start + prices->ll_avg + ml_c + off_c;
+                Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep, reps[ri]);
+                lz_opt_streams_emit(cand_cost, r + rlen,
+                    best_start_prev_p, r, rlen, reps[ri], new_rep,
+                    post_match, bt, rep_at);
+            }
+        }
+
+        /* Hash-chain matches: find up to LZ_OPT_MAX_MATCHES candidates
+         * at different offsets, then emit transitions at multiple match
+         * lengths along ml-symbol boundaries for each. This lets the DP
+         * choose close-offset matches (fewer off extra bits) over long-
+         * offset matches, and shorter matches that enable better
+         * downstream transitions. */
+        LzOptMatch mf[LZ_OPT_MAX_MATCHES];
+        uint32_t n_mf = lz_opt_find_matches(src, src_size, r,
+                                              chain_head, chain_prev, mf);
+
+        if (r + LZ_MIN_MATCH + 1u <= src_size) {
+            uint32_t hs = lz_opt_hash4(src + r);
+            chain_prev[r] = chain_head[hs];
+            chain_head[hs] = r;
+        }
+
+        for (uint32_t mi = 0u; mi < n_mf; mi++) {
+            uint32_t m_len = mf[mi].len;
+            uint32_t m_off = mf[mi].off;
+
+            int rep_idx = -1;
+            if (m_off == cur_rep.r1) rep_idx = 0;
+            else if (m_off == cur_rep.r2) rep_idx = 1;
+            else if (m_off == cur_rep.r3) rep_idx = 2;
+
+            int64_t off_c = (rep_idx >= 0)
+                ? (int64_t)prices->off[rep_idx]
+                : (int64_t)prices->off[lz_opt_off_sym_novel(
+                      m_off >> prices->offset_shift)];
+            Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep, m_off);
+
+            /* Commit-and-skip for long matches at the longest offset. */
+            if (mi == n_mf - 1u && m_len >= LZ_OPT_COMMIT_LEN) {
+                int64_t ml_c = (int64_t)prices->ml[lz_opt_ml_sym(m_len - LZ_MIN_MATCH)];
+                lz_opt_streams_emit(best_start + prices->ll_avg + ml_c + off_c,
+                    r + m_len, best_start_prev_p, r, m_len, m_off, new_rep,
+                    post_match, bt, rep_at);
+                skip_until = r + m_len;
+                break;
+            }
+
+            /* Emit transitions at ml-symbol boundaries: within each
+             * symbol range, the longest length dominates (same cost,
+             * more bytes covered). Boundaries are at match_len_m3 =
+             * 0, 1, 2, 4, 8, 16, 32, ... (sym = 0, 1, 2, 3, 4, ...).
+             * We iterate through boundaries that fit within m_len. */
+            /* Always emit at the full match length. */
+            {
+                int64_t ml_c = (int64_t)prices->ml[lz_opt_ml_sym(m_len - LZ_MIN_MATCH)];
+                lz_opt_streams_emit(best_start + prices->ll_avg + ml_c + off_c,
+                    r + m_len, best_start_prev_p, r, m_len, m_off, new_rep,
+                    post_match, bt, rep_at);
+            }
+            /* Emit at shorter symbol-boundary lengths (different ml cost). */
+            static const uint32_t ml_bounds[] = {
+                3, 4, 6, 10, 18, 34, 66, 130, 258
+            };
+            for (int bi = 0; bi < 9; bi++) {
+                uint32_t try_len = ml_bounds[bi];
+                if (try_len >= m_len) break;  /* already emitted m_len */
+                if (try_len < LZ_MIN_MATCH) continue;
+                int64_t ml_c = (int64_t)prices->ml[lz_opt_ml_sym(try_len - LZ_MIN_MATCH)];
+                lz_opt_streams_emit(best_start + prices->ll_avg + ml_c + off_c,
+                    r + try_len, best_start_prev_p, r, try_len, m_off, new_rep,
+                    post_match, bt, rep_at);
+            }
+        }
+    }
+
+    /* Final: trailing literals using prefix sums. */
+    uint32_t best_final_p = 0u;
+    int64_t  best_final_cost = lit_prefix[N];  /* all-literal path */
+    for (uint32_t p = 1u; p <= N; p++) {
+        if (post_match[p] >= INF64) continue;
+        int64_t c = post_match[p] + (lit_prefix[N] - lit_prefix[p]);
+        if (c < best_final_cost) {
+            best_final_cost = c;
+            best_final_p = p;
+        }
+    }
+
+    uint32_t seq_count = 0u;
+    {
+        uint32_t cur = best_final_p;
+        while (cur > 0u) { seq_count++; cur = bt[cur].prev_p; }
+    }
+
+    LZSeq *seqs = NULL;
+    if (seq_count > 0u) {
+        seqs = (LZSeq *)lz_opt_alloc(dst, (size_t)seq_count * sizeof(LZSeq));
+        if (!seqs) {
+            lz_opt_free(dst, lit_prefix);
+            lz_opt_free(dst, post_match);
+            lz_opt_free(dst, bt);
+            lz_opt_free(dst, rep_at);
+            lz_opt_free(dst, chain_head);
+            lz_opt_free(dst, chain_prev);
+            return TDC_E_NOMEM;
+        }
+        uint32_t cur = best_final_p;
+        uint32_t idx = seq_count;
+        while (cur > 0u) {
+            idx--;
+            uint32_t prev_p = bt[cur].prev_p;
+            seqs[idx].lit_len   = bt[cur].r_start - prev_p;
+            seqs[idx].match_len = bt[cur].L;
+            seqs[idx].match_off = bt[cur].off;
+            cur = prev_p;
+        }
+    }
+
+    lz_opt_free(dst, lit_prefix);
+    lz_opt_free(dst, post_match);
+    lz_opt_free(dst, bt);
+    lz_opt_free(dst, rep_at);
     lz_opt_free(dst, chain_head);
     lz_opt_free(dst, chain_prev);
 
@@ -859,4 +1253,413 @@ const tdc_entropy_vt tdc_entropy_lz_opt_vt = {
     .encode_bound = lz_opt_encode_bound,
     .encode       = lz_opt_encode,
     .decode       = lz_opt_decode,
+};
+
+/* ===================================================================== *
+ * TDC_ENTROPY_LZ_SPLIT — optimal parser + split descriptor/literal      *
+ *                         Huffman encoding.                              *
+ *                                                                        *
+ * On-disk format:                                                        *
+ *                                                                        *
+ *   offset  size  field                                                  *
+ *     0      4    n_seqs            (0 => passthrough: lit_enc IS src)   *
+ *     4      4    uncompressed_size (== dst_size on decode)              *
+ *     8      4    total_lit_size    (uncompressed literal bytes)         *
+ *    12      4    trailing_lit_len  (literals after last match)          *
+ *    16      4    desc_raw_size     (uncompressed descriptor bytes)      *
+ *    20      4    desc_enc_size     (Huffman-encoded descriptor bytes)   *
+ *    24      4    lit_enc_size      (Huffman-encoded literal bytes)      *
+ *    28      ...  [desc_enc_size bytes] — Huffman-encoded descriptors    *
+ *    28+D    ...  [lit_enc_size bytes]  — Huffman-encoded literals       *
+ *                                                                        *
+ * Descriptors are the same byte format as the single-stream LZ:          *
+ *   [LLLLMMMM tag] [lit_ext*] [match_ext*] [offset 2+ bytes]            *
+ * but WITHOUT the literal bytes interleaved. The decoder walks           *
+ * descriptors exactly like lz_decode_core but pulls literal bytes        *
+ * from the separate literal stream.                                      *
+ * ===================================================================== */
+
+#define LZ_SPLIT_HEADER_SIZE 28u
+
+/* ----- Encode -------------------------------------------------------- */
+
+static void lz_split_build_streams(
+    const uint8_t *src, uint32_t src_size,
+    const LZSeq *seqs, uint32_t seq_count,
+    uint8_t *lit_buf, uint32_t *lit_pos_out,
+    uint8_t *desc_buf, uint32_t *desc_pos_out,
+    uint32_t *trailing_out)
+{
+    uint32_t src_pos = 0, lit_pos = 0, desc_pos = 0;
+    uint64_t consumed = 0;
+
+    for (uint32_t i = 0; i < seq_count; i++) {
+        uint32_t ll = seqs[i].lit_len;
+        uint32_t ml = seqs[i].match_len;
+        uint32_t ml_m3 = ml - LZ_MIN_MATCH;
+        uint32_t off = seqs[i].match_off;
+
+        /* Literals go to lit_buf. */
+        if (ll > 0) {
+            memcpy(lit_buf + lit_pos, src + src_pos, ll);
+            lit_pos += ll;
+        }
+        src_pos += ll + ml;
+        consumed += (uint64_t)ll + ml;
+
+        /* Descriptor: tag + lit_ext + match_ext + offset. */
+        uint8_t ll_nib = (ll >= 15u) ? 15u : (uint8_t)ll;
+        uint8_t ml_nib = (ml_m3 >= 15u) ? 15u : (uint8_t)ml_m3;
+        desc_buf[desc_pos++] = (uint8_t)((ll_nib << 4) | ml_nib);
+
+        if (ll >= 15u) {
+            uint32_t extra = ll - 15u;
+            while (extra >= 255u) {
+                desc_buf[desc_pos++] = 255u;
+                extra -= 255u;
+            }
+            desc_buf[desc_pos++] = (uint8_t)extra;
+        }
+        if (ml_m3 >= 15u) {
+            uint8_t *dp = lz_leb128_write(desc_buf + desc_pos, ml_m3 - 15u);
+            desc_pos = (uint32_t)(dp - desc_buf);
+        }
+        {
+            uint8_t *dp = lz_offset_write(desc_buf + desc_pos, off);
+            desc_pos = (uint32_t)(dp - desc_buf);
+        }
+    }
+
+    /* Trailing literals. */
+    uint32_t trailing = src_size - (uint32_t)consumed;
+    if (trailing > 0) {
+        memcpy(lit_buf + lit_pos, src + src_pos, trailing);
+        lit_pos += trailing;
+    }
+
+    *lit_pos_out = lit_pos;
+    *desc_pos_out = desc_pos;
+    *trailing_out = trailing;
+}
+
+/* Encode a sub-stream with Huffman, falling back to NONE passthrough
+ * if Huffman expands. Returns an allocated buffer the caller frees. */
+static tdc_status lz_split_encode_sub(const uint8_t *raw, uint32_t raw_size,
+                                       tdc_buffer *owner,
+                                       uint8_t **out, uint32_t *out_size)
+{
+    if (raw_size == 0) {
+        *out = NULL;
+        *out_size = 0;
+        return TDC_OK;
+    }
+
+    tdc_buffer scratch = {0};
+    scratch.realloc_fn = owner->realloc_fn;
+    scratch.user = owner->user;
+
+    tdc_status st = tdc_entropy_huffman_vt.encode(raw, raw_size, NULL, &scratch);
+    if (st == TDC_OK && scratch.size < raw_size) {
+        /* Huffman won — transfer ownership. */
+        *out = scratch.data;
+        *out_size = (uint32_t)scratch.size;
+        return TDC_OK;
+    }
+
+    /* Huffman didn't help — passthrough (copy). */
+    if (scratch.data)
+        (void)owner->realloc_fn(owner->user, scratch.data, 0);
+
+    uint8_t *buf = (uint8_t *)owner->realloc_fn(owner->user, NULL, raw_size);
+    if (!buf) return TDC_E_NOMEM;
+    memcpy(buf, raw, raw_size);
+    *out = buf;
+    *out_size = raw_size;
+    return TDC_OK;
+}
+
+static size_t lz_split_encode_bound(size_t src_size) {
+    return LZ_SPLIT_HEADER_SIZE + src_size + src_size;  /* generous */
+}
+
+static tdc_status lz_split_encode(const uint8_t *src, size_t src_size,
+                                   const void *params, tdc_buffer *dst)
+{
+    (void)params;
+    if (!dst || !dst->realloc_fn) return TDC_E_INVAL;
+    if (src_size > UINT32_MAX) return TDC_E_INVAL;
+    if (src_size > 0 && !src) return TDC_E_INVAL;
+
+    uint32_t N = (uint32_t)src_size;
+
+    /* Passthrough for tiny inputs. */
+    if (N < LZ_MIN_MATCH + 1u) {
+        tdc_status st = tdc_buf_reserve(dst, LZ_SPLIT_HEADER_SIZE + N);
+        if (st != TDC_OK) return st;
+        uint32_t zero = 0;
+        memcpy(dst->data + 0,  &zero, 4);  /* n_seqs */
+        memcpy(dst->data + 4,  &N,    4);  /* uncompressed_size */
+        memcpy(dst->data + 8,  &N,    4);  /* total_lit_size */
+        memcpy(dst->data + 12, &N,    4);  /* trailing_lit_len */
+        memcpy(dst->data + 16, &zero, 4);  /* desc_raw_size */
+        memcpy(dst->data + 20, &zero, 4);  /* desc_enc_size */
+        memcpy(dst->data + 24, &N,    4);  /* lit_enc_size */
+        if (N > 0) memcpy(dst->data + LZ_SPLIT_HEADER_SIZE, src, N);
+        dst->size = LZ_SPLIT_HEADER_SIZE + N;
+        return TDC_OK;
+    }
+
+    /* Parse. */
+    LZSeq *seqs = NULL;
+    uint32_t seq_count = 0;
+    tdc_status st = tdc_lz_parse_optimal(src, N, dst, &seqs, &seq_count);
+    if (st != TDC_OK) return st;
+
+    if (seq_count == 0) {
+        /* No matches — passthrough. */
+        if (seqs) lz_opt_free(dst, seqs);
+        tdc_status st2 = tdc_buf_reserve(dst, LZ_SPLIT_HEADER_SIZE + N);
+        if (st2 != TDC_OK) return st2;
+        uint32_t zero = 0;
+        memcpy(dst->data + 0,  &zero, 4);
+        memcpy(dst->data + 4,  &N,    4);
+        memcpy(dst->data + 8,  &N,    4);
+        memcpy(dst->data + 12, &N,    4);
+        memcpy(dst->data + 16, &zero, 4);  /* desc_raw_size */
+        memcpy(dst->data + 20, &zero, 4);  /* desc_enc_size */
+        memcpy(dst->data + 24, &N,    4);  /* lit_enc_size */
+        if (N > 0) memcpy(dst->data + LZ_SPLIT_HEADER_SIZE, src, N);
+        dst->size = LZ_SPLIT_HEADER_SIZE + N;
+        return TDC_OK;
+    }
+
+    /* Compute descriptor size upper bound. Repcode sentinels use 2 bytes
+     * (same as regular offsets), so the old lz_seq_encoded_size bound is
+     * still valid (it assumes 2-byte minimum offset). */
+    uint64_t desc_bound = 0;
+    for (uint32_t i = 0; i < seq_count; i++) {
+        uint32_t ml_m3 = seqs[i].match_len - LZ_MIN_MATCH;
+        desc_bound += lz_seq_encoded_size(seqs[i].lit_len, ml_m3,
+                                          seqs[i].match_off);
+    }
+
+    uint8_t *lit_buf = (uint8_t *)lz_opt_alloc(dst, (size_t)N + 1);
+    uint8_t *desc_buf = (uint8_t *)lz_opt_alloc(dst, (size_t)desc_bound + 1);
+    if (!lit_buf || !desc_buf) {
+        lz_opt_free(dst, lit_buf);
+        lz_opt_free(dst, desc_buf);
+        lz_opt_free(dst, seqs);
+        return TDC_E_NOMEM;
+    }
+
+    uint32_t lit_pos = 0, desc_pos = 0, trailing = 0;
+    lz_split_build_streams(src, N, seqs, seq_count,
+                           lit_buf, &lit_pos, desc_buf, &desc_pos, &trailing);
+    lz_opt_free(dst, seqs);
+    seqs = NULL;
+
+    /* Huffman each sub-stream. */
+    uint8_t *desc_enc = NULL, *lit_enc = NULL;
+    uint32_t desc_enc_size = 0, lit_enc_size = 0;
+
+    st = lz_split_encode_sub(desc_buf, desc_pos, dst, &desc_enc, &desc_enc_size);
+    lz_opt_free(dst, desc_buf);
+    if (st != TDC_OK) { lz_opt_free(dst, lit_buf); return st; }
+
+    st = lz_split_encode_sub(lit_buf, lit_pos, dst, &lit_enc, &lit_enc_size);
+    lz_opt_free(dst, lit_buf);
+    if (st != TDC_OK) { lz_opt_free(dst, desc_enc); return st; }
+
+    /* Check if the split format actually helps vs passthrough. */
+    uint32_t total = LZ_SPLIT_HEADER_SIZE + desc_enc_size + lit_enc_size;
+    if (total >= N) {
+        /* Passthrough is smaller. */
+        lz_opt_free(dst, desc_enc);
+        lz_opt_free(dst, lit_enc);
+        st = tdc_buf_reserve(dst, LZ_SPLIT_HEADER_SIZE + N);
+        if (st != TDC_OK) return st;
+        uint32_t zero = 0;
+        memcpy(dst->data + 0,  &zero, 4);
+        memcpy(dst->data + 4,  &N,    4);
+        memcpy(dst->data + 8,  &N,    4);
+        memcpy(dst->data + 12, &N,    4);
+        memcpy(dst->data + 16, &zero, 4);  /* desc_raw_size */
+        memcpy(dst->data + 20, &zero, 4);  /* desc_enc_size */
+        memcpy(dst->data + 24, &N,    4);  /* lit_enc_size */
+        memcpy(dst->data + LZ_SPLIT_HEADER_SIZE, src, N);
+        dst->size = LZ_SPLIT_HEADER_SIZE + N;
+        return TDC_OK;
+    }
+
+    /* Assemble final output. */
+    st = tdc_buf_reserve(dst, total);
+    if (st != TDC_OK) {
+        lz_opt_free(dst, desc_enc);
+        lz_opt_free(dst, lit_enc);
+        return st;
+    }
+
+    memcpy(dst->data + 0,  &seq_count,     4);
+    memcpy(dst->data + 4,  &N,             4);
+    memcpy(dst->data + 8,  &lit_pos,       4);  /* total_lit_size */
+    memcpy(dst->data + 12, &trailing,      4);
+    memcpy(dst->data + 16, &desc_pos,      4);  /* desc_raw_size */
+    memcpy(dst->data + 20, &desc_enc_size, 4);
+    memcpy(dst->data + 24, &lit_enc_size,  4);
+
+    if (desc_enc_size > 0)
+        memcpy(dst->data + LZ_SPLIT_HEADER_SIZE, desc_enc, desc_enc_size);
+    if (lit_enc_size > 0)
+        memcpy(dst->data + LZ_SPLIT_HEADER_SIZE + desc_enc_size,
+               lit_enc, lit_enc_size);
+
+    dst->size = total;
+
+    lz_opt_free(dst, desc_enc);
+    lz_opt_free(dst, lit_enc);
+    return TDC_OK;
+}
+
+/* ----- Decode -------------------------------------------------------- */
+
+static tdc_status lz_split_decode(const uint8_t *src, size_t src_size,
+                                   uint8_t *dst, size_t dst_size)
+{
+    if (src_size < LZ_SPLIT_HEADER_SIZE) return TDC_E_CORRUPT;
+
+    uint32_t n_seqs, uncompressed_size, total_lit_size, trailing_lit_len;
+    uint32_t desc_raw_size, desc_enc_size, lit_enc_size;
+    memcpy(&n_seqs,             src + 0,  4);
+    memcpy(&uncompressed_size,  src + 4,  4);
+    memcpy(&total_lit_size,     src + 8,  4);
+    memcpy(&trailing_lit_len,   src + 12, 4);
+    memcpy(&desc_raw_size,      src + 16, 4);
+    memcpy(&desc_enc_size,      src + 20, 4);
+    memcpy(&lit_enc_size,       src + 24, 4);
+
+    if ((size_t)uncompressed_size != dst_size) return TDC_E_CORRUPT;
+
+    /* Passthrough case. */
+    if (n_seqs == 0) {
+        if (lit_enc_size != uncompressed_size) return TDC_E_CORRUPT;
+        if (src_size < LZ_SPLIT_HEADER_SIZE + lit_enc_size) return TDC_E_CORRUPT;
+        memcpy(dst, src + LZ_SPLIT_HEADER_SIZE, uncompressed_size);
+        return TDC_OK;
+    }
+
+    if (src_size < LZ_SPLIT_HEADER_SIZE + (size_t)desc_enc_size + lit_enc_size)
+        return TDC_E_CORRUPT;
+
+    const uint8_t *desc_enc = src + LZ_SPLIT_HEADER_SIZE;
+    const uint8_t *lit_enc  = desc_enc + desc_enc_size;
+
+    /* Decode descriptor sub-stream. Huffman if enc_size < raw_size,
+     * passthrough if enc_size == raw_size. */
+    uint8_t *desc_raw = (uint8_t *)malloc(desc_raw_size);
+    if (!desc_raw) return TDC_E_NOMEM;
+
+    if (desc_enc_size < desc_raw_size) {
+        tdc_status st = tdc_entropy_huffman_vt.decode(
+            desc_enc, desc_enc_size, desc_raw, desc_raw_size);
+        if (st != TDC_OK) { free(desc_raw); return st; }
+    } else {
+        if (desc_enc_size != desc_raw_size) { free(desc_raw); return TDC_E_CORRUPT; }
+        memcpy(desc_raw, desc_enc, desc_raw_size);
+    }
+
+    /* Decode literal sub-stream. */
+    uint8_t *lit_raw = (uint8_t *)malloc(total_lit_size + 1);
+    if (!lit_raw) { free(desc_raw); return TDC_E_NOMEM; }
+
+    if (lit_enc_size < total_lit_size) {
+        tdc_status st = tdc_entropy_huffman_vt.decode(
+            lit_enc, lit_enc_size, lit_raw, total_lit_size);
+        if (st != TDC_OK) { free(desc_raw); free(lit_raw); return st; }
+    } else {
+        if (lit_enc_size != total_lit_size) {
+            free(desc_raw); free(lit_raw); return TDC_E_CORRUPT;
+        }
+        memcpy(lit_raw, lit_enc, total_lit_size);
+    }
+    uint32_t lit_raw_size = total_lit_size;
+
+    /* Walk descriptors + literals to reconstruct output, same as
+     * lz_decode_core but pulling from separate streams and decoding
+     * repcode offsets. */
+    uint32_t dst_pos = 0;
+    uint32_t lit_pos = 0;
+    const uint8_t *dp = desc_raw;
+
+    for (uint32_t s = 0; s < n_seqs; s++) {
+        uint8_t tag = *dp++;
+        uint32_t ll = (uint32_t)(tag >> 4);
+        uint32_t ml_m3 = (uint32_t)(tag & 0x0F);
+
+        /* Literal-length extension (chained-255 varint). */
+        if (ll == 15u) {
+            uint8_t b;
+            do {
+                b = *dp++;
+                ll += b;
+            } while (b == 255u);
+        }
+
+        /* Match-length extension (LEB128). */
+        if (ml_m3 == 15u) {
+            uint32_t ext;
+            dp = lz_leb128_read(dp, &ext);
+            ml_m3 += ext;
+        }
+        uint32_t ml = ml_m3 + LZ_MIN_MATCH;
+
+        /* Offset. */
+        uint32_t off;
+        dp = lz_offset_read(dp, &off);
+
+        /* Copy literals from literal stream. */
+        if (ll > 0) {
+            if (lit_pos + ll > lit_raw_size || dst_pos + ll > dst_size) {
+                free(desc_raw); free(lit_raw); return TDC_E_CORRUPT;
+            }
+            memcpy(dst + dst_pos, lit_raw + lit_pos, ll);
+            dst_pos += ll;
+            lit_pos += ll;
+        }
+
+        /* Copy match from output history. */
+        if (off == 0 || off > dst_pos || dst_pos + ml > dst_size) {
+            free(desc_raw); free(lit_raw); return TDC_E_CORRUPT;
+        }
+        {
+            uint8_t *match_dst = dst + dst_pos;
+            const uint8_t *match_src = dst + dst_pos - off;
+            for (uint32_t j = 0; j < ml; j++)
+                match_dst[j] = match_src[j];
+            dst_pos += ml;
+        }
+    }
+
+    /* Trailing literals. */
+    if (trailing_lit_len > 0) {
+        if (lit_pos + trailing_lit_len > lit_raw_size ||
+            dst_pos + trailing_lit_len > dst_size) {
+            free(desc_raw); free(lit_raw); return TDC_E_CORRUPT;
+        }
+        memcpy(dst + dst_pos, lit_raw + lit_pos, trailing_lit_len);
+        dst_pos += trailing_lit_len;
+    }
+
+    free(desc_raw);
+    free(lit_raw);
+
+    if (dst_pos != dst_size) return TDC_E_CORRUPT;
+    return TDC_OK;
+}
+
+const tdc_entropy_vt tdc_entropy_lz_split_vt = {
+    .id           = TDC_ENTROPY_LZ_SPLIT,
+    .name         = "lz_split",
+    .encode_bound = lz_split_encode_bound,
+    .encode       = lz_split_encode,
+    .decode       = lz_split_decode,
 };

@@ -885,6 +885,69 @@ static int case_pred2d_bshuf_lz_opt_large(void) {
     return rc;
 }
 
+/* RAW + LZ_SPLIT on a smooth f64 vector. 10958 elements matches the
+ * USGS streamflow dataset size. Exercises repcode offset encoding on
+ * realistic-size data. */
+static int case_raw_f64_lz_split(void) {
+    enum { N = 10958 };
+    double *data = (double *)malloc(sizeof(double) * N);
+    if (!data) return 1;
+    /* Mimic seasonal pattern: base + trend + seasonal + noise. */
+    uint32_t s = 0xF00D;
+    for (int i = 0; i < N; ++i) {
+        s = s * 1103515245u + 12345u;
+        double noise = (double)((int)((s >> 16) & 0xFF) - 128) * 0.5;
+        data[i] = 50000.0 + 10.0 * (double)i + 20000.0 * (1.0 + 0.01 * (double)(i % 365)) + noise;
+    }
+
+    tdc_block b = {0};
+    b.data        = data;
+    b.dtype       = TDC_DT_F64;
+    b.layout      = TDC_LAYOUT_VECTOR_1D;
+    b.shape.rank  = 1;
+    b.shape.dim[0] = N;
+    tdc_shape_set_contiguous(&b.shape);
+
+    tdc_codec_spec s1 = {0};
+    s1.model      = TDC_MODEL_RAW;
+    s1.entropy[0] = TDC_ENTROPY_LZ_SPLIT;
+    int rc = rt("RAW + LZ_SPLIT | vec1d f64 4096", &b, &s1);
+    free(data);
+    return rc;
+}
+
+/* PRED2D + BSHUF + LZ_SPLIT on a noisy u16 raster. */
+static int case_pred2d_bshuf_lz_split(void) {
+    enum { NX = 128, NY = 96 };
+    uint16_t *data = (uint16_t *)malloc(sizeof(uint16_t) * NX * NY);
+    if (!data) return 1;
+    uint32_t s = 0xDEADBEu;
+    for (int r = 0; r < NY; ++r)
+        for (int c = 0; c < NX; ++c) {
+            s = s * 1103515245u + 12345u;
+            int noise = (int)((s >> 20) & 0x7) - 3;
+            data[r * NX + c] = (uint16_t)(200 + r * 3 + c * 2 + noise);
+        }
+
+    tdc_block b = {0};
+    b.data        = data;
+    b.dtype       = TDC_DT_U16;
+    b.layout      = TDC_LAYOUT_RASTER_2D;
+    b.shape.rank  = 2;
+    b.shape.dim[0] = NY; b.shape.dim[1] = NX;
+    tdc_shape_set_contiguous(&b.shape);
+
+    tdc_pred2d_params params = { .kind = TDC_PRED2D_PAETH };
+    tdc_codec_spec s1 = {0};
+    s1.model        = TDC_MODEL_PRED_2D;
+    s1.model_params = &params;
+    s1.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+    s1.entropy[0]   = TDC_ENTROPY_LZ_SPLIT;
+    int rc = rt("PRED2D + BSHUF + LZ_SPLIT | rast2d u16 128x96", &b, &s1);
+    free(data);
+    return rc;
+}
+
 /* ----- Float + LANE entropy pipeline cases -------------------------------- */
 
 static int case_f32_pred2d_bshuf_lane(void) {
@@ -1010,6 +1073,8 @@ int main(void) {
     rc |= case_raw_fse_lz_chain();
     rc |= case_delta_three_stage_chain();
     rc |= case_pred2d_bshuf_lz_opt_large();
+    rc |= case_raw_f64_lz_split();
+    rc |= case_pred2d_bshuf_lz_split();
 
     fprintf(stdout, "float + lane entropy pipeline cases:\n");
     rc |= case_f32_pred2d_bshuf_lane();

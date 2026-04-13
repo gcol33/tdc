@@ -33,12 +33,20 @@
  *                               caller-provided dst_size, written for
  *                               self-description / corruption detection)
  *     u32  payload_bits        (number of valid bits in the payload)
- *     u8[256] code_lengths     (0 means symbol unused; otherwise 1..15)
+ *     u16  n_lengths           (number of code length entries, 0..256;
+ *                               symbols >= n_lengths are implicitly unused)
+ *     u8[n_lengths] code_lens  (0 means symbol unused; otherwise 1..15)
  *     u8[]    payload          ceil(payload_bits / 8) bytes; bits packed
  *                              MSB-first within each byte
  *
+ * The n_lengths field stores only as many code lengths as needed —
+ * (max_active_symbol + 1) for streams with symbols present, 0 for empty.
+ * For full 256-symbol alphabets (byte streams) n_lengths = 256 (header
+ * = 266 bytes, 2 more than before). For small alphabets like the LZ
+ * symbol streams (22-24 symbols) the header shrinks to ~34 bytes.
+ *
  * Edge cases handled by the format:
- *   - Empty input:  src_size == 0, payload_bits == 0, all lengths zero.
+ *   - Empty input:  src_size == 0, payload_bits == 0, n_lengths == 0.
  *   - Single distinct symbol s in src: code_lengths[s] = 1, codeword 0;
  *     payload is src_size zero bits. The "wasteful" 1 bit per symbol is
  *     intentional — keeping the canonical-Huffman invariant lets the
@@ -56,7 +64,10 @@
 
 #define HUFFMAN_NSYMS    256
 #define HUFFMAN_MAX_LEN  15
-#define HUFFMAN_HDR_SIZE (4u + 4u + (uint32_t)HUFFMAN_NSYMS)
+/* Fixed header prefix: src_size(4) + payload_bits(4) + n_lengths(2) = 10.
+ * Full header size = 10 + n_lengths.  Worst case: 10 + 256 = 266. */
+#define HUFFMAN_HDR_PREFIX 10u
+#define HUFFMAN_HDR_MAX    (HUFFMAN_HDR_PREFIX + (uint32_t)HUFFMAN_NSYMS)
 
 /* ----- Heap-based optimal Huffman length computation ---------------------- */
 /*
@@ -390,9 +401,9 @@ static inline int br_pop_bit(bit_reader *br) {
 /* ----- Encode / decode entry points -------------------------------------- */
 
 static size_t huffman_encode_bound(size_t src_size) {
-    /* Header (264 bytes) + worst-case payload (15 bits/symbol) +
+    /* Header (up to 266 bytes) + worst-case payload (15 bits/symbol) +
      * 1 byte flush slack. 15/8 = 1.875 bytes/byte; round up via /4 + src. */
-    return (size_t)HUFFMAN_HDR_SIZE + src_size + (src_size / 2u) + 16u;
+    return (size_t)HUFFMAN_HDR_MAX + src_size + (src_size / 2u) + 16u;
 }
 
 static tdc_status huffman_encode(const uint8_t *src, size_t src_size,
@@ -419,16 +430,24 @@ static tdc_status huffman_encode(const uint8_t *src, size_t src_size,
     (void)huffman_compute_lengths_limited(freq, lens);
     huffman_build_canonical(lens, codes);
 
-    /* Write fixed header: src_size, payload_bits placeholder, lengths. */
+    /* Compute n_lengths: highest active symbol + 1 (0 for empty). */
+    uint16_t n_lengths = 0;
+    for (int s = HUFFMAN_NSYMS - 1; s >= 0; --s) {
+        if (lens[s] != 0) { n_lengths = (uint16_t)(s + 1); break; }
+    }
+    uint32_t hdr_size = HUFFMAN_HDR_PREFIX + (uint32_t)n_lengths;
+
+    /* Write header: src_size, payload_bits placeholder, n_lengths, code lengths. */
     uint8_t *out = dst->data;
     tdc_le_store_u32(out + 0, (uint32_t)src_size);
     /* payload_bits is patched after the bit writer reports its total. */
     tdc_le_store_u32(out + 4, 0u);
-    memcpy(out + 8, lens, HUFFMAN_NSYMS);
+    tdc_le_store_u16(out + 8, n_lengths);
+    if (n_lengths > 0) memcpy(out + HUFFMAN_HDR_PREFIX, lens, n_lengths);
 
     /* Bit-pack payload. */
     bit_writer bw;
-    bw_init(&bw, out + HUFFMAN_HDR_SIZE);
+    bw_init(&bw, out + hdr_size);
     for (size_t i = 0; i < src_size; ++i) {
         uint8_t s = src[i];
         bw_write_bits(&bw, codes[s], lens[s]);
@@ -439,31 +458,39 @@ static tdc_status huffman_encode(const uint8_t *src, size_t src_size,
     /* Patch payload_bits and finalize size. */
     if (total_bits > 0xFFFFFFFFu) return TDC_E_INVAL;
     tdc_le_store_u32(out + 4, (uint32_t)total_bits);
-    dst->size = (size_t)HUFFMAN_HDR_SIZE + bw.used;
+    dst->size = (size_t)hdr_size + bw.used;
     return TDC_OK;
 }
 
 static tdc_status huffman_decode(const uint8_t *src, size_t src_size,
                                  uint8_t       *dst, size_t dst_size) {
-    if (src_size < HUFFMAN_HDR_SIZE) return TDC_E_CORRUPT;
+    if (src_size < HUFFMAN_HDR_PREFIX) return TDC_E_CORRUPT;
     if (dst_size > 0 && !dst) return TDC_E_INVAL;
 
-    uint32_t hdr_src_size   = tdc_le_load_u32(src + 0);
+    uint32_t hdr_src_size     = tdc_le_load_u32(src + 0);
     uint32_t hdr_payload_bits = tdc_le_load_u32(src + 4);
+    uint16_t n_lengths        = tdc_le_load_u16(src + 8);
     if ((size_t)hdr_src_size != dst_size) return TDC_E_CORRUPT;
+    if (n_lengths > HUFFMAN_NSYMS) return TDC_E_CORRUPT;
 
-    const uint8_t *lens = src + 8;
-    const uint8_t *payload = src + HUFFMAN_HDR_SIZE;
-    size_t         payload_bytes_avail = src_size - HUFFMAN_HDR_SIZE;
+    uint32_t hdr_size = HUFFMAN_HDR_PREFIX + (uint32_t)n_lengths;
+    if (src_size < hdr_size) return TDC_E_CORRUPT;
+
+    /* Build full-size lens array from compact header. */
+    uint8_t lens_buf[HUFFMAN_NSYMS];
+    memset(lens_buf, 0, sizeof lens_buf);
+    if (n_lengths > 0) memcpy(lens_buf, src + HUFFMAN_HDR_PREFIX, n_lengths);
+    const uint8_t *lens = lens_buf;
+
+    const uint8_t *payload = src + hdr_size;
+    size_t         payload_bytes_avail = src_size - hdr_size;
     size_t         payload_bytes_need  = (size_t)((hdr_payload_bits + 7u) / 8u);
     if (payload_bytes_need > payload_bytes_avail) return TDC_E_CORRUPT;
 
     /* Empty input. */
     if (dst_size == 0u) {
         if (hdr_payload_bits != 0u) return TDC_E_CORRUPT;
-        for (int s = 0; s < HUFFMAN_NSYMS; ++s) {
-            if (lens[s] != 0u) return TDC_E_CORRUPT;
-        }
+        if (n_lengths != 0u) return TDC_E_CORRUPT;
         return TDC_OK;
     }
 

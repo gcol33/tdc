@@ -184,11 +184,35 @@ tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
  * (ll + ml + mo combined), no match_ext, no lit-run bracket penalty.
  * The resulting parse is optimal for the LZ_STREAMS on-disk format, not
  * the single-stream format. Same output contract as the legacy variant.
- * Used by TDC_ENTROPY_LZ_STREAMS. */
+ * Used by TDC_ENTROPY_LZ_STREAMS (first pass). */
 tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
                                          tdc_buffer *dst,
                                          LZSeq **out_seqs,
                                          uint32_t *out_seq_count);
+
+/* Per-symbol cost table for the priced STREAMS parser. All costs are in
+ * 1/8-bit units (matching the LZ_OPT_STREAMS_*_COST scale). Computed
+ * from first-pass frequency tables via Shannon entropy. */
+#define LZS_PRICE_MAX_SYM  32u  /* comfortably covers all sub-alphabets */
+
+typedef struct {
+    int32_t lit[256];            /* per literal byte value */
+    int32_t ll_avg;              /* flat ll overhead (avg symbol + extra) */
+    int32_t ml[LZS_PRICE_MAX_SYM];  /* per ml symbol (Huf code + extra bits) */
+    int32_t off[LZS_PRICE_MAX_SYM]; /* per off symbol (Huf code + extra bits) */
+    uint32_t offset_shift;       /* right-shift to apply before offset symbol lookup */
+} LzsStreamsPrices;
+
+/* Priced variant of the STREAMS parser (second pass). Uses per-symbol
+ * costs from the first pass to make more accurate parse decisions.
+ * - Literal costs: per-byte, from prices->lit[byte_value]
+ * - Match costs: per-symbol for ml and off, flat average for ll
+ * Same output contract as tdc_lz_parse_optimal_streams. */
+tdc_status tdc_lz_parse_optimal_streams_priced(
+    const uint8_t *src, uint32_t src_size,
+    tdc_buffer *dst,
+    const LzsStreamsPrices *prices,
+    LZSeq **out_seqs, uint32_t *out_seq_count);
 
 #ifdef __cplusplus
 }

@@ -75,7 +75,7 @@ static int blk_entropy_id_valid(uint16_t id) {
     /* NONE is allowed as chain terminator; otherwise must be a known id
      * or a user-defined id. */
     return id == TDC_ENTROPY_NONE ||
-           (id >= TDC_ENTROPY_LZ && id <= TDC_ENTROPY_LZ_STREAMS) ||
+           (id >= TDC_ENTROPY_LZ && id <= TDC_ENTROPY_LZ_SPLIT) ||
            (id >= 0xFF00u && id <= 0xFFFFu);
 }
 

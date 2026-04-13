@@ -96,13 +96,21 @@ typedef enum {
                                    * parser. Emits the SAME on-disk format as
                                    * TDC_ENTROPY_LZ — decoder is shared. Slower
                                    * encode, smaller output on structured data. */
-    TDC_ENTROPY_LZ_STREAMS = 0x0007 /* LZ parse split into 4 separated,
-                                      * entropy-coded streams (literal bytes,
-                                      * lit_len u32, match_len u32, match_off
-                                      * u32). Each stream picks NONE/HUFFMAN/FSE
-                                      * via Shannon entropy. Same parser as LZ,
-                                      * different serializer — NOT compatible
-                                      * with the single-stream decoder. */
+    TDC_ENTROPY_LZ_STREAMS = 0x0007, /* LZ parse split into 4 separated,
+                                       * entropy-coded streams (literal bytes,
+                                       * lit_len u32, match_len u32, match_off
+                                       * u32). Each stream picks NONE/HUFFMAN/FSE
+                                       * via Shannon entropy. Same parser as LZ,
+                                       * different serializer — NOT compatible
+                                       * with the single-stream decoder. */
+    TDC_ENTROPY_LZ_SPLIT  = 0x0008  /* LZ with optimal parser + split entropy:
+                                      * literal bytes and sequence descriptors
+                                      * (tags, extensions, offsets) are separated
+                                      * and Huffman-coded independently. Better
+                                      * compression than LZ_OPT+HUF because the
+                                      * two sub-streams have distinct byte
+                                      * distributions. Self-contained — not
+                                      * chainable with a second entropy stage. */
 } tdc_entropy_id;
 
 /* ----- Per-stage params ---------------------------------------------------- */
