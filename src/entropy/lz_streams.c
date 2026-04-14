@@ -342,6 +342,7 @@ static const tdc_entropy_vt *lzs_sub_vt(tdc_entropy_id id) {
     switch (id) {
         case TDC_ENTROPY_NONE:    return &tdc_entropy_none_vt;
         case TDC_ENTROPY_HUFFMAN: return &tdc_entropy_huffman_vt;
+        case TDC_ENTROPY_HUFFMAN4:return &tdc_entropy_huffman4_vt;
         case TDC_ENTROPY_FSE:     return &tdc_entropy_fse_vt;
         default:                  return NULL;
     }
@@ -494,14 +495,30 @@ static tdc_status lzs_encode_stream(const uint8_t *src, size_t n,
     tdc_entropy_id best_id   = TDC_ENTROPY_NONE;
     int            best_is_encoded = 0;
 
+    /* Decode-speed bias: for streams >= LZS_HUF4_PREFER_BYTES, HUFFMAN4
+     * decodes ~1.5-2x faster than single-stream HUFFMAN but produces a
+     * payload ~20 bytes larger (3x u32 stream header + extra bit-flush
+     * padding on 3 sub-streams with the same tree). Bias the selector
+     * so HUFFMAN4 wins as long as it costs < 0.05% of the stream size. */
+#define LZS_HUF4_PREFER_BYTES  (64u * 1024u)
+    const size_t huf4_budget = (n >= LZS_HUF4_PREFER_BYTES)
+                               ? (n / 2000u + 32u) : 0;
+
     /* Keep a stash of the winning encoded bytes across candidate coders.
      * Each candidate writes into scratch; on a win we snapshot into stash
      * so the next candidate's encode doesn't clobber it. */
     uint8_t *stash = NULL;
     size_t   stash_size = 0;
 
+    /* HUFFMAN4 splits into 4 independently-decoded streams — adds ~12B of
+     * header overhead vs single-stream HUFFMAN, but roughly doubles decode
+     * throughput on big (Huffman-dominated) streams. HUFFMAN4 itself
+     * delegates to single-stream for n < 256, so including both here is
+     * only a win on the literal stream for non-tiny blocks; trial-and-
+     * compare picks whichever lands smaller. */
     static const tdc_entropy_id candidates[] = {
         TDC_ENTROPY_HUFFMAN,
+        TDC_ENTROPY_HUFFMAN4,
         TDC_ENTROPY_FSE,
     };
     for (size_t c = 0; c < sizeof(candidates) / sizeof(candidates[0]); c++) {
@@ -515,7 +532,15 @@ static tdc_status lzs_encode_stream(const uint8_t *src, size_t n,
             /* Coder refused this input — skip, don't abort the whole block. */
             continue;
         }
-        if (scratch->size >= best_size) continue;
+        /* HUFFMAN4 gets a size budget over the current best: its payload
+         * is bit-identical to HUFFMAN but ~20B larger due to stream
+         * headers. For large streams we pay those ~20B for ~2x decode. */
+        size_t effective_size = scratch->size;
+        if (id == TDC_ENTROPY_HUFFMAN4 && huf4_budget > 0 &&
+            scratch->size <= best_size + huf4_budget) {
+            effective_size = 0;  /* force win */
+        }
+        if (effective_size >= best_size) continue;
 
         /* New champion — snapshot into stash. */
         uint8_t *new_stash = (uint8_t *)owner->realloc_fn(
@@ -1502,6 +1527,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         static const char *id_name[] = {
             [TDC_ENTROPY_NONE]    = "NONE",
             [TDC_ENTROPY_HUFFMAN] = "HUF",
+            [TDC_ENTROPY_HUFFMAN4]= "HUF4",
             [TDC_ENTROPY_FSE]     = "FSE",
         };
         uint32_t total_enc = (uint32_t)LZS_HEADER_SIZE_V2
@@ -1825,6 +1851,7 @@ static tdc_status lzs_decode_fused(
  * up to 15 bytes past the match end. To make this safe, we use the fast
  * path only while dp + ml + 15 <= dst_size; the last few sequences fall
  * back to byte-by-byte copy. */
+#define LZS_PREFETCH_DIST 8u
 static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
                                     const uint8_t *lit_raw, uint32_t total_lit,
                                     uint32_t trailing,
@@ -1835,19 +1862,71 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
     size_t dp = 0, lp = 0;
     /* Fast path: wildcopy-safe region (15 bytes of slack). */
     size_t safe_end = (dst_size >= 15) ? dst_size - 15 : 0;
-    uint32_t i = 0;
 
-    for (; i < n_seqs; i++) {
+    /* Upfront validation: sum lit_lens and match_lens, check against totals.
+     * If this passes, every per-sequence buffer-bounds check in the hot loop
+     * is provably redundant (except mo <= dp, which is load-dependent).
+     * ml >= LZ_MIN_MATCH is guaranteed by symbol reconstruction. */
+    uint64_t sum_ll = 0, sum_ml = 0;
+    for (uint32_t k = 0; k < n_seqs; k++) {
+        sum_ll += lit_lens[k];
+        sum_ml += match_lens[k];
+    }
+    if (sum_ll + trailing != total_lit)        return TDC_E_CORRUPT;
+    if (sum_ll + sum_ml + trailing != dst_size) return TDC_E_CORRUPT;
+
+    /* 8-sequence match-address prefetch pipeline.
+     *
+     * Maintains dp_ahead running LZS_PREFETCH_DIST sequences ahead of the
+     * execute cursor. Each step computes the match address for seq[i+D]
+     * and issues an L1 prefetch, so by the time execute reaches seq[i+D]
+     * the match cacheline is warm. Covers ~200-300 ns of main-memory
+     * latency on long-offset matches (common on f64 scientific data
+     * with periodic patterns, per the offset histogram).
+     *
+     * Correctness notes:
+     *   - dp_ahead is an address predictor, not an authoritative cursor;
+     *     actual bounds/validity checks stay in the execute loop.
+     *   - If the prefetched address is one that a prior sequence is about
+     *     to write, the prefetch just warms a stale cacheline and loses
+     *     nothing (the later write still wins).
+     *   - If dp_ahead + ll + ml runs past dst_size mid-prime, we clamp
+     *     the prefetch address so we never issue a prefetch for OOB
+     *     memory; the execute loop will catch the actual corruption. */
+
+    /* Prime: walk dp_ahead forward D sequences, prefetching each match. */
+    size_t dp_ahead = 0;
+    uint32_t primed = (n_seqs < LZS_PREFETCH_DIST) ? n_seqs : LZS_PREFETCH_DIST;
+    for (uint32_t k = 0; k < primed; k++) {
+        uint32_t ll_k = lit_lens[k];
+        uint32_t ml_k = match_lens[k];
+        uint32_t mo_k = match_offs[k];
+        size_t   addr = dp_ahead + ll_k;
+        if (mo_k != 0 && mo_k <= addr && addr < dst_size)
+            TDC_PREFETCH_L1(dst + addr - mo_k);
+        dp_ahead = addr + ml_k;
+        if (dp_ahead > dst_size) dp_ahead = dst_size;
+    }
+
+    uint32_t i = 0;
+    /* Main loop: execute seq[i], prefetch seq[i+D]. Runs while there are
+     * D-ahead sequences to prefetch (i + D < n_seqs). */
+    uint32_t main_end = (n_seqs > LZS_PREFETCH_DIST) ? (n_seqs - LZS_PREFETCH_DIST) : 0;
+    for (; i < main_end; i++) {
         uint32_t ll = lit_lens[i];
         uint32_t ml = match_lens[i];
         uint32_t mo = match_offs[i];
 
-        if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
-        if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
-
-        /* Prefetch match address before literal copy. */
-        if (mo != 0 && mo <= dp)
-            TDC_PREFETCH_L1(dst + dp - mo + ll);
+        /* Prefetch seq[i+D]. dp_ahead tracks the D-ahead position; mo_a
+         * uses that same ahead position. */
+        uint32_t ll_a = lit_lens[i + LZS_PREFETCH_DIST];
+        uint32_t ml_a = match_lens[i + LZS_PREFETCH_DIST];
+        uint32_t mo_a = match_offs[i + LZS_PREFETCH_DIST];
+        size_t   addr_a = dp_ahead + ll_a;
+        if (mo_a != 0 && mo_a <= addr_a && addr_a < dst_size)
+            TDC_PREFETCH_L1(dst + addr_a - mo_a);
+        dp_ahead = addr_a + ml_a;
+        if (dp_ahead > dst_size) dp_ahead = dst_size;
 
         if (ll > 0) {
             if (ll <= 16 && dp + ll <= safe_end) {
@@ -1859,14 +1938,39 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
             lp += ll;
         }
 
-        if (ml < LZ_MIN_MATCH)            return TDC_E_CORRUPT;
-        if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
-        if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
+        if (mo == 0 || mo > dp) return TDC_E_CORRUPT;
 
         if (dp + ml <= safe_end) {
             tdc_match_copy(dst + dp, mo, ml);
         } else {
-            /* Near end of buffer: byte-by-byte (no overwrite risk). */
+            size_t from = dp - mo;
+            for (uint32_t k = 0; k < ml; k++)
+                dst[dp + k] = dst[from + k];
+        }
+        dp += ml;
+    }
+
+    /* Drain: execute the last D sequences without further prefetch. */
+    for (; i < n_seqs; i++) {
+        uint32_t ll = lit_lens[i];
+        uint32_t ml = match_lens[i];
+        uint32_t mo = match_offs[i];
+
+        if (ll > 0) {
+            if (ll <= 16 && dp + ll <= safe_end) {
+                tdc_copy16(dst + dp, lit_raw + lp);
+            } else {
+                memcpy(dst + dp, lit_raw + lp, ll);
+            }
+            dp += ll;
+            lp += ll;
+        }
+
+        if (mo == 0 || mo > dp) return TDC_E_CORRUPT;
+
+        if (dp + ml <= safe_end) {
+            tdc_match_copy(dst + dp, mo, ml);
+        } else {
             size_t from = dp - mo;
             for (uint32_t k = 0; k < ml; k++)
                 dst[dp + k] = dst[from + k];

@@ -1061,37 +1061,61 @@ static tdc_status huffman4_decode(const uint8_t *src, size_t src_size,
     huf_br_init(&br2, payload + ss0 + ss1, ss2);
     huf_br_init(&br3, payload + ss0 + ss1 + ss2, ss3);
 
-    /* Interleaved 4-stream decode with per-stream position tracking.
+    /* Interleaved 4-stream decode — registers-only hot loop.
      *
-     * Each stream has its own output cursor (j0..j3) so it can independently
-     * advance by 1 or 2 symbols per fast2 lookup.  Handles both 1-sym and
-     * 2-sym fast2 entries inline.  Only bails to sequential tail on slow-path
-     * entries (code > HUFFMAN_FAST_BITS, rare on residual streams).
+     * All four huf_br states (bits/nbits/ptr) are pulled into plain local
+     * variables at loop entry and written back on exit, so MSVC /O2 keeps
+     * them in registers across iterations instead of reloading from the
+     * struct each round. Refill is inlined to avoid struct aliasing.
      *
-     * Two rounds between refills: max 22 bits per round × 2 = 44 < 56
-     * (guaranteed bits after refill). */
+     * Three rounds between refills: 2x fast2 (up to 2 syms, ≤22 bits) +
+     * 1x fast (1 sym, ≤11 bits) = up to 55 bits total, within the 56-bit
+     * post-refill guarantee. Up to 5 symbols/stream/iteration. */
     size_t j0 = 0, j1 = 0, j2 = 0, j3 = 0;
     {
-        /* Safe margin: 2 fast2 rounds can each advance by 2, plus 1 fast
-         * round advances by 1 = max 5 symbols past the loop-check position.
-         * Need j + 5 <= n, i.e. j < n - 5, to avoid overwriting. */
+        /* Safe margin: each round writes up to 2 syms from the j cursor,
+         * so j + 2 <= n must hold for each round. Use j + 5 <= n as the
+         * loop guard covering all 3 rounds. */
         size_t safe0 = (n0 > 5) ? n0 - 5 : 0;
         size_t safe1 = (n1 > 5) ? n1 - 5 : 0;
         size_t safe2 = (n2 > 5) ? n2 - 5 : 0;
         size_t safe3 = (n3 > 5) ? n3 - 5 : 0;
 
-        while (j0 < safe0 && j1 < safe1 && j2 < safe2 && j3 < safe3) {
-            huf_br_refill(&br0);
-            huf_br_refill(&br1);
-            huf_br_refill(&br2);
-            huf_br_refill(&br3);
+        /* Register-promoted bitstream state for all 4 streams.
+         * MSVC /O2 keeps these 12 values (bits/nbits/ptr × 4) in registers
+         * across the loop instead of reloading from the huf_br struct each
+         * round. `safe`/`end` are loop-invariant and stay in the struct. */
+        uint64_t       bits0 = br0.bits, bits1 = br1.bits, bits2 = br2.bits, bits3 = br3.bits;
+        int            nb0   = br0.nbits, nb1 = br1.nbits, nb2 = br2.nbits, nb3 = br3.nbits;
+        const uint8_t *p0 = br0.ptr, *p1 = br1.ptr, *p2 = br2.ptr, *p3 = br3.ptr;
+        const uint8_t *s0 = br0.safe, *s1 = br1.safe, *s2 = br2.safe, *s3 = br3.safe;
 
-            /* Round 1: peek all 4, lookup, decode. */
+        /* Refill macro: fast-path only (ptr < safe guarded by the while
+         * condition). Operates on locals — no struct aliasing, so MSVC
+         * keeps bits/nbits/ptr in registers. */
+#define HUF_REFILL_LOCAL(BITS, NB, PTR) do {                               \
+            uint64_t _next;                                                \
+            memcpy(&_next, (PTR), 8);                                      \
+            _next = huf_bswap64(_next);                                    \
+            (BITS) |= _next >> (NB);                                       \
+            unsigned _fresh = (unsigned)(64 - (NB)) >> 3;                  \
+            (PTR) += _fresh;                                               \
+            (NB)  += (int)(_fresh << 3);                                   \
+        } while (0)
+
+        while (j0 < safe0 && j1 < safe1 && j2 < safe2 && j3 < safe3 &&
+               p0 < s0 && p1 < s1 && p2 < s2 && p3 < s3) {
+            HUF_REFILL_LOCAL(bits0, nb0, p0);
+            HUF_REFILL_LOCAL(bits1, nb1, p1);
+            HUF_REFILL_LOCAL(bits2, nb2, p2);
+            HUF_REFILL_LOCAL(bits3, nb3, p3);
+
+            /* Round 1: fast2 lookup, 1 or 2 symbols per stream. */
             {
-                uint32_t pk0 = (uint32_t)(br0.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk1 = (uint32_t)(br1.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk2 = (uint32_t)(br2.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk3 = (uint32_t)(br3.bits >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk0 = (uint32_t)(bits0 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk1 = (uint32_t)(bits1 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk2 = (uint32_t)(bits2 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk3 = (uint32_t)(bits3 >> (64 - HUFFMAN_FAST_BITS));
                 uint32_t e0 = fast2[pk0], e1 = fast2[pk1];
                 uint32_t e2 = fast2[pk2], e3 = fast2[pk3];
                 int tb0 = (int)((e0 >> 8) & 0xFF);
@@ -1101,23 +1125,23 @@ static tdc_status huffman4_decode(const uint8_t *src, size_t src_size,
                 if (tb0 == 0 || tb1 == 0 || tb2 == 0 || tb3 == 0) break;
                 d0[j0] = (uint8_t)(e0 >> 24); d0[j0 + 1] = (uint8_t)(e0 >> 16);
                 j0 += 1u + ((e0 & 0xFFu) != 0);
-                br0.bits <<= tb0; br0.nbits -= tb0;
+                bits0 <<= tb0; nb0 -= tb0;
                 d1[j1] = (uint8_t)(e1 >> 24); d1[j1 + 1] = (uint8_t)(e1 >> 16);
                 j1 += 1u + ((e1 & 0xFFu) != 0);
-                br1.bits <<= tb1; br1.nbits -= tb1;
+                bits1 <<= tb1; nb1 -= tb1;
                 d2[j2] = (uint8_t)(e2 >> 24); d2[j2 + 1] = (uint8_t)(e2 >> 16);
                 j2 += 1u + ((e2 & 0xFFu) != 0);
-                br2.bits <<= tb2; br2.nbits -= tb2;
+                bits2 <<= tb2; nb2 -= tb2;
                 d3[j3] = (uint8_t)(e3 >> 24); d3[j3 + 1] = (uint8_t)(e3 >> 16);
                 j3 += 1u + ((e3 & 0xFFu) != 0);
-                br3.bits <<= tb3; br3.nbits -= tb3;
+                bits3 <<= tb3; nb3 -= tb3;
             }
-            /* Round 2 (fast2: up to 2 symbols, up to 22 bits per stream). */
+            /* Round 2: fast2 again. */
             {
-                uint32_t pk0 = (uint32_t)(br0.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk1 = (uint32_t)(br1.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk2 = (uint32_t)(br2.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk3 = (uint32_t)(br3.bits >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk0 = (uint32_t)(bits0 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk1 = (uint32_t)(bits1 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk2 = (uint32_t)(bits2 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk3 = (uint32_t)(bits3 >> (64 - HUFFMAN_FAST_BITS));
                 uint32_t e0 = fast2[pk0], e1 = fast2[pk1];
                 uint32_t e2 = fast2[pk2], e3 = fast2[pk3];
                 int tb0 = (int)((e0 >> 8) & 0xFF);
@@ -1127,41 +1151,43 @@ static tdc_status huffman4_decode(const uint8_t *src, size_t src_size,
                 if (tb0 == 0 || tb1 == 0 || tb2 == 0 || tb3 == 0) break;
                 d0[j0] = (uint8_t)(e0 >> 24); d0[j0 + 1] = (uint8_t)(e0 >> 16);
                 j0 += 1u + ((e0 & 0xFFu) != 0);
-                br0.bits <<= tb0; br0.nbits -= tb0;
+                bits0 <<= tb0; nb0 -= tb0;
                 d1[j1] = (uint8_t)(e1 >> 24); d1[j1 + 1] = (uint8_t)(e1 >> 16);
                 j1 += 1u + ((e1 & 0xFFu) != 0);
-                br1.bits <<= tb1; br1.nbits -= tb1;
+                bits1 <<= tb1; nb1 -= tb1;
                 d2[j2] = (uint8_t)(e2 >> 24); d2[j2 + 1] = (uint8_t)(e2 >> 16);
                 j2 += 1u + ((e2 & 0xFFu) != 0);
-                br2.bits <<= tb2; br2.nbits -= tb2;
+                bits2 <<= tb2; nb2 -= tb2;
                 d3[j3] = (uint8_t)(e3 >> 24); d3[j3 + 1] = (uint8_t)(e3 >> 16);
                 j3 += 1u + ((e3 & 0xFFu) != 0);
-                br3.bits <<= tb3; br3.nbits -= tb3;
+                bits3 <<= tb3; nb3 -= tb3;
             }
-            /* Round 3 (fast: single symbol, up to 11 bits per stream).
-             * Bit budget: rounds 1+2 consumed up to 44 bits; this round
-             * consumes up to 11 bits = 55 total, within the 56-bit post-
-             * refill guarantee. Gets us to 5-6 symbols/stream/iteration. */
+            /* Round 3: single-sym fast. */
             {
-                uint32_t pk0 = (uint32_t)(br0.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk1 = (uint32_t)(br1.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk2 = (uint32_t)(br2.bits >> (64 - HUFFMAN_FAST_BITS));
-                uint32_t pk3 = (uint32_t)(br3.bits >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk0 = (uint32_t)(bits0 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk1 = (uint32_t)(bits1 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk2 = (uint32_t)(bits2 >> (64 - HUFFMAN_FAST_BITS));
+                uint32_t pk3 = (uint32_t)(bits3 >> (64 - HUFFMAN_FAST_BITS));
                 uint16_t fe0 = fast[pk0], fe1 = fast[pk1];
                 uint16_t fe2 = fast[pk2], fe3 = fast[pk3];
                 int fl0 = fe0 & 0xFF, fl1 = fe1 & 0xFF;
                 int fl2 = fe2 & 0xFF, fl3 = fe3 & 0xFF;
                 if (fl0 == 0 || fl1 == 0 || fl2 == 0 || fl3 == 0) break;
-                d0[j0++] = (uint8_t)(fe0 >> 8);
-                br0.bits <<= fl0; br0.nbits -= fl0;
-                d1[j1++] = (uint8_t)(fe1 >> 8);
-                br1.bits <<= fl1; br1.nbits -= fl1;
-                d2[j2++] = (uint8_t)(fe2 >> 8);
-                br2.bits <<= fl2; br2.nbits -= fl2;
-                d3[j3++] = (uint8_t)(fe3 >> 8);
-                br3.bits <<= fl3; br3.nbits -= fl3;
+                d0[j0++] = (uint8_t)(fe0 >> 8); bits0 <<= fl0; nb0 -= fl0;
+                d1[j1++] = (uint8_t)(fe1 >> 8); bits1 <<= fl1; nb1 -= fl1;
+                d2[j2++] = (uint8_t)(fe2 >> 8); bits2 <<= fl2; nb2 -= fl2;
+                d3[j3++] = (uint8_t)(fe3 >> 8); bits3 <<= fl3; nb3 -= fl3;
             }
         }
+
+#undef HUF_REFILL_LOCAL
+
+        /* Write locals back into br0..br3 so the sequential-tail block
+         * picks up from the exact post-hot-loop bit position. */
+        br0.bits = bits0; br0.nbits = nb0; br0.ptr = p0;
+        br1.bits = bits1; br1.nbits = nb1; br1.ptr = p1;
+        br2.bits = bits2; br2.nbits = nb2; br2.ptr = p2;
+        br3.bits = bits3; br3.nbits = nb3; br3.ptr = p3;
     }
 
     /* Per-stream sequential tail: finish remaining symbols from each
