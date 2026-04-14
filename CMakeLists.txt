@@ -54,6 +54,8 @@ set(TDC_SOURCES
     src/model/plane2d.c
     src/model/stack2d.c
     src/model/pred3d.c
+    src/model/delta2_1d.c
+    src/model/fpc1d.c
 
     src/transform/quantize.c
     src/transform/zigzag.c
@@ -143,6 +145,10 @@ if(TDC_BUILD_TESTS)
     add_executable(test_delta1d_roundtrip tests/test_delta1d_roundtrip.c)
     target_link_libraries(test_delta1d_roundtrip PRIVATE tdc)
     add_test(NAME delta1d_roundtrip COMMAND test_delta1d_roundtrip)
+
+    add_executable(test_delta2_fpc_roundtrip tests/test_delta2_fpc_roundtrip.c)
+    target_link_libraries(test_delta2_fpc_roundtrip PRIVATE tdc)
+    add_test(NAME delta2_fpc_roundtrip COMMAND test_delta2_fpc_roundtrip)
 
     add_executable(test_raw_roundtrip tests/test_raw_roundtrip.c)
     target_link_libraries(test_raw_roundtrip PRIVATE tdc)

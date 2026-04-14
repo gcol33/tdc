@@ -25,7 +25,7 @@ extern "C" {
 
 /* On-disk constants. */
 #define LZ_MIN_MATCH   3u
-#define LZ_MAX_OFFSET  (1u << 20)  /* 1 MiB window — 20-bit offset range */
+#define LZ_MAX_OFFSET  (1u << 22)  /* 4 MiB window — 22-bit offset range */
 #define LZ_HEADER_SIZE 8u          /* uint32 n_sequences + uint32 literals_size */
 
 /* Encoder-side sequence descriptor.
@@ -158,13 +158,21 @@ tdc_status tdc_lz_serialize_sequences(const uint8_t *src, uint32_t src_size,
                                        tdc_buffer *dst);
 
 /* Shared greedy match-finder (defined in lz.c). Walks src once with a
- * flat hash table (1 MiB window) and emits an LZSeq array. The caller frees
- * *out_seqs via dst->realloc_fn (allocated through it). Used by the
- * single-stream serializer (TDC_ENTROPY_LZ) and the multi-stream
- * serializer (TDC_ENTROPY_LZ_STREAMS). Both share this parser; the only
- * difference is what they do with the resulting LZSeq array. */
+ * hash-chain match finder (4 MiB window) and emits an LZSeq array. The
+ * caller frees *out_seqs via dst->realloc_fn (allocated through it).
+ *
+ * chain_depth: how many hash-chain positions to probe per lookup.
+ *   0 = flat hash (one candidate per bucket, fastest, worst ratio).
+ *   4-8 = good balance (zstd-like greedy).
+ *   32-64 = deep search (slower, better ratio on structured data).
+ *
+ * lazy_depth: lazy matching.
+ *   0 = no lazy (emit first match found).
+ *   1 = single lazy (check position+1; if longer match, emit literal at P).
+ *   2 = double lazy (check position+2 as well). */
 tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
                                 tdc_buffer *dst,
+                                uint32_t chain_depth, uint32_t lazy_depth,
                                 LZSeq **out_seqs, uint32_t *out_seq_count);
 
 /* Shared optimal-parser match-finder (defined in lz_opt.c). Walks src

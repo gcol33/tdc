@@ -208,6 +208,45 @@ static void pred2d_up_dec_row_sse2(uint8_t *dst, const uint8_t *res,
         }
     }
 }
+/* --- SSE2 PAETH helper (4 × int32 lanes) ---------------------------------- *
+ * Vectorized paeth across 4 independent int32 lanes.  Same algorithm and
+ * tie-break order as scalar paeth32 — see its comments.  Used by the
+ * wavefront PAETH decoder to compute 4 staggered rows in one operation.
+ *
+ * SSE2 does not have _mm_abs_epi32 (SSSE3), so abs(x) is implemented as:
+ *     sign = x >> 31  (arithmetic shift: all-1s if negative)
+ *     abs  = (x ^ sign) - sign
+ */
+static inline __m128i paeth_4x_sse2(__m128i a, __m128i b, __m128i c) {
+    __m128i bc = _mm_sub_epi32(b, c);
+    __m128i ac = _mm_sub_epi32(a, c);
+
+    /* pa = |b - c| */
+    __m128i bc_s = _mm_srai_epi32(bc, 31);
+    __m128i pa   = _mm_sub_epi32(_mm_xor_si128(bc, bc_s), bc_s);
+
+    /* pb = |a - c| */
+    __m128i ac_s = _mm_srai_epi32(ac, 31);
+    __m128i pb   = _mm_sub_epi32(_mm_xor_si128(ac, ac_s), ac_s);
+
+    /* pc = |(b - c) + (a - c)| */
+    __m128i pcs  = _mm_add_epi32(bc, ac);
+    __m128i pcs_s = _mm_srai_epi32(pcs, 31);
+    __m128i pc   = _mm_sub_epi32(_mm_xor_si128(pcs, pcs_s), pcs_s);
+
+    /* r = (pb <= pc) ? b : c
+     * pb > pc is the "pick c" mask; otherwise pick b. */
+    __m128i pb_gt_pc = _mm_cmpgt_epi32(pb, pc);
+    __m128i r = _mm_or_si128(_mm_andnot_si128(pb_gt_pc, b),
+                             _mm_and_si128(pb_gt_pc, c));
+
+    /* result = (pa <= pb && pa <= pc) ? a : r
+     * not_a = (pa > pb) | (pa > pc) */
+    __m128i not_a = _mm_or_si128(_mm_cmpgt_epi32(pa, pb),
+                                 _mm_cmpgt_epi32(pa, pc));
+    return _mm_or_si128(_mm_andnot_si128(not_a, a),
+                        _mm_and_si128(not_a, r));
+}
 #endif /* TDC_PRED2D_HAVE_SSE2 */
 
 /* --- NEON UP helpers ------------------------------------------------------- */
@@ -885,7 +924,64 @@ static void pred2d_dec_u16_paeth_wf4(const uint16_t *res, uint16_t *dst,
             L2 = (int32_t)(uint16_t)v2;
         }
 
-        /* Steady state: all 4 lanes, c = 4..nx-1. */
+        /* Steady state: all 4 lanes, c = 4..nx-1.
+         * SSE2 path: pack the 4 paeth inputs into XMM registers, compute
+         * all 4 predictions in one SIMD call, then scatter-store. The L
+         * and P state vectors are maintained as __m128i across iterations
+         * to minimise pack/unpack overhead. */
+#ifdef TDC_PRED2D_HAVE_SSE2
+        {
+            /* L = {L0, L1, L2, L3} in lanes 0-3 (lane 0 = lowest). */
+            __m128i vL = _mm_set_epi32(L3, L2, L1, L0);
+            /* P = {P0, P1, P2, 0} — only 3 lanes meaningful. */
+            __m128i vP = _mm_set_epi32(0, P2, P1, P0);
+            const __m128i mask16 = _mm_set1_epi32(0xFFFF);
+
+            for (int64_t c = 4; c < nx; ++c) {
+                /* a = {L0, L1, L2, L3} — directly from vL. */
+
+                /* b = {dRm[c], L0_old, L1_old, L2_old}
+                 *   = shift vL left by one lane, insert dRm[c] at lane 0. */
+                __m128i vB = _mm_or_si128(
+                    _mm_slli_si128(vL, 4),
+                    _mm_cvtsi32_si128((int32_t)dRm[c]));
+
+                /* c = {dRm[c-1], P0, P1, P2}
+                 *   = shift vP left by one lane, insert dRm[c-1] at lane 0. */
+                __m128i vC = _mm_or_si128(
+                    _mm_slli_si128(vP, 4),
+                    _mm_cvtsi32_si128((int32_t)dRm[c - 1]));
+
+                __m128i pred = paeth_4x_sse2(vL, vB, vC);
+
+                /* Gather residuals from 4 staggered positions. */
+                __m128i vRes = _mm_set_epi32(
+                    (int32_t)rR3[c - 3], (int32_t)rR2[c - 2],
+                    (int32_t)rR1[c - 1], (int32_t)rR[c]);
+
+                __m128i vV = _mm_add_epi32(vRes, pred);
+
+                /* Update P = old L, L = truncate(v) to u16. */
+                vP = vL;
+                vL = _mm_and_si128(vV, mask16);
+
+                /* Scatter-store: extract each lane and write. */
+                dR [c]     = (uint16_t)(uint32_t)_mm_cvtsi128_si32(vV);
+                dR1[c - 1] = (uint16_t)(uint32_t)_mm_cvtsi128_si32(_mm_srli_si128(vV, 4));
+                dR2[c - 2] = (uint16_t)(uint32_t)_mm_cvtsi128_si32(_mm_srli_si128(vV, 8));
+                dR3[c - 3] = (uint16_t)(uint32_t)_mm_cvtsi128_si32(_mm_srli_si128(vV, 12));
+            }
+
+            /* Unpack L/P back to scalars for the epilogue. */
+            L0 = _mm_cvtsi128_si32(vL);
+            L1 = _mm_cvtsi128_si32(_mm_srli_si128(vL, 4));
+            L2 = _mm_cvtsi128_si32(_mm_srli_si128(vL, 8));
+            L3 = _mm_cvtsi128_si32(_mm_srli_si128(vL, 12));
+            P0 = _mm_cvtsi128_si32(vP);
+            P1 = _mm_cvtsi128_si32(_mm_srli_si128(vP, 4));
+            P2 = _mm_cvtsi128_si32(_mm_srli_si128(vP, 8));
+        }
+#else
         for (int64_t c = 4; c < nx; ++c) {
             int32_t pred0 = paeth32(L0, (int32_t)dRm[c], (int32_t)dRm[c - 1]);
             int32_t v0 = (int32_t)rR[c] + pred0;
@@ -909,6 +1005,7 @@ static void pred2d_dec_u16_paeth_wf4(const uint16_t *res, uint16_t *dst,
             L2 = (int32_t)(uint16_t)v2;
             L3 = (int32_t)(uint16_t)v3;
         }
+#endif
 
         /* Epilogue: drain the staggered triangle (3 + 2 + 1 pixels). */
 

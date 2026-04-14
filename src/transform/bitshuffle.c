@@ -25,10 +25,156 @@
 #include "tdc/transform.h"
 #include "transform_internal.h"
 #include "../core/buffer.h"
+#include "../core/simd.h"
 
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
+
+/* ----- SSE2 bit-shuffle / unshuffle -------------------------------------- */
+
+#if TDC_HAVE_SSE2
+
+/*
+ * SSE2 bit-shuffle: process 16 elements at a time.
+ *
+ * For each byte-lane k within elem_size, gather the 16 bytes from
+ * elements e..e+15, then use AND + cmpeq + movemask to extract each
+ * of the 8 bit-planes into 2 packed output bytes.  This replaces
+ * 16 * 8 bit-extracts with 8 * (AND + cmpeq + movemask) per lane.
+ */
+static void bitshuffle_scatter_sse2(uint8_t *dst, const uint8_t *src,
+                                     uint32_t n_elems, uint32_t elem_size) {
+    uint32_t n_planes = elem_size * 8u;
+    uint32_t bpp = (n_elems + 7u) / 8u;
+    memset(dst, 0, (size_t)n_planes * bpp);
+
+    uint32_t e = 0;
+
+    for (; e + 16 <= n_elems; e += 16) {
+        uint32_t out_byte = e / 8u;
+
+        for (uint32_t k = 0; k < elem_size; ++k) {
+            /* Gather 16 bytes from lane k. */
+            uint8_t tmp[16];
+            for (int j = 0; j < 16; ++j)
+                tmp[j] = src[(size_t)(e + (uint32_t)j) * elem_size + k];
+            __m128i v = _mm_loadu_si128((const __m128i *)tmp);
+
+            /* Extract 8 bit-planes. For each bit position, isolate it
+             * with AND, then cmpeq to promote to MSB, then movemask. */
+            for (uint32_t bit = 0; bit < 8u; ++bit) {
+                __m128i bit_mask = _mm_set1_epi8((char)(1u << bit));
+                __m128i isolated = _mm_and_si128(v, bit_mask);
+                __m128i cmp      = _mm_cmpeq_epi8(isolated, bit_mask);
+                int mask = _mm_movemask_epi8(cmp);
+                uint32_t plane = k * 8u + bit;
+                dst[(size_t)plane * bpp + out_byte]     = (uint8_t)(mask & 0xFF);
+                dst[(size_t)plane * bpp + out_byte + 1] = (uint8_t)((mask >> 8) & 0xFF);
+            }
+        }
+    }
+
+    /* Scalar tail. */
+    for (; e < n_elems; ++e) {
+        uint32_t out_byte_in_plane = e / 8u;
+        uint32_t out_bit           = e % 8u;
+        for (uint32_t b = 0; b < elem_size; ++b) {
+            uint8_t byte_val = src[(size_t)e * elem_size + b];
+            for (uint32_t bit = 0; bit < 8u; ++bit) {
+                if (byte_val & (1u << bit)) {
+                    uint32_t plane = b * 8u + bit;
+                    dst[(size_t)plane * bpp + out_byte_in_plane] |=
+                        (uint8_t)(1u << out_bit);
+                }
+            }
+        }
+    }
+}
+
+/*
+ * SSE2 bit-unshuffle: reconstruct 16 elements at a time from bit-planes.
+ *
+ * For each byte-lane k, read 2 packed bytes from each of the 8 planes,
+ * expand the 16-bit mask to a 16-byte vector, AND with (1 << bit) to
+ * produce the contribution for that bit, and OR into an accumulator.
+ */
+
+/* Helper: expand a 16-bit mask to a 16-byte vector where byte j is
+ * 0xFF if bit j of the mask is set, 0x00 otherwise. Pure SSE2. */
+static inline __m128i bshuf_expand_mask16(uint16_t packed) {
+    /* Byte select constants: bytes 0..7 test against the low byte of
+     * packed, bytes 8..15 test against the high byte. */
+    static const uint8_t TDC_BIT_MASKS[8] = {
+        0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80
+    };
+    __m128i mask_vec = _mm_set_epi8(
+        (char)TDC_BIT_MASKS[7], (char)TDC_BIT_MASKS[6],
+        (char)TDC_BIT_MASKS[5], (char)TDC_BIT_MASKS[4],
+        (char)TDC_BIT_MASKS[3], (char)TDC_BIT_MASKS[2],
+        (char)TDC_BIT_MASKS[1], (char)TDC_BIT_MASKS[0],
+        (char)TDC_BIT_MASKS[7], (char)TDC_BIT_MASKS[6],
+        (char)TDC_BIT_MASKS[5], (char)TDC_BIT_MASKS[4],
+        (char)TDC_BIT_MASKS[3], (char)TDC_BIT_MASKS[2],
+        (char)TDC_BIT_MASKS[1], (char)TDC_BIT_MASKS[0]);
+    /* Broadcast low byte to 0..7, high byte to 8..15.
+     * _mm_unpacklo_epi64 of two set1 vectors gives exactly this layout. */
+    __m128i lo8 = _mm_set1_epi8((char)(packed & 0xFF));
+    __m128i hi8 = _mm_set1_epi8((char)((packed >> 8) & 0xFF));
+    __m128i bcast = _mm_unpacklo_epi64(lo8, hi8);
+    __m128i masked = _mm_and_si128(bcast, mask_vec);
+    return _mm_cmpeq_epi8(masked, mask_vec);
+}
+
+static void bitshuffle_gather_sse2(uint8_t *dst, const uint8_t *src,
+                                    uint32_t n_elems, uint32_t elem_size) {
+    uint32_t n_planes = elem_size * 8u;
+    uint32_t bpp = (n_elems + 7u) / 8u;
+    memset(dst, 0, (size_t)n_elems * elem_size);
+
+    uint32_t e = 0;
+
+    for (; e + 16 <= n_elems; e += 16) {
+        uint32_t in_byte = e / 8u;
+
+        for (uint32_t k = 0; k < elem_size; ++k) {
+            __m128i accum = _mm_setzero_si128();
+
+            for (uint32_t bit = 0; bit < 8u; ++bit) {
+                uint32_t plane = k * 8u + bit;
+                uint16_t packed;
+                memcpy(&packed, src + (size_t)plane * bpp + in_byte, 2);
+
+                /* Expand to 16 bytes of 0xFF/0x00, then mask to (1 << bit). */
+                __m128i expanded = bshuf_expand_mask16(packed);
+                __m128i contribution = _mm_and_si128(
+                    expanded, _mm_set1_epi8((char)(1u << bit)));
+                accum = _mm_or_si128(accum, contribution);
+            }
+
+            /* Scatter the 16 result bytes back to strided element positions. */
+            uint8_t result[16];
+            _mm_storeu_si128((__m128i *)result, accum);
+            for (int j = 0; j < 16; ++j)
+                dst[(size_t)(e + (uint32_t)j) * elem_size + k] = result[j];
+        }
+    }
+
+    /* Scalar tail. */
+    for (; e < n_elems; ++e) {
+        uint32_t in_byte_in_plane = e / 8u;
+        uint32_t in_bit           = e % 8u;
+        for (uint32_t plane = 0; plane < n_planes; ++plane) {
+            if (src[(size_t)plane * bpp + in_byte_in_plane] & (1u << in_bit)) {
+                uint32_t b   = plane / 8u;
+                uint32_t bit = plane % 8u;
+                dst[(size_t)e * elem_size + b] |= (uint8_t)(1u << bit);
+            }
+        }
+    }
+}
+
+#endif /* TDC_HAVE_SSE2 */
 
 /* ----- Scalar bit-shuffle / unshuffle ------------------------------------ */
 
@@ -140,7 +286,11 @@ static tdc_status bitshuffle_encode(const uint8_t *src, size_t src_size,
     tdc_status st = tdc_buf_reserve(dst, out_size);
     if (st != TDC_OK) return st;
 
+#if TDC_HAVE_SSE2
+    bitshuffle_scatter_sse2(dst->data, src, n_elems, (uint32_t)elem_size);
+#else
     bitshuffle_scatter(dst->data, src, n_elems, (uint32_t)elem_size);
+#endif
     dst->size = out_size;
     return TDC_OK;
 }
@@ -172,7 +322,11 @@ static tdc_status bitshuffle_decode(const uint8_t *src, size_t src_size,
     size_t expected_src = (size_t)n_planes * bpp;
     if (src_size != expected_src) return TDC_E_CORRUPT;
 
+#if TDC_HAVE_SSE2
+    bitshuffle_gather_sse2(dst, src, n_elems, (uint32_t)elem_size);
+#else
     bitshuffle_gather(dst, src, n_elems, (uint32_t)elem_size);
+#endif
     return TDC_OK;
 }
 

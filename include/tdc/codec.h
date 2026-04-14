@@ -63,7 +63,9 @@ typedef enum {
     TDC_MODEL_PRED_2D   = 0x0004,  /* LEFT/UP/AVERAGE/PAETH; RASTER_2D */
     TDC_MODEL_STACK_2D  = 0x0005,  /* per-slice 2D predictor; STACK_2D */
     TDC_MODEL_PRED_3D   = 0x0006,  /* 3D neighbor predictor; VOLUME_3D */
-    TDC_MODEL_PLANE_2D  = 0x0007   /* per-tile LSQ plane fit; RASTER_2D */
+    TDC_MODEL_PLANE_2D  = 0x0007,  /* per-tile LSQ plane fit; RASTER_2D */
+    TDC_MODEL_DELTA2_1D = 0x0008,  /* 2nd-order XOR-delta; VECTOR_1D, float dtypes */
+    TDC_MODEL_FPC_1D    = 0x0009   /* FCM+DFCM dual predictor; VECTOR_1D, float dtypes */
 } tdc_model_id;
 
 /* Transforms (representation stage; chained) */
@@ -78,7 +80,7 @@ typedef enum {
 /* Entropy coders */
 typedef enum {
     TDC_ENTROPY_NONE    = 0x0000, /* memcpy passthrough */
-    TDC_ENTROPY_LZ     = 0x0001, /* native LZ77, separated-stream, 64K window.
+    TDC_ENTROPY_LZ     = 0x0001, /* native LZ77, separated-stream, 4 MiB window.
                                    * Note: LZ is a byte-level matcher. On a
                                    * multi-byte dtype with no exact byte
                                    * repetitions (e.g. an i32 ramp `1000+i*3`),
@@ -103,7 +105,7 @@ typedef enum {
                                        * via Shannon entropy. Same parser as LZ,
                                        * different serializer — NOT compatible
                                        * with the single-stream decoder. */
-    TDC_ENTROPY_LZ_SPLIT  = 0x0008  /* LZ with optimal parser + split entropy:
+    TDC_ENTROPY_LZ_SPLIT  = 0x0008, /* LZ with optimal parser + split entropy:
                                       * literal bytes and sequence descriptors
                                       * (tags, extensions, offsets) are separated
                                       * and Huffman-coded independently. Better
@@ -111,6 +113,14 @@ typedef enum {
                                       * two sub-streams have distinct byte
                                       * distributions. Self-contained — not
                                       * chainable with a second entropy stage. */
+    TDC_ENTROPY_HUFFMAN4  = 0x0009  /* 4-stream canonical Huffman. Same tree as
+                                      * HUFFMAN but the payload is split into 4
+                                      * independent bitstreams decoded with 4
+                                      * interleaved bit-readers for ILP. 2-3×
+                                      * faster decode than single-stream Huffman
+                                      * on out-of-order CPUs. Falls back to
+                                      * single-stream HUFFMAN for inputs < 256
+                                      * bytes. */
 } tdc_entropy_id;
 
 /* ----- Per-stage params ---------------------------------------------------- */

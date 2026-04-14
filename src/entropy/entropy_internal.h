@@ -28,11 +28,17 @@ extern const tdc_entropy_vt tdc_entropy_lz_opt_vt;
 extern const tdc_entropy_vt tdc_entropy_lz_split_vt;
 extern const tdc_entropy_vt tdc_entropy_lz_streams_vt;
 extern const tdc_entropy_vt tdc_entropy_huffman_vt;
+extern const tdc_entropy_vt tdc_entropy_huffman4_vt;
 extern const tdc_entropy_vt tdc_entropy_fse_vt;
 extern const tdc_entropy_vt tdc_entropy_lane_vt;
 #ifdef TDC_HAVE_ZLIB
 extern const tdc_entropy_vt tdc_entropy_deflate_vt;
 #endif
+
+/* Huffman encode with pre-computed frequency table (avoids double histogram). */
+tdc_status tdc_huffman_encode_prefreq(const uint8_t *src, size_t src_size,
+                                       const uint32_t freq[256],
+                                       tdc_buffer *dst);
 
 #ifdef __cplusplus
 }

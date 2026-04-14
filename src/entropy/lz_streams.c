@@ -72,6 +72,7 @@
 #include "entropy_internal.h"
 #include "lz_internal.h"
 #include "../core/buffer.h"
+#include "../core/simd.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -100,6 +101,44 @@ static int lzs_dump_enabled(void) {
 #define LZS_FORMAT_VERSION   2u
 #define LZS_FLAG_REPCODES    0x01u
 #define LZS_FLAG_OFFSET_SHIFT 0x02u  /* offsets right-shifted by header[2] bits */
+#define LZS_FLAG_LIT_CONTEXT  0x04u  /* literals split by order-1 context */
+#define LZS_FLAG_SPLIT_EXTRAS 0x08u  /* extras split: lm_raw + off_coded */
+#define LZS_FLAG_DELTA_OFFSETS 0x10u /* novel offsets: zigzag(off - rep1) */
+
+/* When LZS_FLAG_SPLIT_EXTRAS is set, the extras section is replaced by
+ * a split-extras sub-header (13 bytes) followed by two sub-streams:
+ *
+ *   u32  lm_extra_bytes           packed ll+ml extra bits (byte count, raw)
+ *   u32  off_extra_raw_bytes     uncompressed off extra bits (byte count)
+ *   u32  off_extra_enc_bytes     encoded off extra stream size
+ *   u8   off_extra_coder_id      entropy coder (NONE/HUF/FSE; 0xFF=context)
+ *   [lm_extra_data]              raw packed ll+ml bits
+ *   [off_extra_encoded_data]     entropy-coded off extra bytes
+ *
+ * The main header's extra_bytes field holds the TOTAL size including
+ * the 13-byte sub-header: 13 + lm_raw_bytes + off_enc_bytes.
+ *
+ * Why: for structured f64 data, offset extras cluster around seasonal
+ * strides (e.g., yearly period → extra≈109 in s11). The byte-level
+ * distribution is non-uniform and compressible. ll/ml extras are
+ * high-entropy and stay raw. */
+#define LZS_SPLIT_EXTRAS_HDR  13u
+
+/* Order-1 literal context: 16 buckets keyed on high nibble of previous
+ * literal byte. When LZS_FLAG_LIT_CONTEXT is set, the literal section
+ * in the body carries a mini-header (ctx_ids, ctx_counts, ctx_sizes)
+ * followed by 16 independently entropy-coded sub-streams. The main
+ * header's sz_lit field holds the total context section size; id_lit
+ * is unused (per-bucket ids in the context header are authoritative).
+ *
+ * Context section layout:
+ *   u8[16]   ctx_ids     — per-bucket entropy coder ID
+ *   u32[16]  ctx_counts  — per-bucket uncompressed byte count
+ *   u32[16]  ctx_sizes   — per-bucket compressed stream size
+ *   [stream_0] .. [stream_15]
+ */
+#define LZS_LIT_N_CTX         16u
+#define LZS_LIT_CTX_HDR_SIZE  (LZS_LIT_N_CTX + 2u * LZS_LIT_N_CTX * 4u)  /* 144 bytes */
 
 /* Initial repcode values (match zstd's rep-init). */
 #define LZS_REP_INIT_1       1u
@@ -113,11 +152,12 @@ static int lzs_dump_enabled(void) {
  *   >= 4: novel     → actual_off = code-3, symbol = floor_log2(off)+3,
  *                      extra = off - (1 << floor_log2(off)), nbits extra bits
  *
- * Symbol alphabet: 0..LZS_MAX_OFFSET_SYMBOL (24 symbols for 20-bit window).
+ * Symbol alphabet: 0..LZS_MAX_OFFSET_SYMBOL (26 symbols for 22-bit window).
  * The entropy coder sees only this small alphabet; extra bits are packed
  * separately as a raw bitstream.
  */
-#define LZS_MAX_OFFSET_SYMBOL 23u  /* floor_log2(LZ_MAX_OFFSET) + 3 */
+#define LZS_MAX_OFFSET_SYMBOL 25u  /* floor_log2(LZ_MAX_OFFSET) + 3 */
+#define LZS_MAX_OFFSET_DELTA_SYMBOL 27u  /* delta: zigzag up to ~2×LZ_MAX_OFFSET */
 
 static inline uint32_t lzs_floor_log2(uint32_t v) {
     uint32_t r = 0;
@@ -188,27 +228,102 @@ static inline uint32_t lzs_symbol_to_code(uint8_t sym, uint32_t extra) {
     return (1u << lg) + extra + 3u;
 }
 
-/* Bit packing — caller must memset buffer to zero before writing. */
-static inline void lzs_bits_write(uint8_t *buf, uint32_t *bit_pos,
-                                    uint32_t val, uint32_t nbits) {
-    uint32_t pos = *bit_pos;
-    for (uint32_t i = 0; i < nbits; i++) {
-        buf[pos >> 3] |= (uint8_t)(((val >> i) & 1u) << (pos & 7u));
-        pos++;
-    }
-    *bit_pos = pos;
+/* Zigzag encoding for signed→unsigned mapping of offset deltas.
+ * Branchless: standard protobuf-style zigzag via arithmetic shift. */
+static inline uint32_t lzs_zigzag_encode(int32_t v) {
+    return ((uint32_t)v << 1) ^ (uint32_t)(v >> 31);
+}
+static inline int32_t lzs_zigzag_decode(uint32_t z) {
+    return (int32_t)(z >> 1) ^ -(int32_t)(z & 1u);
 }
 
+/* Rep-state update from a repcode-encoded offset code. */
+static inline void lzs_rep_update(uint32_t code,
+                                    uint32_t *r1, uint32_t *r2, uint32_t *r3) {
+    if (code == 2u) { uint32_t t = *r1; *r1 = *r2; *r2 = t; }
+    else if (code == 3u) { uint32_t t = *r3; *r3 = *r2; *r2 = *r1; *r1 = t; }
+    else if (code >= 4u) { *r3 = *r2; *r2 = *r1; *r1 = code - 3u; }
+    /* code == 1: no change */
+}
+
+/* Bit packing — caller must memset buffer to zero before writing.
+ * Word-at-a-time: OR the value (up to 25 bits, fitting in 32 bits even
+ * with a 7-bit misalignment) into a 32-bit window at the current bit
+ * position. The caller's buffer must have at least 3 bytes of slack
+ * past the last written bit to absorb the partial-word overwrite. */
+static inline void lzs_bits_write(uint8_t *buf, uint32_t *bit_pos,
+                                    uint32_t val, uint32_t nbits) {
+    if (nbits == 0) return;
+    uint32_t pos = *bit_pos;
+    uint32_t byte_idx = pos >> 3;
+    uint32_t bit_off  = pos & 7u;
+    /* Read existing partial byte, OR in new bits, write back.
+     * val is at most 25 bits (max offset symbol extra); shifted by up to
+     * 7 bits = 32 bits total, fits in a uint32_t write. We do an
+     * unaligned 4-byte read-modify-write which is safe on x86/ARM. */
+    uint32_t window;
+    memcpy(&window, buf + byte_idx, 4);
+    window |= (val << bit_off);
+    memcpy(buf + byte_idx, &window, 4);
+    *bit_pos = pos + nbits;
+}
+
+/* Fast bits reader: uses a 4-byte unaligned load when there are at least
+ * 4 bytes remaining from byte_idx. Falls back to byte-by-byte for the
+ * last 3 bytes. buf_size is the total byte count of buf. */
+static inline uint32_t lzs_bits_read_safe(const uint8_t *buf, uint32_t buf_size,
+                                            uint32_t *bit_pos, uint32_t nbits) {
+    if (nbits == 0) return 0;
+    uint32_t pos = *bit_pos;
+    uint32_t byte_idx = pos >> 3;
+    uint32_t bit_off  = pos & 7u;
+    *bit_pos = pos + nbits;
+
+    /* Fast path: 4-byte unaligned load. Covers nbits + bit_off <= 32
+     * (max nbits ~25, max bit_off 7 → 32). Safe on LE x86/ARM. */
+    if (byte_idx + 4 <= buf_size) {
+        uint32_t window;
+        memcpy(&window, buf + byte_idx, 4);
+        return (window >> bit_off) & ((1u << nbits) - 1u);
+    }
+
+    /* Slow tail: byte-by-byte for last 3 bytes of buffer. */
+    uint32_t val = 0;
+    uint32_t bits_in_byte = 8u - bit_off;
+    uint32_t byte_val = (uint32_t)buf[byte_idx] >> bit_off;
+    if (nbits <= bits_in_byte) {
+        val = byte_val & ((1u << nbits) - 1u);
+    } else {
+        val = byte_val;
+        uint32_t remaining = nbits - bits_in_byte;
+        uint32_t shift = bits_in_byte;
+        byte_idx++;
+        while (remaining >= 8u) {
+            val |= (uint32_t)buf[byte_idx] << shift;
+            byte_idx++;
+            shift += 8u;
+            remaining -= 8u;
+        }
+        if (remaining > 0) {
+            val |= ((uint32_t)buf[byte_idx] & ((1u << remaining) - 1u)) << shift;
+        }
+    }
+    return val;
+}
+
+/* Backwards-compatible wrapper when buffer size is not available. */
 static inline uint32_t lzs_bits_read(const uint8_t *buf, uint32_t *bit_pos,
                                        uint32_t nbits) {
+    /* Assume 4-byte safety — only the encode path calls this, and the
+     * encode path's extras buffer always has 4 bytes of slack. */
+    if (nbits == 0) return 0;
     uint32_t pos = *bit_pos;
-    uint32_t val = 0;
-    for (uint32_t i = 0; i < nbits; i++) {
-        val |= (uint32_t)((buf[pos >> 3] >> (pos & 7u)) & 1u) << i;
-        pos++;
-    }
-    *bit_pos = pos;
-    return val;
+    uint32_t byte_idx = pos >> 3;
+    uint32_t bit_off  = pos & 7u;
+    *bit_pos = pos + nbits;
+    uint32_t window;
+    memcpy(&window, buf + byte_idx, 4);
+    return (window >> bit_off) & ((1u << nbits) - 1u);
 }
 
 /* ----- Allocation helpers ------------------------------------------------- */
@@ -435,6 +550,263 @@ static tdc_status lzs_encode_stream(const uint8_t *src, size_t n,
     return TDC_OK;
 }
 
+/* ----- Fast stream encode (Shannon heuristic, no trial) ------------------ */
+/*
+ * For level >= 1: pick a coder based on Shannon entropy of the input
+ * stream, then encode once. No trial-and-compare, no context splitting.
+ * This is ~3x faster than lzs_encode_stream because it avoids 2 full
+ * encode passes + potential context sub-stream work.
+ *
+ * Heuristic (same thresholds as lane.c):
+ *   h >= 7.5 bits/byte → near-random, store raw (NONE)
+ *   h <  7.5           → Huffman (always competitive, fast)
+ *
+ * FSE is skipped entirely — its fractional-bit advantage over Huffman
+ * is <1% on typical distributions and doesn't justify the decode cost.
+ */
+static tdc_status lzs_encode_stream_fast(const uint8_t *src, size_t n,
+                                          tdc_buffer    *scratch,
+                                          tdc_buffer    *owner,
+                                          uint8_t       **final,
+                                          uint32_t       *final_size,
+                                          tdc_entropy_id *out_id) {
+    *final = NULL;
+    *final_size = 0;
+    *out_id = TDC_ENTROPY_NONE;
+
+    if (n == 0) return TDC_OK;
+
+    /* Histogram in one pass — reused by both Shannon check and Huffman. */
+    uint32_t hist[256] = {0};
+    for (size_t i = 0; i < n; i++) hist[src[i]]++;
+
+    /* Quick Shannon entropy estimate (integer approximation).
+     * Uses the identity: H = log2(n) - (1/n) * sum(freq * log2(freq)).
+     * We approximate with leading-zero count instead of fp log2. */
+    int n_used = 0;
+    for (int s = 0; s < 256; s++) {
+        if (hist[s] != 0) n_used++;
+    }
+
+    /* Single-symbol or near-random fast reject. */
+    if (n_used <= 1) {
+        /* Single symbol: Huffman always wins (1 bit/sym + tiny header). */
+    } else if (n_used >= 240 && n >= 64) {
+        /* Nearly full alphabet on non-tiny input: likely near-random.
+         * Do the full Shannon check only in this case. */
+        double inv_n = 1.0 / (double)n;
+        double entropy = 0.0;
+        for (int s = 0; s < 256; s++) {
+            if (hist[s] == 0) continue;
+            double p = (double)hist[s] * inv_n;
+            entropy -= p * log2(p);
+        }
+        if (entropy >= 7.5) {
+            uint8_t *buf = (uint8_t *)owner->realloc_fn(owner->user, NULL, n);
+            if (!buf) return TDC_E_NOMEM;
+            memcpy(buf, src, n);
+            *final = buf;
+            *final_size = (uint32_t)n;
+            *out_id = TDC_ENTROPY_NONE;
+            return TDC_OK;
+        }
+    }
+
+    /* Try Huffman with pre-computed frequencies (no double histogram). */
+    scratch->size = 0;
+    tdc_status st = tdc_huffman_encode_prefreq(src, n, hist, scratch);
+    if (st == TDC_OK && scratch->size < n) {
+        uint8_t *buf = (uint8_t *)owner->realloc_fn(owner->user, NULL, scratch->size);
+        if (!buf) return TDC_E_NOMEM;
+        memcpy(buf, scratch->data, scratch->size);
+        *final = buf;
+        *final_size = (uint32_t)scratch->size;
+        *out_id = TDC_ENTROPY_HUFFMAN;
+        return TDC_OK;
+    }
+
+    /* Huffman didn't help — store raw. */
+    uint8_t *buf = (uint8_t *)owner->realloc_fn(owner->user, NULL, n);
+    if (!buf) return TDC_E_NOMEM;
+    memcpy(buf, src, n);
+    *final = buf;
+    *final_size = (uint32_t)n;
+    *out_id = TDC_ENTROPY_NONE;
+    return TDC_OK;
+}
+
+/* ----- Order-1 literal context encode ------------------------------------ */
+/*
+ * Split the literal stream into 16 sub-streams by context = prev_byte >> 4.
+ * The first literal byte uses context 0 (no predecessor).  Each sub-stream
+ * is encoded independently with the best-of {NONE, Huffman, FSE} selection.
+ *
+ * Returns the complete context section (144-byte header + encoded streams)
+ * in *out_section.  Caller frees via lzs_free(owner, *out_section).
+ */
+static tdc_status lzs_encode_lit_context(
+    const uint8_t *lit_raw, uint32_t total_lit,
+    tdc_buffer *scratch, tdc_buffer *owner,
+    uint8_t **out_section, uint32_t *out_section_size)
+{
+    *out_section = NULL;
+    *out_section_size = 0;
+    if (total_lit == 0) return TDC_OK;
+
+    /* Pass 1: count bytes per context bucket. */
+    uint32_t bkt_count[LZS_LIT_N_CTX];
+    memset(bkt_count, 0, sizeof(bkt_count));
+    {
+        uint8_t ctx = 0;
+        for (uint32_t i = 0; i < total_lit; i++) {
+            bkt_count[ctx]++;
+            ctx = lit_raw[i] >> 4;
+        }
+    }
+
+    /* Pass 2: scatter literals into per-context buffers. */
+    uint8_t  *bkt_data[LZS_LIT_N_CTX];
+    uint32_t  bkt_pos[LZS_LIT_N_CTX];
+    memset(bkt_data, 0, sizeof(bkt_data));
+    memset(bkt_pos,  0, sizeof(bkt_pos));
+
+    tdc_status st = TDC_OK;
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++) {
+        if (bkt_count[c] == 0) continue;
+        bkt_data[c] = (uint8_t *)lzs_alloc(owner, bkt_count[c]);
+        if (!bkt_data[c]) { st = TDC_E_NOMEM; goto ctx_enc_done; }
+    }
+    {
+        uint8_t ctx = 0;
+        for (uint32_t i = 0; i < total_lit; i++) {
+            bkt_data[ctx][bkt_pos[ctx]++] = lit_raw[i];
+            ctx = lit_raw[i] >> 4;
+        }
+    }
+
+    /* Pass 3: encode each bucket independently. */
+    uint8_t       *enc_buf[LZS_LIT_N_CTX];
+    uint32_t       enc_sz[LZS_LIT_N_CTX];
+    tdc_entropy_id enc_id[LZS_LIT_N_CTX];
+    memset(enc_buf, 0, sizeof(enc_buf));
+    memset(enc_sz,  0, sizeof(enc_sz));
+
+    uint32_t total_enc = 0;
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++) {
+        enc_id[c] = TDC_ENTROPY_NONE;
+        if (bkt_count[c] == 0) continue;
+        st = lzs_encode_stream(bkt_data[c], bkt_count[c], scratch, owner,
+                               &enc_buf[c], &enc_sz[c], &enc_id[c]);
+        if (st != TDC_OK) goto ctx_enc_done;
+        total_enc += enc_sz[c];
+    }
+
+    /* Assemble context section: [ids(16)][counts(64)][sizes(64)][streams] */
+    {
+        uint32_t section_size = (uint32_t)LZS_LIT_CTX_HDR_SIZE + total_enc;
+        uint8_t *section = (uint8_t *)lzs_alloc(owner, section_size);
+        if (!section) { st = TDC_E_NOMEM; goto ctx_enc_done; }
+
+        for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++)
+            section[c] = (uint8_t)enc_id[c];
+        for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++)
+            memcpy(section + LZS_LIT_N_CTX + c * 4u, &bkt_count[c], 4);
+        for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++)
+            memcpy(section + LZS_LIT_N_CTX + LZS_LIT_N_CTX * 4u + c * 4u,
+                   &enc_sz[c], 4);
+
+        uint8_t *wp = section + LZS_LIT_CTX_HDR_SIZE;
+        for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++) {
+            if (enc_sz[c] > 0) {
+                memcpy(wp, enc_buf[c], enc_sz[c]);
+                wp += enc_sz[c];
+            }
+        }
+
+        *out_section      = section;
+        *out_section_size  = section_size;
+    }
+
+ctx_enc_done:
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++) {
+        lzs_free(owner, bkt_data[c]);
+        lzs_free(owner, enc_buf[c]);
+    }
+    return st;
+}
+
+/* ----- Order-1 literal context decode ------------------------------------ */
+/*
+ * Decode the context section (144-byte header + 16 encoded sub-streams)
+ * and reconstruct the flat literal stream by walking the same context
+ * assignment the encoder used.
+ */
+static tdc_status lzs_decode_lit_context(
+    const uint8_t *section, uint32_t section_size,
+    uint8_t *lit_raw, uint32_t total_lit)
+{
+    if (total_lit == 0) return TDC_OK;
+    if (section_size < LZS_LIT_CTX_HDR_SIZE) return TDC_E_CORRUPT;
+
+    tdc_entropy_id ctx_ids[LZS_LIT_N_CTX];
+    uint32_t       ctx_counts[LZS_LIT_N_CTX];
+    uint32_t       ctx_sizes[LZS_LIT_N_CTX];
+
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++)
+        ctx_ids[c] = (tdc_entropy_id)section[c];
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++)
+        memcpy(&ctx_counts[c], section + LZS_LIT_N_CTX + c * 4u, 4);
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++)
+        memcpy(&ctx_sizes[c],
+               section + LZS_LIT_N_CTX + LZS_LIT_N_CTX * 4u + c * 4u, 4);
+
+    /* Validate totals. */
+    uint64_t count_sum = 0, size_sum = 0;
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++) {
+        count_sum += ctx_counts[c];
+        size_sum  += ctx_sizes[c];
+    }
+    if (count_sum != total_lit) return TDC_E_CORRUPT;
+    if (LZS_LIT_CTX_HDR_SIZE + size_sum > section_size) return TDC_E_CORRUPT;
+
+    /* Decode each sub-stream into a temporary buffer. */
+    uint8_t *buckets[LZS_LIT_N_CTX];
+    memset(buckets, 0, sizeof(buckets));
+    tdc_status st = TDC_OK;
+
+    const uint8_t *sp = section + LZS_LIT_CTX_HDR_SIZE;
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++) {
+        if (ctx_counts[c] == 0) { sp += ctx_sizes[c]; continue; }
+        buckets[c] = (uint8_t *)malloc(ctx_counts[c]);
+        if (!buckets[c]) { st = TDC_E_NOMEM; goto ctx_dec_done; }
+
+        const tdc_entropy_vt *sub = lzs_sub_vt(ctx_ids[c]);
+        if (!sub) { st = TDC_E_CORRUPT; goto ctx_dec_done; }
+        st = sub->decode(sp, ctx_sizes[c], buckets[c], ctx_counts[c]);
+        if (st != TDC_OK) goto ctx_dec_done;
+        sp += ctx_sizes[c];
+    }
+
+    /* Reconstruct flat literal stream by walking context assignment. */
+    {
+        uint32_t bkt_pos[LZS_LIT_N_CTX];
+        memset(bkt_pos, 0, sizeof(bkt_pos));
+        uint8_t ctx = 0;
+        for (uint32_t i = 0; i < total_lit; i++) {
+            if (bkt_pos[ctx] >= ctx_counts[ctx]) {
+                st = TDC_E_CORRUPT; goto ctx_dec_done;
+            }
+            lit_raw[i] = buckets[ctx][bkt_pos[ctx]++];
+            ctx = lit_raw[i] >> 4;
+        }
+    }
+
+ctx_dec_done:
+    for (uint32_t c = 0; c < LZS_LIT_N_CTX; c++)
+        free(buckets[c]);
+    return st;
+}
+
 /* ----- Encode bound ------------------------------------------------------ */
 
 static size_t lzs_encode_bound(size_t src_size) {
@@ -442,8 +814,10 @@ static size_t lzs_encode_bound(size_t src_size) {
      * at most 4 * src_size each, symbol stream at most src_size, extra
      * bits stream at most 20 * src_size / 8. Each sub-coder adds at
      * most ~1 KiB of headers. Plus the 44-byte v2 header. */
+    /* Context-coded literals add up to 144-byte context header + 16
+     * sub-stream Huffman headers (~260 each) ≈ 4.3 KiB overhead. */
     return LZS_HEADER_SIZE_V2 + src_size + 2u * src_size
-         + src_size + 3u * src_size + 5u * 1024u;
+         + src_size + 3u * src_size + 10u * 1024u;
 }
 
 /* ----- Passthrough fallback --------------------------------------------- */
@@ -577,32 +951,65 @@ static void lzs_compute_prices(const uint8_t *lit_raw, uint32_t total_lit,
 
 /* ----- Encode ------------------------------------------------------------- */
 
+/* LZ_STREAMS level mapping.
+ *
+ * The level controls the parse strategy. The serialization (repcodes,
+ * log2-prefix symbols, per-stream entropy coding) is always the same —
+ * only the match-finding phase changes.
+ *
+ * level <= 0 (default): 3-pass optimal parsing. Best ratio, slowest.
+ * level 1:  flat hash (chain_depth=0), no lazy. Maximum encode speed.
+ * level 2:  greedy HC4 + lazy. Good balance.
+ * level 3:  greedy HC8 + lazy.
+ * level 4+: greedy HC16 + double lazy.
+ */
 static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
                               const void    *params,
                               tdc_buffer    *dst) {
-    (void)params;
     if (!dst || !dst->realloc_fn) return TDC_E_INVAL;
     if (src_size > 0 && !src)     return TDC_E_INVAL;
     if (src_size > UINT32_MAX)    return TDC_E_INVAL;
+
+    int level = 0;
+    if (params) {
+        const tdc_entropy_level *lp = (const tdc_entropy_level *)params;
+        level = lp->level;
+    }
 
     /* Empty input: emit an empty passthrough record. */
     if (src_size == 0) {
         return lzs_encode_passthrough(src, 0u, dst);
     }
 
-    /* --- Multi-pass encoding ---
-     * Pass 1: parse with approximate cost model (offset-aware flat costs)
-     * Pass 2..N: extract per-symbol prices from previous parse, re-parse
-     *
-     * Each additional pass refines the price model toward convergence.
-     * Diminishing returns after 3 passes on typical data. */
-#define LZS_N_PASSES 3
-
     LZSeq *seqs = NULL;
     uint32_t seq_count = 0;
-    tdc_status st = tdc_lz_parse_optimal_streams(src, (uint32_t)src_size, dst,
-                                                  &seqs, &seq_count);
-    if (st != TDC_OK) return st;
+    tdc_status st;
+
+    if (level >= 1) {
+        /* Fast path: greedy parse with hash chains + lazy matching.
+         * Skips the 3-pass optimal refinement loop entirely. */
+        uint32_t chain_depth, lazy_depth;
+        switch (level) {
+        case 1:  chain_depth = 0;  lazy_depth = 0; break;
+        case 2:  chain_depth = 4;  lazy_depth = 1; break;
+        case 3:  chain_depth = 8;  lazy_depth = 1; break;
+        default: chain_depth = 16; lazy_depth = 2; break;
+        }
+        st = tdc_lz_parse_greedy(src, (uint32_t)src_size, dst,
+                                  chain_depth, lazy_depth,
+                                  &seqs, &seq_count);
+        if (st != TDC_OK) return st;
+    } else {
+        /* Default: multi-pass optimal parsing. Best ratio, slow encode.
+         * Pass 1: approximate cost model (offset-aware flat costs)
+         * Pass 2..N: extract per-symbol prices from previous parse, re-parse
+         * Diminishing returns after 3 passes on typical data. */
+#define LZS_N_PASSES 3
+
+        st = tdc_lz_parse_optimal_streams(src, (uint32_t)src_size, dst,
+                                           &seqs, &seq_count);
+        if (st != TDC_OK) return st;
+    }
 
     if (seq_count == 0) {
         return lzs_encode_passthrough(src, (uint32_t)src_size, dst);
@@ -614,7 +1021,10 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
      * before repcode/symbol encoding removes redundant low bits. */
     uint32_t off_shift = lzs_detect_offset_shift(seqs, seq_count);
 
-    for (int pass = 1; pass < LZS_N_PASSES; pass++) {
+    /* Multi-pass refinement: only for the optimal parser (level <= 0).
+     * Greedy parse (level >= 1) skips refinement entirely — the parse
+     * is not cost-model-driven so repricing has no effect. */
+    for (int pass = (level >= 1) ? LZS_N_PASSES : 1; pass < LZS_N_PASSES; pass++) {
         /* Shift offsets (parser produces unshifted; we shift for encoding). */
         if (off_shift > 0) {
             for (uint32_t i = 0; i < seq_count; i++)
@@ -703,11 +1113,32 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         }
     }
 
-    /* Detect and apply offset stride shift.
-     * For typed data (e.g. f64, stride=8), all LZ offsets are multiples of
-     * the element width. Right-shifting by the common factor removes
-     * redundant low bits from the offset extras stream. */
-    uint32_t offset_shift = lzs_detect_offset_shift(seqs, seq_count);
+    /* Fused pass: detect offset stride + compute stream sizes.
+     * Both need a full scan of seqs, so we do them together. */
+    uint32_t offset_shift;
+    uint32_t trailing;
+    uint32_t total_lit;
+    {
+        uint32_t all_or = 0;
+        uint64_t total_lit64 = 0;
+        uint64_t consumed64 = 0;
+        for (uint32_t i = 0; i < seq_count; i++) {
+            all_or      |= seqs[i].match_off;
+            total_lit64 += seqs[i].lit_len;
+            consumed64  += (uint64_t)seqs[i].lit_len + seqs[i].match_len;
+        }
+        trailing = (uint32_t)((uint64_t)src_size - consumed64);
+        total_lit = (uint32_t)(total_lit64 + trailing);
+
+        /* Offset stride: largest power-of-2 dividing all offsets (0-7). */
+        offset_shift = 0;
+        if (all_or != 0) {
+            while (offset_shift < 7u && (all_or & (1u << offset_shift)) == 0)
+                offset_shift++;
+        }
+    }
+
+    /* Apply offset shift. */
     if (offset_shift > 0) {
         for (uint32_t i = 0; i < seq_count; i++)
             seqs[i].match_off >>= offset_shift;
@@ -721,16 +1152,6 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
     /* Repcode transform on the shifted offsets. */
     lzs_repcode_encode(seqs, seq_count);
 
-    /* Compute stream sizes from the parse. */
-    uint64_t total_lit64 = 0;
-    uint64_t consumed64 = 0;
-    for (uint32_t i = 0; i < seq_count; i++) {
-        total_lit64 += seqs[i].lit_len;
-        consumed64  += (uint64_t)seqs[i].lit_len + seqs[i].match_len;
-    }
-    uint32_t trailing = (uint32_t)((uint64_t)src_size - consumed64);
-    uint32_t total_lit = (uint32_t)(total_lit64 + trailing);
-
     tdc_buffer scratch = {0};
     scratch.realloc_fn = dst->realloc_fn;
     scratch.user       = dst->user;
@@ -739,39 +1160,32 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
     uint8_t  *ll_sym    = NULL;   /* lit_len symbol stream (1 byte/seq) */
     uint8_t  *ml_sym    = NULL;   /* match_len symbol stream (1 byte/seq) */
     uint8_t  *off_sym   = NULL;   /* offset symbol stream (1 byte/seq) */
-    uint8_t  *extra_raw = NULL;   /* combined packed extra bits */
+    uint8_t  *extra_raw = NULL;   /* combined packed extra bits (interleaved) */
     uint32_t  extra_bytes = 0;
 
+    /* Split-extras buffers: ll+ml extras in one stream, off extras separate. */
+    uint8_t  *lm_extra_raw  = NULL;
+    uint8_t  *off_extra_raw = NULL;
+    uint8_t  *off_extra_enc = NULL;
+    uint32_t  lm_extra_bytes  = 0;
+    uint32_t  off_extra_raw_bytes = 0;
+    uint32_t  off_extra_enc_bytes = 0;
+    tdc_entropy_id off_extra_id = TDC_ENTROPY_NONE;
+    int       use_split_extras = 0;
+    int       use_delta_offsets = 0;
+
     uint8_t *enc_lit = NULL, *enc_ll = NULL, *enc_ml = NULL, *enc_off = NULL;
+    uint8_t *enc_lit_ctx = NULL;
     uint32_t sz_lit = 0, sz_ll = 0, sz_ml = 0, sz_off = 0;
+    uint32_t sz_lit_ctx = 0;
+    int      use_lit_ctx = 0;
     tdc_entropy_id id_lit = TDC_ENTROPY_NONE;
     tdc_entropy_id id_ll  = TDC_ENTROPY_NONE;
     tdc_entropy_id id_ml  = TDC_ENTROPY_NONE;
     tdc_entropy_id id_off = TDC_ENTROPY_NONE;
 
-    /* Build literal stream. */
-    if (total_lit > 0) {
-        lit_raw = (uint8_t *)lzs_alloc(dst, total_lit);
-        if (!lit_raw) { st = TDC_E_NOMEM; goto cleanup; }
-
-        uint32_t src_pos = 0;
-        uint32_t lit_pos = 0;
-        for (uint32_t i = 0; i < seq_count; i++) {
-            uint32_t ll = seqs[i].lit_len;
-            if (ll > 0) {
-                memcpy(lit_raw + lit_pos, src + src_pos, ll);
-                lit_pos += ll;
-            }
-            src_pos += ll + seqs[i].match_len;
-        }
-        if (trailing > 0) memcpy(lit_raw + lit_pos, src + src_pos, trailing);
-    }
-
-    /* Build log2-prefix symbol streams + combined packed extra bits for
-     * all three integer fields (lit_len, match_len, offset). Each value
-     * is split into a small-alphabet symbol (entropy-coded) and extra
-     * bits (packed raw). All extra bits go into a single combined
-     * bitstream, interleaved per-sequence: ll_extra, ml_extra, off_extra. */
+    /* Fused: build literal stream + symbol streams + count extra bits.
+     * One pass over seqs instead of two. */
     {
         ll_sym  = (uint8_t *)lzs_alloc(dst, seq_count);
         ml_sym  = (uint8_t *)lzs_alloc(dst, seq_count);
@@ -779,14 +1193,28 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         if (!ll_sym || !ml_sym || !off_sym) {
             st = TDC_E_NOMEM; goto cleanup;
         }
+        if (total_lit > 0) {
+            lit_raw = (uint8_t *)lzs_alloc(dst, total_lit);
+            if (!lit_raw) { st = TDC_E_NOMEM; goto cleanup; }
+        }
 
-        /* Compute symbols and total extra bits. */
         uint32_t total_extra_bits = 0;
         uint32_t ll_extra_bits = 0, ml_extra_bits = 0, off_extra_bits = 0;
         uint32_t n_repcodes = 0;
+        uint32_t src_pos = 0;
+        uint32_t lit_pos = 0;
         for (uint32_t i = 0; i < seq_count; i++) {
             uint8_t s; uint32_t ex, nb;
 
+            /* Copy literals for this sequence. */
+            uint32_t ll = seqs[i].lit_len;
+            if (ll > 0) {
+                memcpy(lit_raw + lit_pos, src + src_pos, ll);
+                lit_pos += ll;
+            }
+            src_pos += ll + seqs[i].match_len;
+
+            /* Build symbols. */
             lzs_uint_to_symbol(seqs[i].lit_len, &s, &ex, &nb);
             ll_sym[i] = s;
             total_extra_bits += nb;
@@ -803,33 +1231,93 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
             off_extra_bits += nb;
             if (seqs[i].match_off <= 3u) n_repcodes++;
         }
-        if (lzs_dump_enabled()) {
-            uint32_t off_hist[24] = {0};
+        if (trailing > 0) memcpy(lit_raw + lit_pos, src + src_pos, trailing);
+
+        /* Trial delta offset encoding: novel offsets as zigzag(off - rep1).
+         * Saves bits when consecutive offsets are similar (e.g., seasonal
+         * strides alternating 365/366 for leap years).
+         * Skipped for level >= 1 (fast path) — the trial cost is significant
+         * and the savings are typically < 5% of off_extra bits. */
+        if (level <= 0 && off_extra_bits >= 16u && seq_count > 1u) {
+            uint32_t delta_off_bits = 0;
+            uint32_t dr1 = LZS_REP_INIT_1, dr2 = LZS_REP_INIT_2,
+                     dr3 = LZS_REP_INIT_3;
             for (uint32_t i = 0; i < seq_count; i++) {
-                if (off_sym[i] < 24) off_hist[off_sym[i]]++;
+                uint32_t code = seqs[i].match_off;
+                if (code <= 3u) {
+                    lzs_rep_update(code, &dr1, &dr2, &dr3);
+                } else {
+                    uint32_t actual_off = code - 3u;
+                    uint32_t zz = lzs_zigzag_encode(
+                        (int32_t)actual_off - (int32_t)dr1);
+                    uint8_t zs; uint32_t zex, znb;
+                    lzs_uint_to_symbol(zz, &zs, &zex, &znb);
+                    delta_off_bits += znb;
+                    dr3 = dr2; dr2 = dr1; dr1 = actual_off;
+                }
+            }
+            if (delta_off_bits < off_extra_bits) {
+                use_delta_offsets = 1;
+                /* Rebuild off_sym with delta symbols. */
+                dr1 = LZS_REP_INIT_1; dr2 = LZS_REP_INIT_2;
+                dr3 = LZS_REP_INIT_3;
+                for (uint32_t i = 0; i < seq_count; i++) {
+                    uint32_t code = seqs[i].match_off;
+                    if (code <= 3u) {
+                        lzs_rep_update(code, &dr1, &dr2, &dr3);
+                    } else {
+                        uint32_t actual_off = code - 3u;
+                        uint32_t zz = lzs_zigzag_encode(
+                            (int32_t)actual_off - (int32_t)dr1);
+                        uint8_t zs; uint32_t zex, znb;
+                        lzs_uint_to_symbol(zz, &zs, &zex, &znb);
+                        off_sym[i] = (uint8_t)(zs + 3u);
+                        dr3 = dr2; dr2 = dr1; dr1 = actual_off;
+                    }
+                }
+                if (lzs_dump_enabled()) {
+                    fprintf(stderr,
+                            "  [lzs-delta] off_extra: %u -> %u bits (saved %u)\n",
+                            off_extra_bits, delta_off_bits,
+                            off_extra_bits - delta_off_bits);
+                }
+                total_extra_bits = total_extra_bits - off_extra_bits
+                                 + delta_off_bits;
+                off_extra_bits = delta_off_bits;
+            }
+        }
+
+        if (lzs_dump_enabled()) {
+            uint32_t off_hist[LZS_MAX_OFFSET_DELTA_SYMBOL + 1] = {0};
+            for (uint32_t i = 0; i < seq_count; i++) {
+                if (off_sym[i] <= LZS_MAX_OFFSET_DELTA_SYMBOL) off_hist[off_sym[i]]++;
             }
             fprintf(stderr,
                     "  [lzs-extra] ll=%u ml=%u off=%u total=%u bits "
-                    "(%u bytes) repcodes=%u/%u (%.0f%%)\n",
+                    "(%u bytes) repcodes=%u/%u (%.0f%%)%s\n",
                     ll_extra_bits, ml_extra_bits, off_extra_bits,
                     total_extra_bits, (total_extra_bits + 7u) / 8u,
                     n_repcodes, seq_count,
-                    seq_count > 0 ? 100.0 * n_repcodes / seq_count : 0.0);
+                    seq_count > 0 ? 100.0 * n_repcodes / seq_count : 0.0,
+                    use_delta_offsets ? " [DELTA]" : "");
             fprintf(stderr, "  [lzs-off-hist]");
-            for (int j = 0; j < 24; j++) {
+            for (uint32_t j = 0; j <= LZS_MAX_OFFSET_DELTA_SYMBOL; j++) {
                 if (off_hist[j] > 0) fprintf(stderr, " s%d=%u", j, off_hist[j]);
             }
             fprintf(stderr, "\n");
         }
 
-        /* Pack extra bits into combined buffer. */
+        /* Pack extra bits into combined (interleaved) buffer. */
         extra_bytes = (total_extra_bits + 7u) / 8u;
         if (extra_bytes > 0) {
-            extra_raw = (uint8_t *)lzs_alloc(dst, extra_bytes);
+            /* +4 bytes slack for the 4-byte window in lzs_bits_write. */
+            extra_raw = (uint8_t *)lzs_alloc(dst, extra_bytes + 4u);
             if (!extra_raw) { st = TDC_E_NOMEM; goto cleanup; }
-            memset(extra_raw, 0, extra_bytes);
+            memset(extra_raw, 0, extra_bytes + 4u);
 
             uint32_t bit_pos = 0;
+            uint32_t pr1 = LZS_REP_INIT_1, pr2 = LZS_REP_INIT_2,
+                     pr3 = LZS_REP_INIT_3;
             for (uint32_t i = 0; i < seq_count; i++) {
                 uint8_t s; uint32_t ex, nb;
 
@@ -839,26 +1327,176 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
                 lzs_uint_to_symbol(seqs[i].match_len - LZ_MIN_MATCH, &s, &ex, &nb);
                 if (nb > 0) lzs_bits_write(extra_raw, &bit_pos, ex, nb);
 
-                lzs_offset_to_symbol(seqs[i].match_off, &s, &ex, &nb);
-                if (nb > 0) lzs_bits_write(extra_raw, &bit_pos, ex, nb);
+                if (use_delta_offsets) {
+                    uint32_t code = seqs[i].match_off;
+                    if (code >= 4u) {
+                        uint32_t actual_off = code - 3u;
+                        uint32_t zz = lzs_zigzag_encode(
+                            (int32_t)actual_off - (int32_t)pr1);
+                        lzs_uint_to_symbol(zz, &s, &ex, &nb);
+                        if (nb > 0) lzs_bits_write(extra_raw, &bit_pos, ex, nb);
+                    }
+                    lzs_rep_update(code, &pr1, &pr2, &pr3);
+                } else {
+                    lzs_offset_to_symbol(seqs[i].match_off, &s, &ex, &nb);
+                    if (nb > 0) lzs_bits_write(extra_raw, &bit_pos, ex, nb);
+                }
+            }
+        }
+
+        /* Also build split-extras: ll+ml in one stream, off in another.
+         * Try entropy-coding the off extras — for structured data, the
+         * offset extras cluster around seasonal strides and compress.
+         * Skipped for level >= 1 (fast path). */
+        if (level <= 0 && off_extra_bits >= 64u) {
+            uint32_t lm_bits = ll_extra_bits + ml_extra_bits;
+            lm_extra_bytes = (lm_bits + 7u) / 8u;
+            off_extra_raw_bytes = (off_extra_bits + 7u) / 8u;
+
+            if (lm_extra_bytes > 0) {
+                lm_extra_raw = (uint8_t *)lzs_alloc(dst, lm_extra_bytes + 4u);
+                if (!lm_extra_raw) { st = TDC_E_NOMEM; goto cleanup; }
+                memset(lm_extra_raw, 0, lm_extra_bytes + 4u);
+            }
+            off_extra_raw = (uint8_t *)lzs_alloc(dst, off_extra_raw_bytes + 4u);
+            if (!off_extra_raw) { st = TDC_E_NOMEM; goto cleanup; }
+            memset(off_extra_raw, 0, off_extra_raw_bytes + 4u);
+
+            uint32_t lm_bp = 0, off_bp = 0;
+            uint32_t sr1 = LZS_REP_INIT_1, sr2 = LZS_REP_INIT_2,
+                     sr3 = LZS_REP_INIT_3;
+            for (uint32_t i = 0; i < seq_count; i++) {
+                uint8_t s; uint32_t ex, nb;
+
+                lzs_uint_to_symbol(seqs[i].lit_len, &s, &ex, &nb);
+                if (nb > 0) lzs_bits_write(lm_extra_raw, &lm_bp, ex, nb);
+
+                lzs_uint_to_symbol(seqs[i].match_len - LZ_MIN_MATCH, &s, &ex, &nb);
+                if (nb > 0) lzs_bits_write(lm_extra_raw, &lm_bp, ex, nb);
+
+                if (use_delta_offsets) {
+                    uint32_t code = seqs[i].match_off;
+                    if (code >= 4u) {
+                        uint32_t actual_off = code - 3u;
+                        uint32_t zz = lzs_zigzag_encode(
+                            (int32_t)actual_off - (int32_t)sr1);
+                        lzs_uint_to_symbol(zz, &s, &ex, &nb);
+                        if (nb > 0) lzs_bits_write(off_extra_raw, &off_bp, ex, nb);
+                    }
+                    lzs_rep_update(code, &sr1, &sr2, &sr3);
+                } else {
+                    lzs_offset_to_symbol(seqs[i].match_off, &s, &ex, &nb);
+                    if (nb > 0) lzs_bits_write(off_extra_raw, &off_bp, ex, nb);
+                }
+            }
+
+            /* Try entropy-coding the off extras byte stream. */
+            st = lzs_encode_stream(off_extra_raw, off_extra_raw_bytes,
+                                    &scratch, dst,
+                                    &off_extra_enc, &off_extra_enc_bytes,
+                                    &off_extra_id);
+            if (st != TDC_OK) goto cleanup;
+
+            /* Try order-1 context on off extras. */
+            if (off_extra_raw_bytes >= 512u) {
+                uint8_t *off_ctx_enc = NULL;
+                uint32_t off_ctx_sz = 0;
+                st = lzs_encode_lit_context(off_extra_raw, off_extra_raw_bytes,
+                                             &scratch, dst,
+                                             &off_ctx_enc, &off_ctx_sz);
+                if (st != TDC_OK) goto cleanup;
+                if (off_ctx_enc && off_ctx_sz < off_extra_enc_bytes) {
+                    lzs_free(dst, off_extra_enc);
+                    off_extra_enc = off_ctx_enc;
+                    off_extra_enc_bytes = off_ctx_sz;
+                    off_extra_id = (tdc_entropy_id)0xFFu;
+                } else {
+                    lzs_free(dst, off_ctx_enc);
+                }
+            }
+
+            /* Split wins if total (sub-header + lm + off_enc) < interleaved. */
+            uint32_t split_total = LZS_SPLIT_EXTRAS_HDR
+                                 + lm_extra_bytes + off_extra_enc_bytes;
+            if (split_total < extra_bytes) {
+                use_split_extras = 1;
+                extra_bytes = split_total;
+                if (lzs_dump_enabled()) {
+                    const char *off_name = (uint8_t)off_extra_id == 0xFFu ? "CTX" :
+                                           off_extra_id == TDC_ENTROPY_HUFFMAN ? "HUF" :
+                                           off_extra_id == TDC_ENTROPY_FSE ? "FSE" : "NONE";
+                    fprintf(stderr,
+                            "  [lzs-split-extras] lm=%u off=%u(%u/%s) "
+                            "total=%u (was %u, saved %u)\n",
+                            lm_extra_bytes,
+                            off_extra_raw_bytes, off_extra_enc_bytes, off_name,
+                            split_total,
+                            (total_extra_bits + 7u) / 8u,
+                            (total_extra_bits + 7u) / 8u - split_total);
+                }
+            } else {
+                lzs_free(dst, lm_extra_raw);  lm_extra_raw = NULL;
+                lzs_free(dst, off_extra_raw); off_extra_raw = NULL;
+                lzs_free(dst, off_extra_enc); off_extra_enc = NULL;
             }
         }
     }
 
-    /* Encode each symbol stream (Huffman/FSE best-of). */
-    st = lzs_encode_stream(lit_raw, total_lit, &scratch, dst,
-                            &enc_lit, &sz_lit, &id_lit);
-    if (st != TDC_OK) goto cleanup;
+    /* Encode each stream.  For level >= 1 (fast), use Shannon heuristic
+     * to pick one coder per stream (no trial-and-compare, no context
+     * coding).  For level <= 0 (default), try all coders + context. */
+    if (level >= 1) {
+        st = lzs_encode_stream_fast(lit_raw, total_lit, &scratch, dst,
+                                     &enc_lit, &sz_lit, &id_lit);
+        if (st != TDC_OK) goto cleanup;
+        /* If literal stream selected NONE, enc_lit is a redundant copy of
+         * lit_raw. Drop it and write directly from lit_raw in output assembly. */
+        if (id_lit == TDC_ENTROPY_NONE && enc_lit) {
+            lzs_free(dst, enc_lit);
+            enc_lit = NULL;
+        }
+        st = lzs_encode_stream_fast(ll_sym, seq_count, &scratch, dst,
+                                     &enc_ll, &sz_ll, &id_ll);
+        if (st != TDC_OK) goto cleanup;
+        st = lzs_encode_stream_fast(ml_sym, seq_count, &scratch, dst,
+                                     &enc_ml, &sz_ml, &id_ml);
+        if (st != TDC_OK) goto cleanup;
+        st = lzs_encode_stream_fast(off_sym, seq_count, &scratch, dst,
+                                     &enc_off, &sz_off, &id_off);
+        if (st != TDC_OK) goto cleanup;
+    } else {
+        st = lzs_encode_stream(lit_raw, total_lit, &scratch, dst,
+                                &enc_lit, &sz_lit, &id_lit);
+        if (st != TDC_OK) goto cleanup;
 
-    st = lzs_encode_stream(ll_sym, seq_count, &scratch, dst,
-                            &enc_ll, &sz_ll, &id_ll);
-    if (st != TDC_OK) goto cleanup;
-    st = lzs_encode_stream(ml_sym, seq_count, &scratch, dst,
-                            &enc_ml, &sz_ml, &id_ml);
-    if (st != TDC_OK) goto cleanup;
-    st = lzs_encode_stream(off_sym, seq_count, &scratch, dst,
-                            &enc_off, &sz_off, &id_off);
-    if (st != TDC_OK) goto cleanup;
+        if (total_lit >= 512u) {
+            st = lzs_encode_lit_context(lit_raw, total_lit, &scratch, dst,
+                                         &enc_lit_ctx, &sz_lit_ctx);
+            if (st != TDC_OK) goto cleanup;
+
+            if (enc_lit_ctx && sz_lit_ctx < sz_lit) {
+                use_lit_ctx = 1;
+                lzs_free(dst, enc_lit);
+                enc_lit = enc_lit_ctx;
+                sz_lit  = sz_lit_ctx;
+                enc_lit_ctx = NULL;
+                id_lit = TDC_ENTROPY_NONE;
+            } else {
+                lzs_free(dst, enc_lit_ctx);
+                enc_lit_ctx = NULL;
+            }
+        }
+
+        st = lzs_encode_stream(ll_sym, seq_count, &scratch, dst,
+                                &enc_ll, &sz_ll, &id_ll);
+        if (st != TDC_OK) goto cleanup;
+        st = lzs_encode_stream(ml_sym, seq_count, &scratch, dst,
+                                &enc_ml, &sz_ml, &id_ml);
+        if (st != TDC_OK) goto cleanup;
+        st = lzs_encode_stream(off_sym, seq_count, &scratch, dst,
+                                &enc_off, &sz_off, &id_off);
+        if (st != TDC_OK) goto cleanup;
+    }
 
     if (lzs_dump_enabled()) {
         static const char *id_name[] = {
@@ -868,12 +1506,13 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         };
         uint32_t total_enc = (uint32_t)LZS_HEADER_SIZE_V2
                            + sz_lit + sz_ll + sz_ml + sz_off + extra_bytes;
+        const char *lit_mode = use_lit_ctx ? "CTX" : id_name[id_lit];
         fprintf(stderr,
                 "[lzs-p2] src=%zu n_seqs=%u  "
                 "lit=%u(%u/%s) ll=%u/%s ml=%u/%s off=%u/%s extra=%u  "
                 "total=%u (%.2fx)\n",
                 src_size, seq_count,
-                total_lit, sz_lit, id_name[id_lit],
+                total_lit, sz_lit, lit_mode,
                 sz_ll, id_name[id_ll],
                 sz_ml, id_name[id_ml],
                 sz_off, id_name[id_off],
@@ -898,7 +1537,10 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         uint32_t us = (uint32_t)src_size;
         p[0] = (uint8_t)LZS_FORMAT_VERSION;
         p[1] = (uint8_t)(LZS_FLAG_REPCODES
-                         | (offset_shift > 0 ? LZS_FLAG_OFFSET_SHIFT : 0));
+                         | (offset_shift > 0 ? LZS_FLAG_OFFSET_SHIFT : 0)
+                         | (use_lit_ctx ? LZS_FLAG_LIT_CONTEXT : 0)
+                         | (use_split_extras ? LZS_FLAG_SPLIT_EXTRAS : 0)
+                         | (use_delta_offsets ? LZS_FLAG_DELTA_OFFSETS : 0));
         p[2] = (uint8_t)offset_shift;
         p[3] = 0;
         memcpy(p +  4, &seq_count,   4);
@@ -916,17 +1558,42 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         memcpy(p + 40, &extra_bytes,  4);
 
         uint8_t *body = p + LZS_HEADER_SIZE_V2;
-        if (sz_lit)      { memcpy(body, enc_lit,   sz_lit);      body += sz_lit;      }
+        if (sz_lit) {
+            /* enc_lit is NULL when NONE was selected and we dropped the
+             * redundant copy (L1 fast path). Write directly from lit_raw. */
+            const uint8_t *lit_src = enc_lit ? enc_lit : lit_raw;
+            memcpy(body, lit_src, sz_lit);
+            body += sz_lit;
+        }
         if (sz_ll)       { memcpy(body, enc_ll,    sz_ll);       body += sz_ll;       }
         if (sz_ml)       { memcpy(body, enc_ml,    sz_ml);       body += sz_ml;       }
         if (sz_off)      { memcpy(body, enc_off,   sz_off);      body += sz_off;      }
-        if (extra_bytes) { memcpy(body, extra_raw, extra_bytes);                      }
+        if (extra_bytes) {
+            if (use_split_extras) {
+                /* Write split-extras sub-header (13 bytes) + data. */
+                memcpy(body,      &lm_extra_bytes,      4);
+                memcpy(body +  4, &off_extra_raw_bytes, 4);
+                memcpy(body +  8, &off_extra_enc_bytes, 4);
+                body[12] = (uint8_t)off_extra_id;
+                body += LZS_SPLIT_EXTRAS_HDR;
+                if (lm_extra_bytes > 0) {
+                    memcpy(body, lm_extra_raw, lm_extra_bytes);
+                    body += lm_extra_bytes;
+                }
+                if (off_extra_enc_bytes > 0) {
+                    memcpy(body, off_extra_enc, off_extra_enc_bytes);
+                }
+            } else {
+                memcpy(body, extra_raw, extra_bytes);
+            }
+        }
     }
     dst->size = final_size;
 
 cleanup:
     if (scratch.data) scratch.realloc_fn(scratch.user, scratch.data, 0);
     lzs_free(dst, enc_lit);
+    lzs_free(dst, enc_lit_ctx);
     lzs_free(dst, enc_ll);
     lzs_free(dst, enc_ml);
     lzs_free(dst, enc_off);
@@ -935,6 +1602,9 @@ cleanup:
     lzs_free(dst, ml_sym);
     lzs_free(dst, off_sym);
     lzs_free(dst, extra_raw);
+    lzs_free(dst, lm_extra_raw);
+    lzs_free(dst, off_extra_raw);
+    lzs_free(dst, off_extra_enc);
     lzs_free(dst, seqs);
     return st;
 }
@@ -948,7 +1618,213 @@ cleanup:
  * (log2-prefix symbols + packed extra bits, header 44).
  */
 
-/* Shared output reconstruction — used by both v1 and v2 decoders. */
+/* Wildcopy and match copy now live in src/core/simd.h as tdc_wildcopy16
+ * and tdc_match_copy.  SSE2/NEON where available, scalar fallback. */
+
+/* 64-bit refillable bit buffer for the fused decode hot loop.
+ * Amortizes byte loads across multiple bit reads. After refill the
+ * buffer holds 56-64 bits; each read consumes a few bits and shifts
+ * left, so we refill roughly every 8-12 reads instead of loading
+ * per call. */
+typedef struct {
+    uint64_t bits;      /* left-aligned: MSB first */
+    int      nbits;     /* valid bits in `bits` */
+    const uint8_t *ptr; /* next unread byte */
+    const uint8_t *end; /* one past last byte */
+    const uint8_t *safe; /* end - 7: safe for 8-byte loads */
+} lzs_br;
+
+static inline void lzs_br_init(lzs_br *br, const uint8_t *buf, uint32_t size) {
+    br->bits  = 0;
+    br->nbits = 0;
+    br->ptr   = buf;
+    br->end   = buf + size;
+    br->safe  = (size >= 8) ? buf + size - 7 : buf;
+}
+
+static inline void lzs_br_refill(lzs_br *br) {
+    if (br->ptr < br->safe) {
+        /* Fast: 8-byte unaligned LE load. The extras buffer is
+         * LSB-first, so `next` in LE native order places byte[0]
+         * at bits 0-7 etc. Shift up past existing valid bits and
+         * OR in.  Bits from bytes we don't advance past are harmless:
+         * they're correct values that will be OR'd again idempotently
+         * on the next refill (same technique as zstd/lz4). */
+        uint64_t next;
+        memcpy(&next, br->ptr, 8);
+        br->bits  |= next << br->nbits;
+        unsigned fresh = (unsigned)(64 - br->nbits) >> 3;
+        br->ptr   += fresh;
+        br->nbits += (int)(fresh << 3);
+    } else {
+        while (br->nbits <= 56 && br->ptr < br->end) {
+            br->bits |= (uint64_t)(*br->ptr++) << br->nbits;
+            br->nbits += 8;
+        }
+    }
+}
+
+/* Read `nb` bits from the buffer (LSB-first, matching the extras layout).
+ * Caller must ensure nbits <= 25 (max extra bits for any symbol). */
+static inline uint32_t lzs_br_read(lzs_br *br, uint32_t nb) {
+    if (nb == 0) return 0;
+    if (br->nbits < (int)nb) lzs_br_refill(br);
+    uint32_t val = (uint32_t)br->bits & ((1u << nb) - 1u);
+    br->bits >>= nb;
+    br->nbits -= (int)nb;
+    return val;
+}
+
+/* lzs_match_copy removed — callers now use tdc_match_copy (simd.h). */
+
+/* Fused single-pass decode for v2 blocks (non-split-extras).
+ *
+ * Merges symbol reconstruction, repcode decode, offset shift, and sequence
+ * execution into one loop. Eliminates the 3 × n_seqs uint32 intermediate
+ * arrays and reduces total memory traffic by ~40% vs the multi-pass path.
+ * The symbol streams (ll_dec, ml_dec, off_dec) and literals (lit_raw) are
+ * already decoded by the Huffman/FSE sub-coders; this function walks them
+ * once and produces the final output. */
+static tdc_status lzs_decode_fused(
+    const uint8_t *ll_dec, const uint8_t *ml_dec, const uint8_t *off_dec,
+    const uint8_t *extra_ptr, uint32_t sz_extra,
+    const uint8_t *lit_raw, uint32_t total_lit, uint32_t trailing,
+    uint32_t n_seqs, int delta_offsets, int has_repcodes,
+    uint32_t offset_shift,
+    uint8_t *dst, size_t dst_size)
+{
+    /* 64-bit refillable bit buffer — replaces per-call lzs_bits_read_safe
+     * to amortize loads across 8-12 reads per refill. */
+    lzs_br br;
+    lzs_br_init(&br, extra_ptr, sz_extra);
+    /* Delta-offset rep state (only used when delta_offsets is set). */
+    uint32_t dr1 = LZS_REP_INIT_1, dr2 = LZS_REP_INIT_2,
+             dr3 = LZS_REP_INIT_3;
+    /* Repcode state (only used when has_repcodes is set). */
+    uint32_t r1 = LZS_REP_INIT_1, r2 = LZS_REP_INIT_2,
+             r3 = LZS_REP_INIT_3;
+
+    size_t dp = 0, lp = 0;
+    size_t safe_end = (dst_size >= 15) ? dst_size - 15 : 0;
+
+    /* --- Upfront symbol-range validation (items 4.2) ---
+     * Move the 3 per-sequence symbol-range checks out of the hot loop.
+     * After this pass, the main loop can skip those branches entirely. */
+    {
+        uint8_t off_max = delta_offsets ? (uint8_t)LZS_MAX_OFFSET_DELTA_SYMBOL
+                                        : (uint8_t)LZS_MAX_OFFSET_SYMBOL;
+        for (uint32_t i = 0; i < n_seqs; i++) {
+            if (ll_dec[i]  > LZS_MAX_LL_SYMBOL) return TDC_E_CORRUPT;
+            if (ml_dec[i]  > LZS_MAX_ML_SYMBOL) return TDC_E_CORRUPT;
+            if (off_dec[i] > off_max)            return TDC_E_CORRUPT;
+        }
+    }
+
+    for (uint32_t i = 0; i < n_seqs; i++) {
+        uint8_t s; uint32_t ex, nb;
+
+        /* --- Reconstruct lit_len --- */
+        s = ll_dec[i];
+        nb = (s >= 2u) ? (uint32_t)s - 1u : 0u;
+        ex = lzs_br_read(&br, nb);
+        uint32_t ll = lzs_symbol_to_uint(s, ex);
+
+        /* --- Reconstruct match_len --- */
+        s = ml_dec[i];
+        nb = (s >= 2u) ? (uint32_t)s - 1u : 0u;
+        ex = lzs_br_read(&br, nb);
+        uint32_t ml = lzs_symbol_to_uint(s, ex) + LZ_MIN_MATCH;
+
+        /* --- Reconstruct offset code --- */
+        uint32_t mo;
+        s = off_dec[i];
+        if (delta_offsets) {
+            if (s <= 2u) {
+                mo = (uint32_t)s + 1u;
+                lzs_rep_update(mo, &dr1, &dr2, &dr3);
+            } else {
+                uint8_t usym = (uint8_t)(s - 3u);
+                nb = (usym >= 2u) ? (uint32_t)usym - 1u : 0u;
+                ex = lzs_br_read(&br, nb);
+                uint32_t zigzag = lzs_symbol_to_uint(usym, ex);
+                int32_t delta = lzs_zigzag_decode(zigzag);
+                int64_t off64 = (int64_t)dr1 + delta;
+                if (off64 <= 0) return TDC_E_CORRUPT;
+                mo = (uint32_t)off64 + 3u;
+                lzs_rep_update(mo, &dr1, &dr2, &dr3);
+            }
+        } else {
+            nb = (s >= 3u) ? (uint32_t)s - 3u : 0u;
+            ex = lzs_br_read(&br, nb);
+            mo = lzs_symbol_to_code(s, ex);
+        }
+
+        /* --- Repcode decode (inline) --- */
+        if (has_repcodes) {
+            uint32_t code = mo;
+            if (code == 0u) return TDC_E_CORRUPT;
+            if (code == 1u) {
+                mo = r1;
+            } else if (code == 2u) {
+                mo = r2;
+                uint32_t t = r1; r1 = r2; r2 = t;
+            } else if (code == 3u) {
+                mo = r3;
+                uint32_t t = r3; r3 = r2; r2 = r1; r1 = t;
+            } else {
+                mo = code - 3u;
+                if (mo == 0u || mo > LZ_MAX_OFFSET) return TDC_E_CORRUPT;
+                r3 = r2; r2 = r1; r1 = mo;
+            }
+        }
+
+        /* --- Offset stride shift --- */
+        if (offset_shift > 0) mo <<= offset_shift;
+
+        /* --- Execute: prefetch match address (item 1.5) --- */
+        if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
+        if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
+        if (mo != 0 && mo <= dp)
+            TDC_PREFETCH_L1(dst + dp - mo + ll);
+
+        /* --- Execute: copy literals (item 4.3) --- */
+        if (ll > 0) {
+            if (ll <= 16 && dp + ll <= safe_end) {
+                tdc_copy16(dst + dp, lit_raw + lp);
+            } else {
+                memcpy(dst + dp, lit_raw + lp, ll);
+            }
+            dp += ll;
+            lp += ll;
+        }
+
+        /* --- Execute: match copy --- */
+        if (ml < LZ_MIN_MATCH)            return TDC_E_CORRUPT;
+        if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
+        if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
+
+        if (dp + ml <= safe_end) {
+            tdc_match_copy(dst + dp, mo, ml);
+        } else {
+            size_t from = dp - mo;
+            for (uint32_t k = 0; k < ml; k++)
+                dst[dp + k] = dst[from + k];
+        }
+        dp += ml;
+    }
+
+    if ((uint64_t)lp + trailing != total_lit) return TDC_E_CORRUPT;
+    if (dp + trailing != dst_size)            return TDC_E_CORRUPT;
+    if (trailing > 0) memcpy(dst + dp, lit_raw + lp, trailing);
+    return TDC_OK;
+}
+
+/* Shared output reconstruction — used by both v1 and v2 decoders.
+ *
+ * Match copy uses wildcopy (16-byte memcpy chunks) which may overwrite
+ * up to 15 bytes past the match end. To make this safe, we use the fast
+ * path only while dp + ml + 15 <= dst_size; the last few sequences fall
+ * back to byte-by-byte copy. */
 static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
                                     const uint8_t *lit_raw, uint32_t total_lit,
                                     uint32_t trailing,
@@ -957,15 +1833,28 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
                                     const uint32_t *match_offs,
                                     uint32_t n_seqs) {
     size_t dp = 0, lp = 0;
-    for (uint32_t i = 0; i < n_seqs; i++) {
+    /* Fast path: wildcopy-safe region (15 bytes of slack). */
+    size_t safe_end = (dst_size >= 15) ? dst_size - 15 : 0;
+    uint32_t i = 0;
+
+    for (; i < n_seqs; i++) {
         uint32_t ll = lit_lens[i];
         uint32_t ml = match_lens[i];
         uint32_t mo = match_offs[i];
 
         if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
         if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
+
+        /* Prefetch match address before literal copy. */
+        if (mo != 0 && mo <= dp)
+            TDC_PREFETCH_L1(dst + dp - mo + ll);
+
         if (ll > 0) {
-            memcpy(dst + dp, lit_raw + lp, ll);
+            if (ll <= 16 && dp + ll <= safe_end) {
+                tdc_copy16(dst + dp, lit_raw + lp);
+            } else {
+                memcpy(dst + dp, lit_raw + lp, ll);
+            }
             dp += ll;
             lp += ll;
         }
@@ -974,9 +1863,14 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
         if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
         if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
 
-        size_t from = dp - mo;
-        for (uint32_t k = 0; k < ml; k++)
-            dst[dp + k] = dst[from + k];
+        if (dp + ml <= safe_end) {
+            tdc_match_copy(dst + dp, mo, ml);
+        } else {
+            /* Near end of buffer: byte-by-byte (no overwrite risk). */
+            size_t from = dp - mo;
+            for (uint32_t k = 0; k < ml; k++)
+                dst[dp + k] = dst[from + k];
+        }
         dp += ml;
     }
 
@@ -996,10 +1890,14 @@ static tdc_status lzs_reconstruct_symbols(const uint8_t *ll_dec,
                                             const uint8_t *extra_ptr,
                                             uint32_t sz_extra,
                                             uint32_t n_seqs,
+                                            int delta_offsets,
                                             uint32_t *lit_lens,
                                             uint32_t *match_lens,
                                             uint32_t *match_offs) {
     uint32_t bit_pos = 0;
+    uint32_t sz_extra_bits = sz_extra << 3;  /* precompute once */
+    uint32_t dr1 = LZS_REP_INIT_1, dr2 = LZS_REP_INIT_2,
+             dr3 = LZS_REP_INIT_3;
     for (uint32_t i = 0; i < n_seqs; i++) {
         uint8_t s; uint32_t ex, nb;
 
@@ -1009,8 +1907,8 @@ static tdc_status lzs_reconstruct_symbols(const uint8_t *ll_dec,
         ex = 0;
         if (s >= 2u) {
             nb = (uint32_t)s - 1u;
-            if ((bit_pos + nb + 7u) / 8u > sz_extra) return TDC_E_CORRUPT;
-            ex = lzs_bits_read(extra_ptr, &bit_pos, nb);
+            if (bit_pos + nb > sz_extra_bits) return TDC_E_CORRUPT;
+            ex = lzs_bits_read_safe(extra_ptr, sz_extra, &bit_pos, nb);
         }
         lit_lens[i] = lzs_symbol_to_uint(s, ex);
 
@@ -1020,23 +1918,122 @@ static tdc_status lzs_reconstruct_symbols(const uint8_t *ll_dec,
         ex = 0;
         if (s >= 2u) {
             nb = (uint32_t)s - 1u;
-            if ((bit_pos + nb + 7u) / 8u > sz_extra) return TDC_E_CORRUPT;
-            ex = lzs_bits_read(extra_ptr, &bit_pos, nb);
+            if (bit_pos + nb > sz_extra_bits) return TDC_E_CORRUPT;
+            ex = lzs_bits_read_safe(extra_ptr, sz_extra, &bit_pos, nb);
         }
         match_lens[i] = lzs_symbol_to_uint(s, ex) + LZ_MIN_MATCH;
 
         /* Reconstruct offset code. */
         s = off_dec[i];
-        if (s > LZS_MAX_OFFSET_SYMBOL) return TDC_E_CORRUPT;
-        ex = 0;
-        if (s >= 3u) {
-            nb = (uint32_t)s - 3u;
-            if (nb > 0) {
-                if ((bit_pos + nb + 7u) / 8u > sz_extra) return TDC_E_CORRUPT;
-                ex = lzs_bits_read(extra_ptr, &bit_pos, nb);
+        if (delta_offsets) {
+            if (s > LZS_MAX_OFFSET_DELTA_SYMBOL) return TDC_E_CORRUPT;
+            if (s <= 2u) {
+                match_offs[i] = (uint32_t)s + 1u;
+                lzs_rep_update(match_offs[i], &dr1, &dr2, &dr3);
+            } else {
+                uint8_t usym = (uint8_t)(s - 3u);
+                nb = (usym >= 2u) ? (uint32_t)usym - 1u : 0u;
+                ex = 0;
+                if (nb > 0) {
+                    if (bit_pos + nb > sz_extra_bits) return TDC_E_CORRUPT;
+                    ex = lzs_bits_read_safe(extra_ptr, sz_extra, &bit_pos, nb);
+                }
+                uint32_t zigzag = lzs_symbol_to_uint(usym, ex);
+                int32_t delta = lzs_zigzag_decode(zigzag);
+                int64_t off64 = (int64_t)dr1 + delta;
+                if (off64 <= 0) return TDC_E_CORRUPT;
+                uint32_t actual_off = (uint32_t)off64;
+                match_offs[i] = actual_off + 3u;
+                lzs_rep_update(match_offs[i], &dr1, &dr2, &dr3);
             }
+        } else {
+            if (s > LZS_MAX_OFFSET_SYMBOL) return TDC_E_CORRUPT;
+            ex = 0;
+            if (s >= 3u) {
+                nb = (uint32_t)s - 3u;
+                if (nb > 0) {
+                    if (bit_pos + nb > sz_extra_bits) return TDC_E_CORRUPT;
+                    ex = lzs_bits_read_safe(extra_ptr, sz_extra, &bit_pos, nb);
+                }
+            }
+            match_offs[i] = lzs_symbol_to_code(s, ex);
         }
-        match_offs[i] = lzs_symbol_to_code(s, ex);
+    }
+    return TDC_OK;
+}
+
+/* Split-extras variant: ll+ml extras from lm_ptr, off extras from off_ptr. */
+static tdc_status lzs_reconstruct_symbols_split(
+    const uint8_t *ll_dec,
+    const uint8_t *ml_dec,
+    const uint8_t *off_dec,
+    const uint8_t *lm_extra_ptr, uint32_t lm_extra_size,
+    const uint8_t *off_extra_ptr, uint32_t off_extra_size,
+    uint32_t n_seqs, int delta_offsets,
+    uint32_t *lit_lens, uint32_t *match_lens, uint32_t *match_offs)
+{
+    uint32_t lm_bp = 0, off_bp = 0;
+    uint32_t lm_extra_bits  = lm_extra_size << 3;   /* precompute once */
+    uint32_t off_extra_bits = off_extra_size << 3;
+    uint32_t dr1 = LZS_REP_INIT_1, dr2 = LZS_REP_INIT_2,
+             dr3 = LZS_REP_INIT_3;
+    for (uint32_t i = 0; i < n_seqs; i++) {
+        uint8_t s; uint32_t ex, nb;
+
+        s = ll_dec[i];
+        if (s > LZS_MAX_LL_SYMBOL) return TDC_E_CORRUPT;
+        ex = 0;
+        if (s >= 2u) {
+            nb = (uint32_t)s - 1u;
+            if (lm_bp + nb > lm_extra_bits) return TDC_E_CORRUPT;
+            ex = lzs_bits_read_safe(lm_extra_ptr, lm_extra_size, &lm_bp, nb);
+        }
+        lit_lens[i] = lzs_symbol_to_uint(s, ex);
+
+        s = ml_dec[i];
+        if (s > LZS_MAX_ML_SYMBOL) return TDC_E_CORRUPT;
+        ex = 0;
+        if (s >= 2u) {
+            nb = (uint32_t)s - 1u;
+            if (lm_bp + nb > lm_extra_bits) return TDC_E_CORRUPT;
+            ex = lzs_bits_read_safe(lm_extra_ptr, lm_extra_size, &lm_bp, nb);
+        }
+        match_lens[i] = lzs_symbol_to_uint(s, ex) + LZ_MIN_MATCH;
+
+        s = off_dec[i];
+        if (delta_offsets) {
+            if (s > LZS_MAX_OFFSET_DELTA_SYMBOL) return TDC_E_CORRUPT;
+            if (s <= 2u) {
+                match_offs[i] = (uint32_t)s + 1u;
+                lzs_rep_update(match_offs[i], &dr1, &dr2, &dr3);
+            } else {
+                uint8_t usym = (uint8_t)(s - 3u);
+                nb = (usym >= 2u) ? (uint32_t)usym - 1u : 0u;
+                ex = 0;
+                if (nb > 0) {
+                    if (off_bp + nb > off_extra_bits) return TDC_E_CORRUPT;
+                    ex = lzs_bits_read_safe(off_extra_ptr, off_extra_size, &off_bp, nb);
+                }
+                uint32_t zigzag = lzs_symbol_to_uint(usym, ex);
+                int32_t delta = lzs_zigzag_decode(zigzag);
+                int64_t off64 = (int64_t)dr1 + delta;
+                if (off64 <= 0) return TDC_E_CORRUPT;
+                uint32_t actual_off = (uint32_t)off64;
+                match_offs[i] = actual_off + 3u;
+                lzs_rep_update(match_offs[i], &dr1, &dr2, &dr3);
+            }
+        } else {
+            if (s > LZS_MAX_OFFSET_SYMBOL) return TDC_E_CORRUPT;
+            ex = 0;
+            if (s >= 3u) {
+                nb = (uint32_t)s - 3u;
+                if (nb > 0) {
+                    if (off_bp + nb > off_extra_bits) return TDC_E_CORRUPT;
+                    ex = lzs_bits_read_safe(off_extra_ptr, off_extra_size, &off_bp, nb);
+                }
+            }
+            match_offs[i] = lzs_symbol_to_code(s, ex);
+        }
     }
     return TDC_OK;
 }
@@ -1049,9 +2046,14 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
     uint8_t version = src[0];
     uint8_t flags   = src[1];
     if (version != 1u && version != 2u) return TDC_E_CORRUPT;
-    if (flags & ~(uint8_t)(LZS_FLAG_REPCODES | LZS_FLAG_OFFSET_SHIFT))
+    if (flags & ~(uint8_t)(LZS_FLAG_REPCODES | LZS_FLAG_OFFSET_SHIFT
+                           | LZS_FLAG_LIT_CONTEXT | LZS_FLAG_SPLIT_EXTRAS
+                           | LZS_FLAG_DELTA_OFFSETS))
         return TDC_E_CORRUPT;
-    int has_repcodes = (flags & LZS_FLAG_REPCODES) != 0;
+    int has_repcodes      = (flags & LZS_FLAG_REPCODES)      != 0;
+    int has_lit_ctx       = (flags & LZS_FLAG_LIT_CONTEXT)   != 0;
+    int has_split_extras  = (flags & LZS_FLAG_SPLIT_EXTRAS)  != 0;
+    int has_delta_offsets = (flags & LZS_FLAG_DELTA_OFFSETS)  != 0;
     uint32_t offset_shift = (flags & LZS_FLAG_OFFSET_SHIFT) ? src[2] : 0;
     if (offset_shift > 7u) return TDC_E_CORRUPT;
 
@@ -1097,37 +2099,44 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
     size_t stream_bytes = (size_t)n_seqs * 4u;
 
     /* v2: three symbol streams (1 byte each) + u32 output arrays.
-     * v1: three byte-shuffled streams (4 bytes each) + u32 output arrays. */
+     * v1: three byte-shuffled streams (4 bytes each) + u32 output arrays.
+     * Fused v2 path (non-split-extras): no u32 output arrays needed. */
     size_t v2_sym_size  = 3u * (size_t)n_seqs;
     size_t v1_raw_size  = 3u * stream_bytes;
     size_t per_version  = (version == 2u) ? v2_sym_size : v1_raw_size;
-    size_t scratch_bytes = (size_t)total_lit
-                         + per_version
-                         + 3u * (size_t)n_seqs * sizeof(uint32_t);
+    int use_fused = (version == 2u) && !has_split_extras;
+    size_t u32_arrays   = use_fused ? 0 : 3u * (size_t)n_seqs * sizeof(uint32_t);
+    size_t scratch_bytes = (size_t)total_lit + per_version + u32_arrays;
     uint8_t *scratch = scratch_bytes ? (uint8_t *)malloc(scratch_bytes) : NULL;
     if (scratch_bytes > 0 && !scratch) return TDC_E_NOMEM;
 
     uint8_t  *lit_raw    = scratch;
-    uint32_t *lit_lens, *match_lens, *match_offs;
+    uint32_t *lit_lens = NULL, *match_lens = NULL, *match_offs = NULL;
 
     uint8_t *region2 = lit_raw + total_lit;
 
-    if (version == 1u) {
-        lit_lens   = (uint32_t *)(region2 + 3u * stream_bytes);
-    } else {
-        lit_lens   = (uint32_t *)(region2 + 3u * (size_t)n_seqs);
+    if (!use_fused) {
+        if (version == 1u) {
+            lit_lens   = (uint32_t *)(region2 + 3u * stream_bytes);
+        } else {
+            lit_lens   = (uint32_t *)(region2 + 3u * (size_t)n_seqs);
+        }
+        match_lens = lit_lens   + n_seqs;
+        match_offs = match_lens + n_seqs;
     }
-    match_lens = lit_lens   + n_seqs;
-    match_offs = match_lens + n_seqs;
 
     tdc_status st = TDC_OK;
     const uint8_t *p = src + hdr_size;
 
-    /* Decode literal stream. */
+    /* Decode literal stream — flat or order-1 context. */
     if (total_lit > 0) {
-        const tdc_entropy_vt *sub = lzs_sub_vt(id_lit);
-        if (!sub) { st = TDC_E_CORRUPT; goto done; }
-        st = sub->decode(p, sz_lit, lit_raw, total_lit);
+        if (has_lit_ctx) {
+            st = lzs_decode_lit_context(p, sz_lit, lit_raw, total_lit);
+        } else {
+            const tdc_entropy_vt *sub = lzs_sub_vt(id_lit);
+            if (!sub) { st = TDC_E_CORRUPT; goto done; }
+            st = sub->decode(p, sz_lit, lit_raw, total_lit);
+        }
         if (st != TDC_OK) goto done;
     }
     p += sz_lit;
@@ -1177,10 +2186,60 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
             if (st != TDC_OK) goto done;
             p += sz_mo;
 
-            st = lzs_reconstruct_symbols(ll_dec, ml_dec, off_dec,
-                                          p, sz_extra, n_seqs,
-                                          lit_lens, match_lens, match_offs);
-            if (st != TDC_OK) goto done;
+            if (has_split_extras) {
+                /* Split-extras: sub-header (13 bytes) + lm_raw + off_enc. */
+                if (sz_extra < LZS_SPLIT_EXTRAS_HDR) { st = TDC_E_CORRUPT; goto done; }
+                uint32_t d_lm_bytes, d_off_raw_bytes, d_off_enc_bytes;
+                memcpy(&d_lm_bytes,      p,     4);
+                memcpy(&d_off_raw_bytes,  p + 4, 4);
+                memcpy(&d_off_enc_bytes,  p + 8, 4);
+                tdc_entropy_id d_off_id = (tdc_entropy_id)p[12];
+                p += LZS_SPLIT_EXTRAS_HDR;
+                if ((uint64_t)LZS_SPLIT_EXTRAS_HDR + d_lm_bytes + d_off_enc_bytes > sz_extra) {
+                    st = TDC_E_CORRUPT; goto done;
+                }
+
+                const uint8_t *d_lm_ptr = p;
+                p += d_lm_bytes;
+                const uint8_t *d_off_enc_ptr = p;
+
+                /* Decode offset extras. */
+                uint8_t *d_off_dec = NULL;
+                if (d_off_raw_bytes > 0) {
+                    d_off_dec = (uint8_t *)malloc(d_off_raw_bytes);
+                    if (!d_off_dec) { st = TDC_E_NOMEM; goto done; }
+                    if ((uint8_t)d_off_id == 0xFFu) {
+                        st = lzs_decode_lit_context(d_off_enc_ptr, d_off_enc_bytes,
+                                                     d_off_dec, d_off_raw_bytes);
+                    } else {
+                        const tdc_entropy_vt *sub_oe = lzs_sub_vt(d_off_id);
+                        if (!sub_oe) { free(d_off_dec); st = TDC_E_CORRUPT; goto done; }
+                        st = sub_oe->decode(d_off_enc_ptr, d_off_enc_bytes,
+                                             d_off_dec, d_off_raw_bytes);
+                    }
+                    if (st != TDC_OK) { free(d_off_dec); goto done; }
+                }
+
+                st = lzs_reconstruct_symbols_split(
+                    ll_dec, ml_dec, off_dec,
+                    d_lm_ptr, d_lm_bytes,
+                    d_off_dec ? d_off_dec : d_off_enc_ptr, d_off_raw_bytes,
+                    n_seqs, has_delta_offsets,
+                    lit_lens, match_lens, match_offs);
+                free(d_off_dec);
+                if (st != TDC_OK) goto done;
+            } else {
+                /* Fused single-pass decode: symbol reconstruct + repcode +
+                 * offset shift + sequence execution in one loop. Skips the
+                 * intermediate uint32 arrays entirely. */
+                st = lzs_decode_fused(ll_dec, ml_dec, off_dec,
+                                       p, sz_extra,
+                                       lit_raw, total_lit, trailing,
+                                       n_seqs, has_delta_offsets,
+                                       has_repcodes, offset_shift,
+                                       dst, dst_size);
+                goto done;
+            }
         }
 
         if (has_repcodes) {

@@ -212,6 +212,134 @@ def fetch_opentopo_srtm_tile() -> None:
         print(f"  !! Open Topo Data fetch failed: {e}", file=sys.stderr)
 
 
+def fetch_nasa_power_regional() -> None:
+    """NASA POWER daily T2M over a European grid — ~8 MiB f64 cube.
+
+    Fetches a 5x5 deg box (45-50N, 10-15E) year-by-year (API limit:
+    366 days/request), then stacks into a [lat, lon, time] cube.
+    At 0.5 deg resolution: ~99 cells x 10958 days ~ 8.3 MiB f64.
+
+    Also writes a flattened 1D vector version for VECTOR_1D benchmarks.
+    """
+    import time as _time
+
+    name = "nasa_power_t2m_regional"
+    print(f"[4] {name}")
+    lat_min, lat_max = 45.0, 50.0
+    lon_min, lon_max = 10.0, 15.0
+    years = list(range(1995, 2025))
+
+    base_params = {
+        "parameters": "T2M",
+        "community": "AG",
+        "latitude-min": f"{lat_min}",
+        "latitude-max": f"{lat_max}",
+        "longitude-min": f"{lon_min}",
+        "longitude-max": f"{lon_max}",
+        "format": "JSON",
+    }
+
+    try:
+        # --- Fetch year-by-year -------------------------------------------
+        all_cell_data = {}  # (lat, lon) -> {date: val, ...}
+        for yi, year in enumerate(years):
+            params = {
+                **base_params,
+                "start": f"{year}0101",
+                "end": f"{year}1231",
+            }
+            url = "https://power.larc.nasa.gov/api/temporal/daily/regional?" + \
+                  urllib.parse.urlencode(params)
+            print(f"  year {year} ({yi + 1}/{len(years)})...", end="", flush=True)
+            body = http_get(url, timeout=120.0)
+            payload = json.loads(body)
+            features = payload.get("features", [])
+            if not features:
+                raise RuntimeError(f"No features for year {year}")
+
+            for f in features:
+                coords = f["geometry"]["coordinates"]
+                lon, lat = coords[0], coords[1]
+                key = (lat, lon)
+                t2m = f["properties"]["parameter"]["T2M"]
+                if key not in all_cell_data:
+                    all_cell_data[key] = {}
+                all_cell_data[key].update(t2m)
+
+            n_dates = len(features[0]["properties"]["parameter"]["T2M"])
+            print(f" {len(features)} cells, {n_dates} days")
+            if yi < len(years) - 1:
+                _time.sleep(0.5)  # polite rate limiting
+
+        # --- Build grid ---------------------------------------------------
+        lats_set = sorted(set(k[0] for k in all_cell_data))
+        lons_set = sorted(set(k[1] for k in all_cell_data))
+        nlat, nlon = len(lats_set), len(lons_set)
+        lat_idx = {v: i for i, v in enumerate(lats_set)}
+        lon_idx = {v: i for i, v in enumerate(lons_set)}
+
+        # Collect and sort all dates.
+        all_dates = set()
+        for cell in all_cell_data.values():
+            all_dates.update(cell.keys())
+        dates = sorted(all_dates)
+        ntime = len(dates)
+
+        print(f"  grid: {nlat} lat x {nlon} lon x {ntime} days "
+              f"= {nlat * nlon * ntime} values "
+              f"({nlat * nlon * ntime * 8 / (1024 * 1024):.1f} MiB)")
+
+        # Fill 3D cube [lat, lon, time].
+        cube = np.full((nlat, nlon, ntime), np.nan, dtype=np.float64)
+        for (lat, lon), cell in all_cell_data.items():
+            series = np.array([cell.get(d, -999.0) for d in dates],
+                              dtype=np.float64)
+            series[series < -900.0] = np.nan
+            cube[lat_idx[lat], lon_idx[lon], :] = series
+
+        n_nan = int(np.sum(np.isnan(cube)))
+        if n_nan > 0:
+            print(f"  {n_nan} NaN values — filling with linear interp")
+            for i in range(nlat):
+                for j in range(nlon):
+                    ts = cube[i, j, :]
+                    mask = np.isnan(ts)
+                    if mask.any() and not mask.all():
+                        good = np.where(~mask)[0]
+                        ts[mask] = np.interp(np.where(mask)[0], good,
+                                             ts[good])
+                    elif mask.all():
+                        ts[:] = 0.0
+                    cube[i, j, :] = ts
+
+        meta = {
+            "source": "NASA POWER (regional)",
+            "lat_range": [lat_min, lat_max],
+            "lon_range": [lon_min, lon_max],
+            "location": f"European Alps ({lat_min}-{lat_max}N, "
+                        f"{lon_min}-{lon_max}E)",
+            "parameter": "T2M (degC, daily mean 2m air temperature)",
+            "period": f"{years[0]}0101..{years[-1]}1231",
+            "grid": f"{nlat}x{nlon} cells at 0.5 deg resolution",
+            "description": f"Daily T2M grid, {nlat}x{nlon}x{ntime}, "
+                           f"Alps region, f64 cube.",
+        }
+        write_blob(name, cube, meta)
+
+        # Also write flattened 1D version for VECTOR_1D benching.
+        flat = cube.ravel()
+        flat_name = "nasa_power_t2m_regional_flat"
+        flat_meta = {
+            **meta,
+            "description": f"Flattened 1D version of {name} for "
+                           f"vector benchmarks.",
+        }
+        write_blob(flat_name, flat, flat_meta)
+
+    except (urllib.error.URLError, RuntimeError, KeyError) as e:
+        print(f"  !! NASA POWER regional fetch failed: {e}", file=sys.stderr)
+
+
 # ----- Driver ---------------------------------------------------------------
 
 def list_prepared() -> None:
@@ -245,6 +373,7 @@ def main() -> int:
     fetch_usgs_streamflow()
     fetch_nasa_power_temperature()
     fetch_opentopo_srtm_tile()
+    fetch_nasa_power_regional()
     print()
     list_prepared()
     return 0

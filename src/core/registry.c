@@ -115,6 +115,8 @@ const tdc_model_vt *tdc_model_get(tdc_model_id id) {
         case TDC_MODEL_STACK_2D: return &tdc_model_stack2d_vt;
         case TDC_MODEL_PRED_3D:  return &tdc_model_pred3d_vt;
         case TDC_MODEL_PLANE_2D: return &tdc_model_plane2d_vt;
+        case TDC_MODEL_DELTA2_1D: return &tdc_model_delta2_1d_vt;
+        case TDC_MODEL_FPC_1D:   return &tdc_model_fpc1d_vt;
         default:
             return (const tdc_model_vt *)plugin_lookup(
                 (uint16_t)id, s_model_slots, s_model_count);
@@ -147,6 +149,7 @@ const tdc_entropy_vt *tdc_entropy_get(tdc_entropy_id id) {
         case TDC_ENTROPY_DEFLATE: return NULL;
 #endif
         case TDC_ENTROPY_HUFFMAN: return &tdc_entropy_huffman_vt;
+        case TDC_ENTROPY_HUFFMAN4: return &tdc_entropy_huffman4_vt;
         case TDC_ENTROPY_FSE:     return &tdc_entropy_fse_vt;
         case TDC_ENTROPY_LANE:    return &tdc_entropy_lane_vt;
         default:

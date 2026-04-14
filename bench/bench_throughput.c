@@ -133,7 +133,18 @@ static int run_case(const char *label, const char *block_desc,
 
     /* Round-trip sanity: bytes must match. */
     if (memcmp(dst_data, src->data, raw_bytes) != 0) {
-        fprintf(stderr, "FAIL [%s]: round-trip mismatch\n", label);
+        size_t first_off = 0;
+        for (size_t k = 0; k < raw_bytes; ++k) {
+            if (((uint8_t*)dst_data)[k] != ((uint8_t*)src->data)[k]) {
+                first_off = k;
+                break;
+            }
+        }
+        fprintf(stderr, "FAIL [%s]: round-trip mismatch at byte %zu / %zu"
+                " (got 0x%02x, want 0x%02x)\n",
+                label, first_off, raw_bytes,
+                ((uint8_t*)dst_data)[first_off],
+                ((uint8_t*)src->data)[first_off]);
         free(dst_data); free_buffer(&enc); return 1;
     }
 
@@ -252,6 +263,47 @@ static int case_raw_lz_ramp(void) {
     tdc_codec_spec s = tdc_codec_spec_raw();
     s.entropy[0] = TDC_ENTROPY_LZ;
     int rc = run_case("RAW + LZ", "vec1d i32 4M (ramp)", &b, &s);
+    free(data);
+    return rc;
+}
+
+/* Isolated Huffman decode: RAW model + no transforms + Huffman.
+ * Measures pure entropy throughput without model/xform overhead.
+ * Uses u8 random-walk data to get realistic symbol distribution. */
+static int case_raw_huffman_u8(void) {
+    const size_t N = g_smoke ? 512u : (size_t)(16 * 1024 * 1024);
+    uint8_t *data = (uint8_t *)malloc(N);
+    if (!data) return 1;
+    /* Low-entropy data: biased distribution (mostly low bytes). */
+    {
+        uint32_t rng = 0xDEADBEEF;
+        for (size_t j = 0; j < N; ++j) {
+            rng = rng * 1103515245u + 12345u;
+            /* Geometric-ish distribution: more short codes, some long. */
+            uint32_t v = rng >> 24;
+            data[j] = (uint8_t)(v < 128 ? (v >> 4) : v);
+        }
+    }
+
+    tdc_block b = {0};
+    b.data        = data;
+    b.dtype       = TDC_DT_U8;
+    b.layout      = TDC_LAYOUT_VECTOR_1D;
+    b.shape.rank  = 1;
+    b.shape.dim[0] = (int64_t)N;
+    tdc_shape_set_contiguous(&b.shape);
+
+    int rc = 0;
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.entropy[0] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("RAW+HUF (isolated)", "vec1d u8 16M", &b, &s);
+    }
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.entropy[0] = TDC_ENTROPY_HUFFMAN4;
+        rc |= run_case("RAW+HUF4 (isolated)", "vec1d u8 16M", &b, &s);
+    }
     free(data);
     return rc;
 }
@@ -429,6 +481,15 @@ static int case_pred2d_noisy_u16(void) {
         s.entropy[0]   = TDC_ENTROPY_HUFFMAN;
         rc |= run_case("PRED2D(UP)+BSHUF+HUF", desc, &b, &s);
     }
+    /* PRED2D(UP) + BSHUF + HUF4 (4-stream) */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &up_params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_HUFFMAN4;
+        rc |= run_case("PRED2D(UP)+BSHUF+HUF4", desc, &b, &s);
+    }
     /* PRED2D(UP) + BSHUF + FSE */
     {
         tdc_codec_spec s = {0};
@@ -515,6 +576,20 @@ static int case_delta1d_f64(void) {
         s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
         s.entropy[0] = TDC_ENTROPY_LZ;
         rc |= run_case("RAW+BSHUF+LZ", desc, &b, &s);
+    }
+    /* RAW + LZ_STREAMS — per-stream entropy coding. */
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        rc |= run_case("RAW+LZ_STREAMS", desc, &b, &s);
+    }
+    /* RAW + LZ_STREAMS L1 — flat hash + accel step, fast encode. */
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        static const tdc_entropy_level lzs_l1 = { .level = 1 };
+        s.entropy_params[0] = &lzs_l1;
+        rc |= run_case("RAW+LZ_STREAMS L1", desc, &b, &s);
     }
 
     free(data);
@@ -708,6 +783,14 @@ static int run_from_file(const char *path, const char *dtype_s,
         ss.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
         rc |= run_case("RAW + LZ_STREAMS", block_desc, &b, &ss);
     }
+    /* RAW + LZ_STREAMS L1 — flat hash, no lazy, fast STREAMS encode. */
+    {
+        tdc_codec_spec ss = tdc_codec_spec_raw();
+        ss.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        static const tdc_entropy_level lzs_l1 = { .level = 1 };
+        ss.entropy_params[0] = &lzs_l1;
+        rc |= run_case("RAW + LZ_STREAMS L1", block_desc, &b, &ss);
+    }
     /* RAW + BSHUF + LZ — exposes per-lane structure on multi-byte dtypes. */
     if (tdc_dtype_size(dtype) > 1) {
         tdc_codec_spec s = tdc_codec_spec_raw();
@@ -774,6 +857,12 @@ static int run_from_file(const char *path, const char *dtype_s,
         sh.entropy[0] = TDC_ENTROPY_HUFFMAN;
         rc |= run_case("DELTA1D+BSHUF+HUF", block_desc, &b, &sh);
 
+        tdc_codec_spec sh4 = {0};
+        sh4.model    = TDC_MODEL_DELTA_1D;
+        sh4.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+        sh4.entropy[0] = TDC_ENTROPY_HUFFMAN4;
+        rc |= run_case("DELTA1D+BSHUF+HUF4", block_desc, &b, &sh4);
+
         tdc_codec_spec sf = {0};
         sf.model    = TDC_MODEL_DELTA_1D;
         sf.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
@@ -836,6 +925,116 @@ static int run_from_file(const char *path, const char *dtype_s,
         bsls.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
         bsls.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
         rc |= run_case("RAW+BSHUF+LZ_STREAMS", block_desc, &b, &bsls);
+
+        /* LANE — per-lane entropy after byte shuffle. */
+        {
+            tdc_lane_entropy_params lp = {0};
+            lp.n_lanes = (uint8_t)tdc_dtype_size(dtype);
+            tdc_codec_spec bsla = tdc_codec_spec_raw();
+            bsla.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            bsla.entropy[0] = TDC_ENTROPY_LANE;
+            bsla.entropy_params[0] = &lp;
+            rc |= run_case("RAW+BSHUF+LANE", block_desc, &b, &bsla);
+        }
+
+        /* DELTA1D + BSHUF + LANE — XOR-delta separates byte lanes. */
+        {
+            tdc_lane_entropy_params lp = {0};
+            lp.n_lanes = (uint8_t)tdc_dtype_size(dtype);
+            tdc_codec_spec sl = {0};
+            sl.model    = TDC_MODEL_DELTA_1D;
+            sl.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            sl.entropy[0] = TDC_ENTROPY_LANE;
+            sl.entropy_params[0] = &lp;
+            rc |= run_case("DELTA1D+BSHUF+LANE", block_desc, &b, &sl);
+        }
+
+        /* DELTA2 — second-order XOR-delta. */
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_DELTA2_1D;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            rc |= run_case("DELTA2+LZ", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_DELTA2_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            rc |= run_case("DELTA2+BSHUF+LZ", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_DELTA2_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+            rc |= run_case("DELTA2+BSHUF+LZ_STREAMS", block_desc, &b, &s);
+        }
+        {
+            tdc_lane_entropy_params lp = {0};
+            lp.n_lanes = (uint8_t)tdc_dtype_size(dtype);
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_DELTA2_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LANE;
+            s.entropy_params[0] = &lp;
+            rc |= run_case("DELTA2+BSHUF+LANE", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_DELTA2_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            s.entropy[1] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("DELTA2+BSHUF+LZ+HUF", block_desc, &b, &s);
+        }
+
+        /* FPC — dual-predictor FCM+DFCM. */
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_FPC_1D;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            rc |= run_case("FPC+LZ", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_FPC_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            rc |= run_case("FPC+BSHUF+LZ", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_FPC_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+            rc |= run_case("FPC+BSHUF+LZ_STREAMS", block_desc, &b, &s);
+        }
+        {
+            tdc_lane_entropy_params lp = {0};
+            lp.n_lanes = (uint8_t)tdc_dtype_size(dtype);
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_FPC_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LANE;
+            s.entropy_params[0] = &lp;
+            rc |= run_case("FPC+BSHUF+LANE", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_FPC_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("FPC+BSHUF+HUF", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model    = TDC_MODEL_FPC_1D;
+            s.xform[0] = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            s.entropy[1] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("FPC+BSHUF+LZ+HUF", block_desc, &b, &s);
+        }
     }
     /* PRED2D + PLANE2D — only on 2D integer rasters. */
     if (layout == TDC_LAYOUT_RASTER_2D &&
@@ -924,11 +1123,13 @@ int main(int argc, char **argv) {
 
     int rc = 0;
     rc |= case_raw_none_u8();
+    rc |= case_raw_huffman_u8();
     rc |= case_raw_lz_ramp();
     rc |= case_raw_shuffle_lz_ramp();
     rc |= case_delta_lz_ramp();
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZIGZAG+BSHUF+LZ",     TDC_ENTROPY_LZ,     TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+HUFFMAN",    TDC_ENTROPY_HUFFMAN,  TDC_ENTROPY_NONE);
+    rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+HUF4",      TDC_ENTROPY_HUFFMAN4, TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+FSE",        TDC_ENTROPY_FSE,      TDC_ENTROPY_NONE);
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+LZ+HUF",   TDC_ENTROPY_LZ,      TDC_ENTROPY_HUFFMAN);
     rc |= case_delta1d_f64();

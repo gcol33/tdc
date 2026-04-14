@@ -795,22 +795,42 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
     const int64_t C_LIT   = LZ_OPT_STREAMS_LIT_COST;
     const int64_t C_REP   = LZ_OPT_STREAMS_REP_COST;
 
-    /* Running prefix-minimum of (post_match[p] - p*C_LIT). */
+    /* 2-entry prefix-minimum of (post_match[p] - p*C_LIT).
+     * Primary: global best g(p).
+     * Secondary: best g(p) whose rep1 differs from primary's rep1.
+     * This lets the DP discover rep matches via a different rep state
+     * that the single-entry prefix-min would miss entirely. */
     int64_t  best_g = INF64;
     uint32_t best_g_p = 0u;
     Lz2OptRepState best_g_rep = rep_init;
 
+    int64_t  best_g2 = INF64;
+    uint32_t best_g2_p = 0u;
+    Lz2OptRepState best_g2_rep = rep_init;
+
     uint32_t skip_until = 0u;
 
     for (uint32_t r = 0u; r < N; r++) {
-        /* Absorb p = r into the prefix-min. Literal runs don't change rep
-         * state, so we inherit the rep from the best path ending at r. */
+        /* Absorb p = r into the 2-entry prefix-min. */
         if (post_match[r] < INF64) {
             int64_t g = post_match[r] - (int64_t)r * C_LIT;
             if (g < best_g) {
-                best_g = g;
-                best_g_p = r;
+                /* New global best. Push old primary to secondary if it
+                 * has a different rep1 and is better than current secondary. */
+                if (best_g < INF64 && best_g_rep.r1 != rep_at[r].r1
+                    && best_g < best_g2) {
+                    best_g2     = best_g;
+                    best_g2_p   = best_g_p;
+                    best_g2_rep = best_g_rep;
+                }
+                best_g     = g;
+                best_g_p   = r;
                 best_g_rep = rep_at[r];
+            } else if (rep_at[r].r1 != best_g_rep.r1 && g < best_g2) {
+                /* Different rep1 from primary and cheaper than secondary. */
+                best_g2     = g;
+                best_g2_p   = r;
+                best_g2_rep = rep_at[r];
             }
         }
 
@@ -819,6 +839,12 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
                                : INF64;
         uint32_t best_start_prev_p = best_g_p;
         Lz2OptRepState cur_rep = best_g_rep;
+
+        int64_t  best_start2 = (best_g2 < INF64)
+                                ? (best_g2 + (int64_t)r * C_LIT)
+                                : INF64;
+        uint32_t best_start2_prev_p = best_g2_p;
+        Lz2OptRepState cur_rep2 = best_g2_rep;
 
         /* Fast-forward inside a committed long match — chain insert only. */
         if (r < skip_until) {
@@ -840,9 +866,9 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
         }
 
         /* ----- Rep-match candidates ------------------------------------ */
-        /* Check matches at rep1, rep2, rep3 offsets. These are cheap
-         * (just a memcmp extension) and get the lower C_REP cost.
-         * Emit all three as DP transitions — the DP picks the best. */
+        /* Check matches at rep1, rep2, rep3 offsets from both prefix-min
+         * entries. The secondary entry has a different rep1 and may
+         * discover rep matches that the primary misses entirely. */
         {
             uint32_t reps[3] = {cur_rep.r1, cur_rep.r2, cur_rep.r3};
             for (int ri = 0; ri < 3; ri++) {
@@ -850,9 +876,25 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
                 if (rlen < LZ_MIN_MATCH) continue;
                 int64_t cand_cost = best_start + C_REP;
                 Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep, reps[ri]);
-                /* For rep matches, longest is dominant (same cost for all L). */
                 lz_opt_streams_emit(cand_cost, r + rlen,
                     best_start_prev_p, r, rlen, reps[ri], new_rep,
+                    post_match, bt, rep_at);
+            }
+        }
+
+        /* Secondary entry rep matches. Only try offsets that differ from
+         * the primary's rep set — identical offsets can't beat primary. */
+        if (best_start2 < INF64) {
+            uint32_t reps2[3] = {cur_rep2.r1, cur_rep2.r2, cur_rep2.r3};
+            for (int ri = 0; ri < 3; ri++) {
+                if (reps2[ri] == cur_rep.r1 || reps2[ri] == cur_rep.r2 ||
+                    reps2[ri] == cur_rep.r3) continue;
+                uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps2[ri]);
+                if (rlen < LZ_MIN_MATCH) continue;
+                int64_t cand_cost = best_start2 + C_REP;
+                Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep2, reps2[ri]);
+                lz_opt_streams_emit(cand_cost, r + rlen,
+                    best_start2_prev_p, r, rlen, reps2[ri], new_rep,
                     post_match, bt, rep_at);
             }
         }
@@ -1021,10 +1063,15 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
     Lz2OptRepState rep_init = {LZ_OPT_REP_INIT_1, LZ_OPT_REP_INIT_2, LZ_OPT_REP_INIT_3};
     rep_at[0] = rep_init;
 
-    /* Running prefix-minimum of (post_match[p] - lit_prefix[p]). */
+    /* 2-entry prefix-minimum of (post_match[p] - lit_prefix[p]).
+     * Primary: global best. Secondary: best with different rep1. */
     int64_t  best_g = INF64;
     uint32_t best_g_p = 0u;
     Lz2OptRepState best_g_rep = rep_init;
+
+    int64_t  best_g2 = INF64;
+    uint32_t best_g2_p = 0u;
+    Lz2OptRepState best_g2_rep = rep_init;
 
     uint32_t skip_until = 0u;
 
@@ -1032,9 +1079,19 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
         if (post_match[r] < INF64) {
             int64_t g = post_match[r] - lit_prefix[r];
             if (g < best_g) {
-                best_g = g;
-                best_g_p = r;
+                if (best_g < INF64 && best_g_rep.r1 != rep_at[r].r1
+                    && best_g < best_g2) {
+                    best_g2     = best_g;
+                    best_g2_p   = best_g_p;
+                    best_g2_rep = best_g_rep;
+                }
+                best_g     = g;
+                best_g_p   = r;
                 best_g_rep = rep_at[r];
+            } else if (rep_at[r].r1 != best_g_rep.r1 && g < best_g2) {
+                best_g2     = g;
+                best_g2_p   = r;
+                best_g2_rep = rep_at[r];
             }
         }
 
@@ -1043,6 +1100,12 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
                                : INF64;
         uint32_t best_start_prev_p = best_g_p;
         Lz2OptRepState cur_rep = best_g_rep;
+
+        int64_t  best_start2 = (best_g2 < INF64)
+                                ? (best_g2 + lit_prefix[r])
+                                : INF64;
+        uint32_t best_start2_prev_p = best_g2_p;
+        Lz2OptRepState cur_rep2 = best_g2_rep;
 
         if (r < skip_until) {
             if (r + LZ_MIN_MATCH + 1u <= src_size) {
@@ -1062,7 +1125,7 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
             continue;
         }
 
-        /* Rep-match candidates. */
+        /* Rep-match candidates from primary entry. */
         {
             uint32_t reps[3] = {cur_rep.r1, cur_rep.r2, cur_rep.r3};
             for (int ri = 0; ri < 3; ri++) {
@@ -1074,6 +1137,25 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
                 Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep, reps[ri]);
                 lz_opt_streams_emit(cand_cost, r + rlen,
                     best_start_prev_p, r, rlen, reps[ri], new_rep,
+                    post_match, bt, rep_at);
+            }
+        }
+
+        /* Rep-match candidates from secondary entry (different rep1).
+         * Only try offsets not already in the primary's rep set. */
+        if (best_start2 < INF64) {
+            uint32_t reps2[3] = {cur_rep2.r1, cur_rep2.r2, cur_rep2.r3};
+            for (int ri = 0; ri < 3; ri++) {
+                if (reps2[ri] == cur_rep.r1 || reps2[ri] == cur_rep.r2 ||
+                    reps2[ri] == cur_rep.r3) continue;
+                uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps2[ri]);
+                if (rlen < LZ_MIN_MATCH) continue;
+                int64_t ml_c = (int64_t)prices->ml[lz_opt_ml_sym(rlen - LZ_MIN_MATCH)];
+                int64_t off_c = (int64_t)prices->off[ri];
+                int64_t cand_cost = best_start2 + prices->ll_avg + ml_c + off_c;
+                Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep2, reps2[ri]);
+                lz_opt_streams_emit(cand_cost, r + rlen,
+                    best_start2_prev_p, r, rlen, reps2[ri], new_rep,
                     post_match, bt, rep_at);
             }
         }

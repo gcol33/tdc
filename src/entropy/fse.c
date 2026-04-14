@@ -108,9 +108,13 @@ static uint32_t fse_pick_table_log(uint32_t n_active) {
     if (n_active <= 64)  return 8;   /*  256 states */
     if (n_active <= 128) return 9;   /*  512 states */
     if (n_active <= 200) return 10;  /* 1024 states */
-    return 12;                        /* 4096 states — full byte alphabets
-                                       need 16 counts/sym for < 0.5%
-                                       quantization overhead */
+    return 11;                        /* 2048 states — 8 counts/symbol for
+                                       256-symbol alphabets. Fat decode
+                                       table is 16 KiB (fits in L1d)
+                                       instead of 32 KiB at TABLE_LOG=12.
+                                       Quantization loss is ~1% of Shannon
+                                       entropy, acceptable trade for
+                                       decode speed. */
 }
 
 /* ----- Frequency normalization -------------------------------------------- */
@@ -175,6 +179,21 @@ typedef struct {
     uint16_t slot_to_sym[FSE_TABLE_SIZE_MAX];
 } fse_decode_tables;
 
+/* Fat decode entry: packs symbol + freq + cum into a single struct so the
+ * decode loop touches one cache line per symbol instead of three separate
+ * arrays (slot_to_sym[], norm[], cum[]). 8 bytes per entry; TABLE_LOG=12
+ * gives 4096 × 8 = 32 KiB — fits in L1d on modern CPUs. */
+typedef struct {
+    uint16_t freq;    /* norm[symbol] */
+    uint16_t cum;     /* cumulative frequency for symbol */
+    uint8_t  symbol;
+    uint8_t  pad[3];
+} fse_fat_decode_entry;
+
+typedef struct {
+    fse_fat_decode_entry entries[FSE_TABLE_SIZE_MAX];
+} fse_fat_decode_table;
+
 static tdc_status fse_build_tables(const uint16_t *norm, uint32_t n_syms,
                                    uint32_t table_size,
                                    fse_decode_tables *t) {
@@ -194,6 +213,34 @@ static tdc_status fse_build_tables(const uint16_t *norm, uint32_t n_syms,
     for (uint32_t s = 0; s < n_syms; ++s) {
         for (uint32_t j = 0; j < norm[s]; ++j) {
             t->slot_to_sym[p++] = (uint16_t)s;
+        }
+    }
+    return TDC_OK;
+}
+
+static tdc_status fse_build_fat_table(const uint16_t *norm, uint32_t n_syms,
+                                       uint32_t table_size,
+                                       fse_fat_decode_table *ft) {
+    uint16_t cum[FSE_NSYMS + 1];
+    uint32_t acc = 0;
+    for (uint32_t s = 0; s < n_syms; ++s) {
+        cum[s] = (uint16_t)acc;
+        acc += norm[s];
+    }
+    for (uint32_t s = n_syms; s <= FSE_NSYMS; ++s)
+        cum[s] = (uint16_t)acc;
+    if (acc != table_size) return TDC_E_CORRUPT;
+
+    uint32_t p = 0;
+    for (uint32_t s = 0; s < n_syms; ++s) {
+        for (uint32_t j = 0; j < norm[s]; ++j) {
+            ft->entries[p].symbol = (uint8_t)s;
+            ft->entries[p].freq   = norm[s];
+            ft->entries[p].cum    = cum[s];
+            ft->entries[p].pad[0] = 0;
+            ft->entries[p].pad[1] = 0;
+            ft->entries[p].pad[2] = 0;
+            p++;
         }
     }
     return TDC_OK;
@@ -359,8 +406,12 @@ static tdc_status fse_decode(const uint8_t *src, size_t src_size,
         return TDC_OK;
     }
 
-    fse_decode_tables t;
-    tdc_status st = fse_build_tables(norm, max_symbol, table_size, &t);
+    /* Fat decode table: one cache line per slot instead of three separate
+     * array lookups. On TABLE_LOG=12 this is 32 KiB on the stack — larger
+     * than the split tables (9 KiB) but the per-symbol decode loop does
+     * one load instead of three, which eliminates two L1d miss slots. */
+    fse_fat_decode_table ft;
+    tdc_status st = fse_build_fat_table(norm, max_symbol, table_size, &ft);
     if (st != TDC_OK) return st;
 
     if (hdr_final_state < FSE_L_MIN || hdr_final_state >= (FSE_L_MIN << 8)) {
@@ -373,11 +424,10 @@ static tdc_status fse_decode(const uint8_t *src, size_t src_size,
 
     for (size_t i = 0; i < dst_size; ++i) {
         uint32_t slot = state & table_mask;
-        uint16_t s    = t.slot_to_sym[slot];
-        dst[i] = (uint8_t)s;
+        const fse_fat_decode_entry *e = &ft.entries[slot];
+        dst[i] = e->symbol;
 
-        uint32_t freq = norm[s];
-        state = freq * (state >> table_log) + slot - (uint32_t)t.cum[s];
+        state = (uint32_t)e->freq * (state >> table_log) + slot - (uint32_t)e->cum;
 
         while (state < FSE_L_MIN) {
             if (payload_off >= hdr_payload_size) return TDC_E_CORRUPT;
