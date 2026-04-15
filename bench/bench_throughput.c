@@ -600,7 +600,7 @@ static int case_delta1d_f64(void) {
     {
         tdc_codec_spec s = tdc_codec_spec_raw();
         s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
-        static const tdc_entropy_level lzs_l1 = { .level = 1 };
+        static const tdc_lz_streams_params lzs_l1 = { .level = 1 };
         s.entropy_params[0] = &lzs_l1;
         rc |= run_case("RAW+LZ_STREAMS L1", desc, &b, &s);
     }
@@ -800,7 +800,7 @@ static int run_from_file(const char *path, const char *dtype_s,
     {
         tdc_codec_spec ss = tdc_codec_spec_raw();
         ss.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
-        static const tdc_entropy_level lzs_l1 = { .level = 1 };
+        static const tdc_lz_streams_params lzs_l1 = { .level = 1 };
         ss.entropy_params[0] = &lzs_l1;
         rc |= run_case("RAW + LZ_STREAMS L1", block_desc, &b, &ss);
     }

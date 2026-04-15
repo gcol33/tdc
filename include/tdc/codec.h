@@ -213,6 +213,26 @@ typedef struct {
     int level;             /* 0 = default; range is backend-specific */
 } tdc_entropy_level;
 
+/* TDC_ENTROPY_LZ_STREAMS — parser-side knobs.
+ *
+ * Extends tdc_entropy_level: the `level` field in the leading position means
+ * a pointer to this struct works wherever tdc_entropy_level works (the LZ
+ * entropy backends cast by layout). Extra fields are zero-default so a plain
+ * tdc_entropy_level pointer still behaves identically.
+ *
+ * min_match: minimum emitted match length in bytes. 0 or values < 3 are
+ *     treated as the baseline (3). Raising this fuses short matches back
+ *     into their surrounding literals post-parse, raising bytes/seq and
+ *     decode throughput at the cost of some ratio. Typical values: 3
+ *     (baseline), 4-8 (speed-biased on structured data). The on-disk
+ *     format is unchanged — the decoder is oblivious to this knob.
+ */
+typedef struct {
+    int      level;
+    uint32_t min_match;
+    uint32_t _reserved;
+} tdc_lz_streams_params;
+
 /* TDC_ENTROPY_LANE — per-lane entropy selection.
  *
  * After BYTE_SHUFFLE transposes by byte lane, different lanes have very

@@ -235,8 +235,11 @@ tdc_status tdc_decode_block(const uint8_t *src, size_t src_size,
 
     /* Reserve at least 1 byte even for empty inputs so bufs[cur].data
      * is non-NULL — the entropy decoders short-circuit on size 0 but
-     * the buffer still needs to exist for the chain plumbing below. */
-    st = tdc_buf_reserve(&bufs[cur], entropy_out_size > 0 ? entropy_out_size : 1u);
+     * the buffer still needs to exist for the chain plumbing below.
+     * Add 16 bytes of wildcopy slack so LZ-family decoders can safely
+     * touch the 15-byte tail past their declared output. */
+    st = tdc_buf_reserve(&bufs[cur],
+                         (entropy_out_size > 0 ? entropy_out_size : 1u) + 16u);
     if (st != TDC_OK) goto cleanup;
 
     const int dec_timing_on = tdc_stage_timers_enabled();
@@ -296,7 +299,8 @@ tdc_status tdc_decode_block(const uint8_t *src, size_t src_size,
 
             size_t dst_size = (size_t)stage_in_sizes[i];
 
-            st = tdc_buf_reserve(&bufs[1 - cur], dst_size > 0 ? dst_size : 1u);
+            st = tdc_buf_reserve(&bufs[1 - cur],
+                                 (dst_size > 0 ? dst_size : 1u) + 16u);
             if (st != TDC_OK) goto cleanup;
 
             st = evt->decode(stage_src, stage_src_size,

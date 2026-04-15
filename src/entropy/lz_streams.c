@@ -105,27 +105,7 @@ static int lzs_dump_enabled(void) {
 #define LZS_FLAG_REPCODES    0x01u
 #define LZS_FLAG_OFFSET_SHIFT 0x02u  /* offsets right-shifted by header[2] bits */
 #define LZS_FLAG_LIT_CONTEXT  0x04u  /* literals split by order-1 context */
-#define LZS_FLAG_SPLIT_EXTRAS 0x08u  /* extras split: lm_raw + off_coded */
 #define LZS_FLAG_DELTA_OFFSETS 0x10u /* novel offsets: zigzag(off - rep1) */
-
-/* When LZS_FLAG_SPLIT_EXTRAS is set, the extras section is replaced by
- * a split-extras sub-header (13 bytes) followed by two sub-streams:
- *
- *   u32  lm_extra_bytes           packed ll+ml extra bits (byte count, raw)
- *   u32  off_extra_raw_bytes     uncompressed off extra bits (byte count)
- *   u32  off_extra_enc_bytes     encoded off extra stream size
- *   u8   off_extra_coder_id      entropy coder (NONE/HUF/FSE; 0xFF=context)
- *   [lm_extra_data]              raw packed ll+ml bits
- *   [off_extra_encoded_data]     entropy-coded off extra bytes
- *
- * The main header's extra_bytes field holds the TOTAL size including
- * the 13-byte sub-header: 13 + lm_raw_bytes + off_enc_bytes.
- *
- * Why: for structured f64 data, offset extras cluster around seasonal
- * strides (e.g., yearly period → extra≈109 in s11). The byte-level
- * distribution is non-uniform and compressible. ll/ml extras are
- * high-entropy and stay raw. */
-#define LZS_SPLIT_EXTRAS_HDR  13u
 
 /* Order-1 literal context: 16 buckets keyed on high nibble of previous
  * literal byte. When LZS_FLAG_LIT_CONTEXT is set, the literal section
@@ -427,6 +407,41 @@ static uint32_t lzs_detect_offset_shift(const LZSeq *seqs, uint32_t n_seqs) {
     uint32_t shift = 0;
     while (shift < 7u && (all_or & (1u << shift)) == 0) shift++;
     return shift;
+}
+
+/* Post-parse filter: drop every sequence whose match is shorter than
+ * min_match, folding the dropped (literal + match) bytes into the next
+ * sequence's literal run. If the last sequence has a short match, we drop
+ * it entirely — the trailing-bytes path in lzs_encode handles the uncovered
+ * suffix. Called BEFORE lzs_repcode_encode, so repcode state is built over
+ * the filtered list only.
+ *
+ * The on-disk format is unchanged: any valid (ll, ml>=3, mo) sequence list
+ * decodes correctly. Raising min_match just produces fewer, longer
+ * sequences, which raises decode throughput proportionally. */
+static void lzs_filter_short_matches(LZSeq *seqs, uint32_t *n_seqs,
+                                      uint32_t min_match) {
+    if (min_match <= LZ_MIN_MATCH) return;
+    uint32_t n = *n_seqs;
+    if (n == 0) return;
+
+    uint32_t w = 0;
+    uint32_t carry_ll = 0;   /* bytes absorbed from dropped seqs */
+    for (uint32_t r = 0; r < n; r++) {
+        if (seqs[r].match_len < min_match) {
+            /* Fold (lit + match) bytes of this seq into the next seq's
+             * literal run via the carry. */
+            carry_ll += seqs[r].lit_len + seqs[r].match_len;
+            continue;
+        }
+        seqs[w] = seqs[r];
+        seqs[w].lit_len += carry_ll;
+        carry_ll = 0;
+        w++;
+    }
+    /* Any trailing carry_ll is uncovered suffix; lzs_encode's trailing path
+     * picks it up automatically via (src_size - sum(ll+ml)). */
+    *n_seqs = w;
 }
 
 static void lzs_repcode_encode(LZSeq *seqs, uint32_t n_seqs) {
@@ -1042,9 +1057,16 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
     if (src_size > UINT32_MAX)    return TDC_E_INVAL;
 
     int level = 0;
+    uint32_t min_match = LZ_MIN_MATCH;
     if (params) {
-        const tdc_entropy_level *lp = (const tdc_entropy_level *)params;
-        level = lp->level;
+        /* LZ_STREAMS's params slot is tdc_lz_streams_params. `level` is the
+         * leading field so an old tdc_entropy_level initializer still sets
+         * level correctly — the extra min_match field on zeroed memory
+         * yields min_match=0 → baseline (3). Callers that want the new knob
+         * must declare tdc_lz_streams_params explicitly. */
+        const tdc_lz_streams_params *sp = (const tdc_lz_streams_params *)params;
+        level = sp->level;
+        if (sp->min_match > LZ_MIN_MATCH) min_match = sp->min_match;
     }
 
     /* Empty input: emit an empty passthrough record. */
@@ -1081,6 +1103,11 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
                                            &seqs, &seq_count);
         if (st != TDC_OK) return st;
     }
+
+    /* Post-parse min_match filter (fold sub-threshold matches into
+     * literals). Runs on every parser output — initial greedy, initial
+     * optimal, and the priced re-parses below. */
+    lzs_filter_short_matches(seqs, &seq_count, min_match);
 
     if (seq_count == 0) {
         return lzs_encode_passthrough(src, (uint32_t)src_size, dst);
@@ -1179,6 +1206,8 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
             src, (uint32_t)src_size, dst, &prices, &seqs, &seq_count);
         if (st != TDC_OK) return st;
 
+        lzs_filter_short_matches(seqs, &seq_count, min_match);
+
         if (seq_count == 0) {
             return lzs_encode_passthrough(src, (uint32_t)src_size, dst);
         }
@@ -1234,15 +1263,6 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
     uint8_t  *extra_raw = NULL;   /* combined packed extra bits (interleaved) */
     uint32_t  extra_bytes = 0;
 
-    /* Split-extras buffers: ll+ml extras in one stream, off extras separate. */
-    uint8_t  *lm_extra_raw  = NULL;
-    uint8_t  *off_extra_raw = NULL;
-    uint8_t  *off_extra_enc = NULL;
-    uint32_t  lm_extra_bytes  = 0;
-    uint32_t  off_extra_raw_bytes = 0;
-    uint32_t  off_extra_enc_bytes = 0;
-    tdc_entropy_id off_extra_id = TDC_ENTROPY_NONE;
-    int       use_split_extras = 0;
     int       use_delta_offsets = 0;
 
     uint8_t *enc_lit = NULL, *enc_ll = NULL, *enc_ml = NULL, *enc_off = NULL;
@@ -1415,102 +1435,9 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
             }
         }
 
-        /* Also build split-extras: ll+ml in one stream, off in another.
-         * Try entropy-coding the off extras — for structured data, the
-         * offset extras cluster around seasonal strides and compress.
-         * Skipped for level >= 1 (fast path). */
-        if (level <= 0 && off_extra_bits >= 64u) {
-            uint32_t lm_bits = ll_extra_bits + ml_extra_bits;
-            lm_extra_bytes = (lm_bits + 7u) / 8u;
-            off_extra_raw_bytes = (off_extra_bits + 7u) / 8u;
-
-            if (lm_extra_bytes > 0) {
-                lm_extra_raw = (uint8_t *)lzs_alloc(dst, lm_extra_bytes + 4u);
-                if (!lm_extra_raw) { st = TDC_E_NOMEM; goto cleanup; }
-                memset(lm_extra_raw, 0, lm_extra_bytes + 4u);
-            }
-            off_extra_raw = (uint8_t *)lzs_alloc(dst, off_extra_raw_bytes + 4u);
-            if (!off_extra_raw) { st = TDC_E_NOMEM; goto cleanup; }
-            memset(off_extra_raw, 0, off_extra_raw_bytes + 4u);
-
-            uint32_t lm_bp = 0, off_bp = 0;
-            uint32_t sr1 = LZS_REP_INIT_1, sr2 = LZS_REP_INIT_2,
-                     sr3 = LZS_REP_INIT_3;
-            for (uint32_t i = 0; i < seq_count; i++) {
-                uint8_t s; uint32_t ex, nb;
-
-                lzs_uint_to_symbol(seqs[i].lit_len, &s, &ex, &nb);
-                if (nb > 0) lzs_bits_write(lm_extra_raw, &lm_bp, ex, nb);
-
-                lzs_uint_to_symbol(seqs[i].match_len - LZ_MIN_MATCH, &s, &ex, &nb);
-                if (nb > 0) lzs_bits_write(lm_extra_raw, &lm_bp, ex, nb);
-
-                if (use_delta_offsets) {
-                    uint32_t code = seqs[i].match_off;
-                    if (code >= 4u) {
-                        uint32_t actual_off = code - 3u;
-                        uint32_t zz = lzs_zigzag_encode(
-                            (int32_t)actual_off - (int32_t)sr1);
-                        lzs_uint_to_symbol(zz, &s, &ex, &nb);
-                        if (nb > 0) lzs_bits_write(off_extra_raw, &off_bp, ex, nb);
-                    }
-                    lzs_rep_update(code, &sr1, &sr2, &sr3);
-                } else {
-                    lzs_offset_to_symbol(seqs[i].match_off, &s, &ex, &nb);
-                    if (nb > 0) lzs_bits_write(off_extra_raw, &off_bp, ex, nb);
-                }
-            }
-
-            /* Try entropy-coding the off extras byte stream. */
-            st = lzs_encode_stream(off_extra_raw, off_extra_raw_bytes,
-                                    &scratch, dst,
-                                    &off_extra_enc, &off_extra_enc_bytes,
-                                    &off_extra_id);
-            if (st != TDC_OK) goto cleanup;
-
-            /* Try order-1 context on off extras. */
-            if (off_extra_raw_bytes >= 512u) {
-                uint8_t *off_ctx_enc = NULL;
-                uint32_t off_ctx_sz = 0;
-                st = lzs_encode_lit_context(off_extra_raw, off_extra_raw_bytes,
-                                             &scratch, dst,
-                                             &off_ctx_enc, &off_ctx_sz);
-                if (st != TDC_OK) goto cleanup;
-                if (off_ctx_enc && off_ctx_sz < off_extra_enc_bytes) {
-                    lzs_free(dst, off_extra_enc);
-                    off_extra_enc = off_ctx_enc;
-                    off_extra_enc_bytes = off_ctx_sz;
-                    off_extra_id = (tdc_entropy_id)0xFFu;
-                } else {
-                    lzs_free(dst, off_ctx_enc);
-                }
-            }
-
-            /* Split wins if total (sub-header + lm + off_enc) < interleaved. */
-            uint32_t split_total = LZS_SPLIT_EXTRAS_HDR
-                                 + lm_extra_bytes + off_extra_enc_bytes;
-            if (split_total < extra_bytes) {
-                use_split_extras = 1;
-                extra_bytes = split_total;
-                if (lzs_dump_enabled()) {
-                    const char *off_name = (uint8_t)off_extra_id == 0xFFu ? "CTX" :
-                                           off_extra_id == TDC_ENTROPY_HUFFMAN ? "HUF" :
-                                           off_extra_id == TDC_ENTROPY_FSE ? "FSE" : "NONE";
-                    fprintf(stderr,
-                            "  [lzs-split-extras] lm=%u off=%u(%u/%s) "
-                            "total=%u (was %u, saved %u)\n",
-                            lm_extra_bytes,
-                            off_extra_raw_bytes, off_extra_enc_bytes, off_name,
-                            split_total,
-                            (total_extra_bits + 7u) / 8u,
-                            (total_extra_bits + 7u) / 8u - split_total);
-                }
-            } else {
-                lzs_free(dst, lm_extra_raw);  lm_extra_raw = NULL;
-                lzs_free(dst, off_extra_raw); off_extra_raw = NULL;
-                lzs_free(dst, off_extra_enc); off_extra_enc = NULL;
-            }
-        }
+        /* P2: split-extras removed — all levels emit merged interleaved extras.
+         * Trades ~3% compression ratio for ~40% decode speedup by routing L0
+         * through the single-bit-reader fused decoder. */
     }
 
     /* Encode each stream.  For level >= 1 (fast), use Shannon heuristic
@@ -1611,7 +1538,6 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         p[1] = (uint8_t)(LZS_FLAG_REPCODES
                          | (offset_shift > 0 ? LZS_FLAG_OFFSET_SHIFT : 0)
                          | (use_lit_ctx ? LZS_FLAG_LIT_CONTEXT : 0)
-                         | (use_split_extras ? LZS_FLAG_SPLIT_EXTRAS : 0)
                          | (use_delta_offsets ? LZS_FLAG_DELTA_OFFSETS : 0));
         p[2] = (uint8_t)offset_shift;
         p[3] = 0;
@@ -1640,25 +1566,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         if (sz_ll)       { memcpy(body, enc_ll,    sz_ll);       body += sz_ll;       }
         if (sz_ml)       { memcpy(body, enc_ml,    sz_ml);       body += sz_ml;       }
         if (sz_off)      { memcpy(body, enc_off,   sz_off);      body += sz_off;      }
-        if (extra_bytes) {
-            if (use_split_extras) {
-                /* Write split-extras sub-header (13 bytes) + data. */
-                memcpy(body,      &lm_extra_bytes,      4);
-                memcpy(body +  4, &off_extra_raw_bytes, 4);
-                memcpy(body +  8, &off_extra_enc_bytes, 4);
-                body[12] = (uint8_t)off_extra_id;
-                body += LZS_SPLIT_EXTRAS_HDR;
-                if (lm_extra_bytes > 0) {
-                    memcpy(body, lm_extra_raw, lm_extra_bytes);
-                    body += lm_extra_bytes;
-                }
-                if (off_extra_enc_bytes > 0) {
-                    memcpy(body, off_extra_enc, off_extra_enc_bytes);
-                }
-            } else {
-                memcpy(body, extra_raw, extra_bytes);
-            }
-        }
+        if (extra_bytes) memcpy(body, extra_raw, extra_bytes);
     }
     dst->size = final_size;
 
@@ -1674,9 +1582,6 @@ cleanup:
     lzs_free(dst, ml_sym);
     lzs_free(dst, off_sym);
     lzs_free(dst, extra_raw);
-    lzs_free(dst, lm_extra_raw);
-    lzs_free(dst, off_extra_raw);
-    lzs_free(dst, off_extra_enc);
     lzs_free(dst, seqs);
     return st;
 }
@@ -1715,6 +1620,9 @@ static inline void lzs_br_init(lzs_br *br, const uint8_t *buf, uint32_t size) {
 }
 
 static inline void lzs_br_refill(lzs_br *br) {
+    /* No-op when buffer is already nearly full. Also avoids UB from
+     * `next << 64` when callers pre-refill unconditionally. */
+    if (br->nbits >= 56) return;
     if (br->ptr < br->safe) {
         /* Fast: 8-byte unaligned LE load. The extras buffer is
          * LSB-first, so `next` in LE native order places byte[0]
@@ -1741,6 +1649,16 @@ static inline void lzs_br_refill(lzs_br *br) {
  * Branchless on nb==0: mask `(1<<0)-1 == 0`, shifts by 0 are no-ops. */
 static inline uint32_t lzs_br_read(lzs_br *br, uint32_t nb) {
     if (br->nbits < (int)nb) lzs_br_refill(br);
+    uint32_t val = (uint32_t)br->bits & ((1u << nb) - 1u);
+    br->bits >>= nb;
+    br->nbits -= (int)nb;
+    return val;
+}
+
+/* Fast-path read: assumes caller has pre-refilled the buffer with enough
+ * bits for all reads in the sequence. Skips the refill check entirely.
+ * Used in fused hot loops that refill once per sequence. */
+static inline uint32_t lzs_br_read_fast(lzs_br *br, uint32_t nb) {
     uint32_t val = (uint32_t)br->bits & ((1u << nb) - 1u);
     br->bits >>= nb;
     br->nbits -= (int)nb;
@@ -1829,23 +1747,23 @@ static tdc_status lzs_decode_fused(
             mo = r.base + lzs_br_read(&br, r.nbits);
         }
 
-        /* --- Repcode decode (inline) --- */
+        /* --- Repcode decode (inline, flattened) ---
+         * Four cases (code=1,2,3, code>=4), but the r2/r3 update rule
+         * unifies across them: r3 takes r2 when code>=3, r2 takes r1
+         * when code>=2. Only new_r1 needs a real select: reps[code] for
+         * code<=3, else (code-3). Replaces the 3-if-else chain with two
+         * cmov-friendly ternaries. */
         if (has_repcodes) {
             uint32_t code = mo;
             if (code == 0u) return TDC_E_CORRUPT;
-            if (code == 1u) {
-                mo = r1;
-            } else if (code == 2u) {
-                mo = r2;
-                uint32_t t = r1; r1 = r2; r2 = t;
-            } else if (code == 3u) {
-                mo = r3;
-                uint32_t t = r3; r3 = r2; r2 = r1; r1 = t;
-            } else {
-                mo = code - 3u;
-                if (mo == 0u || mo > LZ_MAX_OFFSET) return TDC_E_CORRUPT;
-                r3 = r2; r2 = r1; r1 = mo;
-            }
+            uint32_t reps[4] = { 0u, r1, r2, r3 };
+            uint32_t v = code - 3u;
+            if (code > 3u && v > LZ_MAX_OFFSET) return TDC_E_CORRUPT;
+            uint32_t new_r1 = (code <= 3u) ? reps[code] : v;
+            uint32_t new_r2 = (code >= 2u) ? r1 : r2;
+            uint32_t new_r3 = (code >= 3u) ? r2 : r3;
+            mo = new_r1;
+            r1 = new_r1; r2 = new_r2; r3 = new_r3;
         }
 
         /* --- Offset stride shift --- */
@@ -1853,11 +1771,15 @@ static tdc_status lzs_decode_fused(
         tdc_dp_count_offset(mo);
         tdc_dp_add(TDC_DP_SYMBOL, t_sym);
 
-        /* --- Execute: prefetch match address (item 1.5) --- */
+        /* --- Execute: prefetch match address (item 1.5) ---
+         * mo >= 1 always by construction: non-repcode LZS_OFF_RECON[0].base
+         * is 1; delta-offset path produces mo = s+1 or off64+3; repcode
+         * path rejects code==0 and uses r1/r2/r3 (init nonzero) or code-3
+         * (explicit mo==0 check). So mo != 0 is dead here. */
         uint64_t t_other = tdc_dp_rdtsc();
         if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
         if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
-        if (mo != 0 && mo <= dp)
+        if (mo <= dp)
             TDC_PREFETCH_L1(dst + dp - mo + ll);
         tdc_dp_add(TDC_DP_OTHER, t_other);
 
@@ -1874,10 +1796,13 @@ static tdc_status lzs_decode_fused(
         }
         tdc_dp_add(TDC_DP_LIT, t_lit);
 
-        /* --- Execute: match copy --- */
+        /* --- Execute: match copy ---
+         * ml >= LZ_MIN_MATCH always: ml = base + extras + LZ_MIN_MATCH
+         * with base >= 0, extras >= 0. Upfront symbol-range pass also
+         * bounds base + extras. Only mo > dp (out-of-range backref) and
+         * dp + ml > dst_size (oob write) are load-dependent. */
         uint64_t t_mch0 = tdc_dp_rdtsc();
-        if (ml < LZ_MIN_MATCH)            return TDC_E_CORRUPT;
-        if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
+        if (mo > dp)                       return TDC_E_CORRUPT;
         if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
         tdc_dp_add(TDC_DP_OTHER, t_mch0);
 
@@ -2131,582 +2056,6 @@ static tdc_status lzs_reconstruct_symbols(const uint8_t *ll_dec,
     return TDC_OK;
 }
 
-/* Split-extras variant: ll+ml extras from lm_ptr, off extras from off_ptr. */
-static tdc_status lzs_reconstruct_symbols_split(
-    const uint8_t *ll_dec,
-    const uint8_t *ml_dec,
-    const uint8_t *off_dec,
-    const uint8_t *lm_extra_ptr, uint32_t lm_extra_size,
-    const uint8_t *off_extra_ptr, uint32_t off_extra_size,
-    uint32_t n_seqs, int delta_offsets,
-    uint32_t *lit_lens, uint32_t *match_lens, uint32_t *match_offs)
-{
-    uint32_t lm_bp = 0, off_bp = 0;
-    uint32_t lm_extra_bits  = lm_extra_size << 3;   /* precompute once */
-    uint32_t off_extra_bits = off_extra_size << 3;
-    uint32_t dr1 = LZS_REP_INIT_1, dr2 = LZS_REP_INIT_2,
-             dr3 = LZS_REP_INIT_3;
-    for (uint32_t i = 0; i < n_seqs; i++) {
-        uint8_t s; uint32_t ex, nb;
-
-        s = ll_dec[i];
-        if (s > LZS_MAX_LL_SYMBOL) return TDC_E_CORRUPT;
-        ex = 0;
-        if (s >= 2u) {
-            nb = (uint32_t)s - 1u;
-            if (lm_bp + nb > lm_extra_bits) return TDC_E_CORRUPT;
-            ex = lzs_bits_read_safe(lm_extra_ptr, lm_extra_size, &lm_bp, nb);
-        }
-        lit_lens[i] = lzs_symbol_to_uint(s, ex);
-
-        s = ml_dec[i];
-        if (s > LZS_MAX_ML_SYMBOL) return TDC_E_CORRUPT;
-        ex = 0;
-        if (s >= 2u) {
-            nb = (uint32_t)s - 1u;
-            if (lm_bp + nb > lm_extra_bits) return TDC_E_CORRUPT;
-            ex = lzs_bits_read_safe(lm_extra_ptr, lm_extra_size, &lm_bp, nb);
-        }
-        match_lens[i] = lzs_symbol_to_uint(s, ex) + LZ_MIN_MATCH;
-
-        s = off_dec[i];
-        if (delta_offsets) {
-            if (s > LZS_MAX_OFFSET_DELTA_SYMBOL) return TDC_E_CORRUPT;
-            if (s <= 2u) {
-                match_offs[i] = (uint32_t)s + 1u;
-                lzs_rep_update(match_offs[i], &dr1, &dr2, &dr3);
-            } else {
-                uint8_t usym = (uint8_t)(s - 3u);
-                nb = (usym >= 2u) ? (uint32_t)usym - 1u : 0u;
-                ex = 0;
-                if (nb > 0) {
-                    if (off_bp + nb > off_extra_bits) return TDC_E_CORRUPT;
-                    ex = lzs_bits_read_safe(off_extra_ptr, off_extra_size, &off_bp, nb);
-                }
-                uint32_t zigzag = lzs_symbol_to_uint(usym, ex);
-                int32_t delta = lzs_zigzag_decode(zigzag);
-                int64_t off64 = (int64_t)dr1 + delta;
-                if (off64 <= 0) return TDC_E_CORRUPT;
-                uint32_t actual_off = (uint32_t)off64;
-                match_offs[i] = actual_off + 3u;
-                lzs_rep_update(match_offs[i], &dr1, &dr2, &dr3);
-            }
-        } else {
-            if (s > LZS_MAX_OFFSET_SYMBOL) return TDC_E_CORRUPT;
-            ex = 0;
-            if (s >= 3u) {
-                nb = (uint32_t)s - 3u;
-                if (nb > 0) {
-                    if (off_bp + nb > off_extra_bits) return TDC_E_CORRUPT;
-                    ex = lzs_bits_read_safe(off_extra_ptr, off_extra_size, &off_bp, nb);
-                }
-            }
-            match_offs[i] = lzs_symbol_to_code(s, ex);
-        }
-    }
-    return TDC_OK;
-}
-
-/* Fused split-extras decode with 8-ahead prefetch pipeline.
- *
- * Replaces lzs_reconstruct_symbols_split + lzs_reconstruct with a single
- * pass. Two 64-bit bit buffers consume lm_extras (ll+ml) and off_extras
- * separately. Reconstruction runs D=8 ahead of execution; each step
- * reconstructs seq[i+D], prefetches its match address, and executes
- * seq[i]. Eliminates the 3 × n_seqs uint32 scratch arrays.
- *
- * Compatible with has_repcodes and offset_shift — both are applied
- * inline per sequence before prefetch.
- *
- * Note: delta_offsets and has_repcodes are mutually exclusive by design
- * (delta-offset has its own rep state dr1/dr2/dr3 encoded in the symbol).
- */
-static tdc_status lzs_decode_fused_split_prefetch(
-    const uint8_t *ll_dec, const uint8_t *ml_dec, const uint8_t *off_dec,
-    const uint8_t *lm_extra_ptr,  uint32_t lm_extra_size,
-    const uint8_t *off_extra_ptr, uint32_t off_extra_size,
-    const uint8_t *lit_raw, uint32_t total_lit, uint32_t trailing,
-    uint32_t n_seqs, int delta_offsets, int has_repcodes,
-    uint32_t offset_shift,
-    uint8_t *dst, size_t dst_size)
-{
-    /* Upfront symbol-range validation (hoist per-seq bounds). */
-    {
-        uint8_t off_max = delta_offsets ? (uint8_t)LZS_MAX_OFFSET_DELTA_SYMBOL
-                                        : (uint8_t)LZS_MAX_OFFSET_SYMBOL;
-        for (uint32_t i = 0; i < n_seqs; i++) {
-            if (ll_dec[i]  > LZS_MAX_LL_SYMBOL) return TDC_E_CORRUPT;
-            if (ml_dec[i]  > LZS_MAX_ML_SYMBOL) return TDC_E_CORRUPT;
-            if (off_dec[i] > off_max)            return TDC_E_CORRUPT;
-        }
-    }
-
-    lzs_br br_lm, br_off;
-    lzs_br_init(&br_lm,  lm_extra_ptr,  lm_extra_size);
-    lzs_br_init(&br_off, off_extra_ptr, off_extra_size);
-
-    uint32_t dr1 = LZS_REP_INIT_1, dr2 = LZS_REP_INIT_2, dr3 = LZS_REP_INIT_3;
-    uint32_t r1  = LZS_REP_INIT_1, r2  = LZS_REP_INIT_2, r3  = LZS_REP_INIT_3;
-
-    size_t dp = 0, lp = 0;
-    size_t safe_end = (dst_size >= 15) ? dst_size - 15 : 0;
-
-    /* Ring buffer of D=8 reconstructed sequences. Index by i & (D-1). */
-    #define LZS_FSP_D 8u
-    uint32_t ring_ll[LZS_FSP_D];
-    uint32_t ring_ml[LZS_FSP_D];
-    uint32_t ring_mo[LZS_FSP_D];
-
-    /* Inline reconstruct: produces (ll, ml, mo) from symbol arrays and
-     * bit buffers, applies repcodes and offset_shift. */
-    #define LZS_FSP_RECONSTRUCT(IDX, OUT_LL, OUT_ML, OUT_MO) do {              \
-        uint8_t  _s; uint32_t _mo; lzs_recon_t _r;                             \
-        _s = ll_dec[IDX];                                                      \
-        _r = LZS_UINT_RECON[_s];                                               \
-        (OUT_LL) = _r.base + lzs_br_read(&br_lm, _r.nbits);                    \
-                                                                               \
-        _s = ml_dec[IDX];                                                      \
-        _r = LZS_UINT_RECON[_s];                                               \
-        (OUT_ML) = _r.base + lzs_br_read(&br_lm, _r.nbits) + LZ_MIN_MATCH;     \
-                                                                               \
-        _s = off_dec[IDX];                                                     \
-        if (delta_offsets) {                                                   \
-            if (_s <= 2u) {                                                    \
-                _mo = (uint32_t)_s + 1u;                                       \
-                lzs_rep_update(_mo, &dr1, &dr2, &dr3);                         \
-            } else {                                                           \
-                uint8_t _us = (uint8_t)(_s - 3u);                              \
-                _r = LZS_UINT_RECON[_us];                                      \
-                uint32_t _zz = _r.base + lzs_br_read(&br_off, _r.nbits);       \
-                int32_t  _dl = lzs_zigzag_decode(_zz);                         \
-                int64_t  _of = (int64_t)dr1 + _dl;                             \
-                if (_of <= 0) return TDC_E_CORRUPT;                            \
-                _mo = (uint32_t)_of + 3u;                                      \
-                lzs_rep_update(_mo, &dr1, &dr2, &dr3);                         \
-            }                                                                  \
-        } else {                                                               \
-            _r = LZS_OFF_RECON[_s];                                            \
-            _mo = _r.base + lzs_br_read(&br_off, _r.nbits);                    \
-        }                                                                      \
-        if (has_repcodes) {                                                    \
-            uint32_t _code = _mo;                                              \
-            if (_code == 0u) return TDC_E_CORRUPT;                             \
-            if (_code == 1u) {                                                 \
-                _mo = r1;                                                      \
-            } else if (_code == 2u) {                                          \
-                _mo = r2;                                                      \
-                uint32_t _t = r1; r1 = r2; r2 = _t;                            \
-            } else if (_code == 3u) {                                          \
-                _mo = r3;                                                      \
-                uint32_t _t = r3; r3 = r2; r2 = r1; r1 = _t;                   \
-            } else {                                                           \
-                _mo = _code - 3u;                                              \
-                if (_mo == 0u || _mo > LZ_MAX_OFFSET) return TDC_E_CORRUPT;    \
-                r3 = r2; r2 = r1; r1 = _mo;                                    \
-            }                                                                  \
-        }                                                                      \
-        if (offset_shift > 0) _mo <<= offset_shift;                            \
-        (OUT_MO) = _mo;                                                        \
-    } while (0)
-
-    tdc_dp_count_seqs(n_seqs);
-
-    /* Prime: reconstruct first min(D, n_seqs) seqs, prefetch each. */
-    uint32_t primed = (n_seqs < LZS_FSP_D) ? n_seqs : LZS_FSP_D;
-    size_t dp_ahead = 0;
-    for (uint32_t k = 0; k < primed; k++) {
-        uint32_t ll_k, ml_k, mo_k;
-        LZS_FSP_RECONSTRUCT(k, ll_k, ml_k, mo_k);
-        ring_ll[k & (LZS_FSP_D - 1u)] = ll_k;
-        ring_ml[k & (LZS_FSP_D - 1u)] = ml_k;
-        ring_mo[k & (LZS_FSP_D - 1u)] = mo_k;
-        tdc_dp_count_offset(mo_k);
-        size_t addr = dp_ahead + ll_k;
-        if (mo_k != 0 && mo_k <= addr && addr < dst_size)
-            TDC_PREFETCH_L1(dst + addr - mo_k);
-        dp_ahead = addr + ml_k;
-        if (dp_ahead > dst_size) dp_ahead = dst_size;
-    }
-
-    uint32_t main_end = (n_seqs > LZS_FSP_D) ? (n_seqs - LZS_FSP_D) : 0;
-
-    /* Main loop: execute seq[i] from ring, then reconstruct seq[i+D] into
-     * that same slot (which aliases under mod-D indexing). */
-    uint32_t i = 0;
-    for (; i < main_end; i++) {
-        /* Execute seq[i] BEFORE overwriting its ring slot. */
-        uint32_t ll = ring_ll[i & (LZS_FSP_D - 1u)];
-        uint32_t ml = ring_ml[i & (LZS_FSP_D - 1u)];
-        uint32_t mo = ring_mo[i & (LZS_FSP_D - 1u)];
-
-        uint64_t t_lit = tdc_dp_rdtsc();
-        if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
-        if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
-        if (ll > 0) {
-            if (ll <= 16 && dp + ll <= safe_end) {
-                tdc_copy16(dst + dp, lit_raw + lp);
-            } else {
-                memcpy(dst + dp, lit_raw + lp, ll);
-            }
-            dp += ll;
-            lp += ll;
-        }
-        tdc_dp_add(TDC_DP_LIT, t_lit);
-
-        uint64_t t_mch0 = tdc_dp_rdtsc();
-        if (ml < LZ_MIN_MATCH)            return TDC_E_CORRUPT;
-        if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
-        if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
-        tdc_dp_add(TDC_DP_OTHER, t_mch0);
-
-        uint64_t t_mch = tdc_dp_rdtsc();
-        if (dp + ml <= safe_end) {
-            tdc_match_copy(dst + dp, mo, ml);
-        } else {
-            size_t from = dp - mo;
-            for (uint32_t k = 0; k < ml; k++)
-                dst[dp + k] = dst[from + k];
-        }
-        dp += ml;
-        tdc_dp_add(TDC_DP_MATCH, t_mch);
-
-        /* Reconstruct seq[i+D] into the now-free ring slot (i & (D-1)),
-         * prefetch its match address. */
-        uint64_t t_sym = tdc_dp_rdtsc();
-        uint32_t j = i + LZS_FSP_D;
-        uint32_t ll_a, ml_a, mo_a;
-        LZS_FSP_RECONSTRUCT(j, ll_a, ml_a, mo_a);
-        ring_ll[j & (LZS_FSP_D - 1u)] = ll_a;
-        ring_ml[j & (LZS_FSP_D - 1u)] = ml_a;
-        ring_mo[j & (LZS_FSP_D - 1u)] = mo_a;
-        tdc_dp_count_offset(mo_a);
-        size_t addr_a = dp_ahead + ll_a;
-        if (mo_a != 0 && mo_a <= addr_a && addr_a < dst_size)
-            TDC_PREFETCH_L1(dst + addr_a - mo_a);
-        dp_ahead = addr_a + ml_a;
-        if (dp_ahead > dst_size) dp_ahead = dst_size;
-        tdc_dp_add(TDC_DP_SYMBOL, t_sym);
-    }
-
-    /* Drain: execute the last D seqs already in the ring. */
-    for (; i < n_seqs; i++) {
-        uint32_t ll = ring_ll[i & (LZS_FSP_D - 1u)];
-        uint32_t ml = ring_ml[i & (LZS_FSP_D - 1u)];
-        uint32_t mo = ring_mo[i & (LZS_FSP_D - 1u)];
-
-        if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
-        if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
-        if (ll > 0) {
-            if (ll <= 16 && dp + ll <= safe_end) {
-                tdc_copy16(dst + dp, lit_raw + lp);
-            } else {
-                memcpy(dst + dp, lit_raw + lp, ll);
-            }
-            dp += ll;
-            lp += ll;
-        }
-
-        if (ml < LZ_MIN_MATCH)            return TDC_E_CORRUPT;
-        if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
-        if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
-
-        if (dp + ml <= safe_end) {
-            tdc_match_copy(dst + dp, mo, ml);
-        } else {
-            size_t from = dp - mo;
-            for (uint32_t k = 0; k < ml; k++)
-                dst[dp + k] = dst[from + k];
-        }
-        dp += ml;
-    }
-
-    if ((uint64_t)lp + trailing != total_lit) return TDC_E_CORRUPT;
-    if (dp + trailing != dst_size)            return TDC_E_CORRUPT;
-    if (trailing > 0) memcpy(dst + dp, lit_raw + lp, trailing);
-
-    #undef LZS_FSP_RECONSTRUCT
-    #undef LZS_FSP_D
-    return TDC_OK;
-}
-
-/* ----- Plan E: fused 3-stream FSE decoder ------------------------------- */
-/*
- * Drives three rANS state machines (ll / ml / off) inline with the LZ
- * execute loop, eliminating the ll_dec / ml_dec / off_dec byte-array
- * round-trip. Applies only to the common case:
- *   - v2 format, has_split_extras set
- *   - all three code streams are TDC_ENTROPY_FSE
- *   - no delta_offsets, no has_repcodes, offset_shift == 0
- * Other configurations fall through to lzs_decode_fused_split_prefetch.
- */
-
-typedef struct {
-    uint32_t state;
-    uint32_t table_mask;
-    uint32_t table_log;
-    const uint8_t *payload;
-    size_t payload_off;
-    size_t payload_size;
-    tdc_fse_fat_decode_table ft;
-} lzs_fse_stream;
-
-/* Parse FSE header at `src` and initialize a stream. Expected n_syms is
- * the uncompressed symbol count (== n_seqs per stream). */
-static tdc_status lzs_fse_stream_init(lzs_fse_stream *s,
-                                       const uint8_t *src, size_t src_size,
-                                       size_t expected_n_syms) {
-    if (src_size < TDC_FSE_HDR_PREFIX) return TDC_E_CORRUPT;
-    uint32_t hdr_src_size     = tdc_le_load_u32(src + 0);
-    uint32_t hdr_payload_size = tdc_le_load_u32(src + 4);
-    uint32_t hdr_final_state  = tdc_le_load_u32(src + 8);
-    uint32_t table_log        = src[12];
-    uint32_t max_symbol       = tdc_le_load_u16(src + 14);
-
-    if ((size_t)hdr_src_size != expected_n_syms) return TDC_E_CORRUPT;
-    if (table_log < TDC_FSE_TABLE_LOG_MIN || table_log > TDC_FSE_TABLE_LOG_MAX)
-        return TDC_E_CORRUPT;
-    if (max_symbol > TDC_FSE_NSYMS) return TDC_E_CORRUPT;
-
-    uint32_t hdr_size = TDC_FSE_HDR_PREFIX + 2u * max_symbol;
-    if (src_size < hdr_size) return TDC_E_CORRUPT;
-    if ((size_t)hdr_payload_size + (size_t)hdr_size != src_size) return TDC_E_CORRUPT;
-
-    uint32_t table_size = 1u << table_log;
-
-    uint16_t norm[TDC_FSE_NSYMS];
-    memset(norm, 0, sizeof norm);
-    if (max_symbol > 0)
-        memcpy(norm, src + TDC_FSE_HDR_PREFIX, 2u * max_symbol);
-
-    if (expected_n_syms == 0) {
-        if (hdr_payload_size != 0u) return TDC_E_CORRUPT;
-        if (max_symbol != 0u) return TDC_E_CORRUPT;
-        if (hdr_final_state != TDC_FSE_L_MIN) return TDC_E_CORRUPT;
-        s->state = TDC_FSE_L_MIN;
-        s->payload = NULL;
-        s->payload_off = 0;
-        s->payload_size = 0;
-        s->table_log = table_log;
-        s->table_mask = table_size - 1u;
-        return TDC_OK;
-    }
-
-    tdc_status st = tdc_fse_build_fat_table(norm, max_symbol, table_size, &s->ft);
-    if (st != TDC_OK) return st;
-
-    if (hdr_final_state < TDC_FSE_L_MIN || hdr_final_state >= (TDC_FSE_L_MIN << 8))
-        return TDC_E_CORRUPT;
-
-    s->state = hdr_final_state;
-    s->payload = src + hdr_size;
-    s->payload_off = 0;
-    s->payload_size = hdr_payload_size;
-    s->table_log = table_log;
-    s->table_mask = table_size - 1u;
-    return TDC_OK;
-}
-
-/* Advance one FSE symbol: emit e->symbol, then state transition and refill.
- * Returns 0 on success, 1 on corruption (payload underflow). */
-/* Refill: post-step state can be anywhere in [0, (freq_max<<log_max)) ~= 1<<24.
- * To reach state >= L_MIN (1<<16) we need up to 3 bytes. In practice the
- * common case is exactly 1 byte. Unroll that case and keep the loop only as
- * a safety net (predictable taken once per sequence).
- *
- * Branchless strategy: use tdc_clz to compute how many bytes to shift in
- * in a single 24-bit load, masking the excess. This avoids the unpredictable
- * while-loop per step. */
-#define LZS_FSE_STEP(S, OUT_SYM) do {                                         \
-    uint32_t _slot = (S).state & (S).table_mask;                              \
-    const tdc_fse_fat_decode_entry *_e = &(S).ft.entries[_slot];              \
-    (OUT_SYM) = _e->symbol;                                                   \
-    uint32_t _st = (uint32_t)_e->freq * ((S).state >> (S).table_log)          \
-                 + _slot - (uint32_t)_e->cum;                                 \
-    if (_st < TDC_FSE_L_MIN) {                                                \
-        /* Need at least 1 byte. Almost always exactly 1. */                  \
-        if ((S).payload_off >= (S).payload_size) return TDC_E_CORRUPT;        \
-        _st = (_st << 8) | (uint32_t)(S).payload[(S).payload_off++];          \
-        while (_st < TDC_FSE_L_MIN) {                                         \
-            if ((S).payload_off >= (S).payload_size) return TDC_E_CORRUPT;    \
-            _st = (_st << 8) | (uint32_t)(S).payload[(S).payload_off++];      \
-        }                                                                     \
-    }                                                                         \
-    (S).state = _st;                                                          \
-} while (0)
-
-/* Fused decode: three FSE streams + two extras bit buffers, executed with
- * D=8 prefetch pipeline. Mirrors lzs_decode_fused_split_prefetch but
- * substitutes FSE state transitions for ll_dec/ml_dec/off_dec byte loads. */
-static tdc_status lzs_decode_fused_fse_split(
-    const uint8_t *ll_enc, size_t ll_enc_size,
-    const uint8_t *ml_enc, size_t ml_enc_size,
-    const uint8_t *off_enc, size_t off_enc_size,
-    const uint8_t *lm_extra_ptr,  uint32_t lm_extra_size,
-    const uint8_t *off_extra_ptr, uint32_t off_extra_size,
-    const uint8_t *lit_raw, uint32_t total_lit, uint32_t trailing,
-    uint32_t n_seqs, int has_repcodes,
-    uint8_t *dst, size_t dst_size)
-{
-    tdc_status st;
-    /* Three FSE streams, heap-allocated (fat tables are 32 KiB each — too
-     * large for stack safety under /W4 on Windows). */
-    lzs_fse_stream *sll  = (lzs_fse_stream *)malloc(sizeof *sll);
-    lzs_fse_stream *sml  = sll  ? (lzs_fse_stream *)malloc(sizeof *sml)  : NULL;
-    lzs_fse_stream *soff = sml  ? (lzs_fse_stream *)malloc(sizeof *soff) : NULL;
-    if (!sll || !sml || !soff) {
-        free(sll); free(sml); free(soff);
-        return TDC_E_NOMEM;
-    }
-
-    st = lzs_fse_stream_init(sll,  ll_enc,  ll_enc_size,  n_seqs); if (st != TDC_OK) goto cleanup;
-    st = lzs_fse_stream_init(sml,  ml_enc,  ml_enc_size,  n_seqs); if (st != TDC_OK) goto cleanup;
-    st = lzs_fse_stream_init(soff, off_enc, off_enc_size, n_seqs); if (st != TDC_OK) goto cleanup;
-
-    lzs_br br_lm, br_off;
-    lzs_br_init(&br_lm,  lm_extra_ptr,  lm_extra_size);
-    lzs_br_init(&br_off, off_extra_ptr, off_extra_size);
-
-    uint32_t r1 = LZS_REP_INIT_1, r2 = LZS_REP_INIT_2, r3 = LZS_REP_INIT_3;
-
-    size_t dp = 0, lp = 0;
-    size_t safe_end = (dst_size >= 15) ? dst_size - 15 : 0;
-
-    #define LZS_FFSE_D 8u
-    uint32_t ring_ll[LZS_FFSE_D];
-    uint32_t ring_ml[LZS_FFSE_D];
-    uint32_t ring_mo[LZS_FFSE_D];
-
-    /* Fused reconstruct: FSE step → (base, nbits) lookup → extras → value.
-     * Applies repcode cascade when has_repcodes is set. */
-    #define LZS_FFSE_RECONSTRUCT(OUT_LL, OUT_ML, OUT_MO) do {                  \
-        uint8_t _s; uint32_t _mo; lzs_recon_t _r;                              \
-        LZS_FSE_STEP(*sll, _s);                                                \
-        if (_s > LZS_MAX_LL_SYMBOL) { st = TDC_E_CORRUPT; goto cleanup; }      \
-        _r = LZS_UINT_RECON[_s];                                               \
-        (OUT_LL) = _r.base + lzs_br_read(&br_lm, _r.nbits);                    \
-        LZS_FSE_STEP(*sml, _s);                                                \
-        if (_s > LZS_MAX_ML_SYMBOL) { st = TDC_E_CORRUPT; goto cleanup; }      \
-        _r = LZS_UINT_RECON[_s];                                               \
-        (OUT_ML) = _r.base + lzs_br_read(&br_lm, _r.nbits) + LZ_MIN_MATCH;     \
-        LZS_FSE_STEP(*soff, _s);                                               \
-        if (_s > LZS_MAX_OFFSET_SYMBOL) { st = TDC_E_CORRUPT; goto cleanup; }  \
-        _r = LZS_OFF_RECON[_s];                                                \
-        _mo = _r.base + lzs_br_read(&br_off, _r.nbits);                        \
-        if (has_repcodes) {                                                    \
-            uint32_t _code = _mo;                                              \
-            if (_code == 0u) { st = TDC_E_CORRUPT; goto cleanup; }             \
-            if (_code == 1u) {                                                 \
-                _mo = r1;                                                      \
-            } else if (_code == 2u) {                                          \
-                _mo = r2;                                                      \
-                uint32_t _t = r1; r1 = r2; r2 = _t;                            \
-            } else if (_code == 3u) {                                          \
-                _mo = r3;                                                      \
-                uint32_t _t = r3; r3 = r2; r2 = r1; r1 = _t;                   \
-            } else {                                                           \
-                _mo = _code - 3u;                                              \
-                if (_mo == 0u || _mo > LZ_MAX_OFFSET) {                        \
-                    st = TDC_E_CORRUPT; goto cleanup;                          \
-                }                                                              \
-                r3 = r2; r2 = r1; r1 = _mo;                                    \
-            }                                                                  \
-        }                                                                      \
-        (OUT_MO) = _mo;                                                        \
-    } while (0)
-
-    uint32_t primed = (n_seqs < LZS_FFSE_D) ? n_seqs : LZS_FFSE_D;
-    size_t dp_ahead = 0;
-    for (uint32_t k = 0; k < primed; k++) {
-        uint32_t ll_k, ml_k, mo_k;
-        LZS_FFSE_RECONSTRUCT(ll_k, ml_k, mo_k);
-        ring_ll[k & (LZS_FFSE_D - 1u)] = ll_k;
-        ring_ml[k & (LZS_FFSE_D - 1u)] = ml_k;
-        ring_mo[k & (LZS_FFSE_D - 1u)] = mo_k;
-        size_t addr = dp_ahead + ll_k;
-        if (mo_k != 0 && mo_k <= addr && addr < dst_size)
-            TDC_PREFETCH_L1(dst + addr - mo_k);
-        dp_ahead = addr + ml_k;
-        if (dp_ahead > dst_size) dp_ahead = dst_size;
-    }
-
-    uint32_t main_end = (n_seqs > LZS_FFSE_D) ? (n_seqs - LZS_FFSE_D) : 0;
-    uint32_t i = 0;
-    for (; i < main_end; i++) {
-        uint32_t ll = ring_ll[i & (LZS_FFSE_D - 1u)];
-        uint32_t ml = ring_ml[i & (LZS_FFSE_D - 1u)];
-        uint32_t mo = ring_mo[i & (LZS_FFSE_D - 1u)];
-
-        if ((uint64_t)lp + ll > total_lit)        { st = TDC_E_CORRUPT; goto cleanup; }
-        if ((uint64_t)dp + ll > dst_size)         { st = TDC_E_CORRUPT; goto cleanup; }
-        if (ll > 0) {
-            if (ll <= 16 && dp + ll <= safe_end) tdc_copy16(dst + dp, lit_raw + lp);
-            else                                 memcpy(dst + dp, lit_raw + lp, ll);
-            dp += ll; lp += ll;
-        }
-        if (ml < LZ_MIN_MATCH)                    { st = TDC_E_CORRUPT; goto cleanup; }
-        if (mo == 0 || mo > dp)                   { st = TDC_E_CORRUPT; goto cleanup; }
-        if ((uint64_t)dp + ml > dst_size)         { st = TDC_E_CORRUPT; goto cleanup; }
-        if (dp + ml <= safe_end) {
-            tdc_match_copy(dst + dp, mo, ml);
-        } else {
-            size_t from = dp - mo;
-            for (uint32_t k = 0; k < ml; k++) dst[dp + k] = dst[from + k];
-        }
-        dp += ml;
-
-        uint32_t ll_a, ml_a, mo_a;
-        LZS_FFSE_RECONSTRUCT(ll_a, ml_a, mo_a);
-        ring_ll[i & (LZS_FFSE_D - 1u)] = ll_a;
-        ring_ml[i & (LZS_FFSE_D - 1u)] = ml_a;
-        ring_mo[i & (LZS_FFSE_D - 1u)] = mo_a;
-        size_t addr_a = dp_ahead + ll_a;
-        if (mo_a != 0 && mo_a <= addr_a && addr_a < dst_size)
-            TDC_PREFETCH_L1(dst + addr_a - mo_a);
-        dp_ahead = addr_a + ml_a;
-        if (dp_ahead > dst_size) dp_ahead = dst_size;
-    }
-
-    for (; i < n_seqs; i++) {
-        uint32_t ll = ring_ll[i & (LZS_FFSE_D - 1u)];
-        uint32_t ml = ring_ml[i & (LZS_FFSE_D - 1u)];
-        uint32_t mo = ring_mo[i & (LZS_FFSE_D - 1u)];
-        if ((uint64_t)lp + ll > total_lit)        { st = TDC_E_CORRUPT; goto cleanup; }
-        if ((uint64_t)dp + ll > dst_size)         { st = TDC_E_CORRUPT; goto cleanup; }
-        if (ll > 0) {
-            if (ll <= 16 && dp + ll <= safe_end) tdc_copy16(dst + dp, lit_raw + lp);
-            else                                 memcpy(dst + dp, lit_raw + lp, ll);
-            dp += ll; lp += ll;
-        }
-        if (ml < LZ_MIN_MATCH)                    { st = TDC_E_CORRUPT; goto cleanup; }
-        if (mo == 0 || mo > dp)                   { st = TDC_E_CORRUPT; goto cleanup; }
-        if ((uint64_t)dp + ml > dst_size)         { st = TDC_E_CORRUPT; goto cleanup; }
-        if (dp + ml <= safe_end) {
-            tdc_match_copy(dst + dp, mo, ml);
-        } else {
-            size_t from = dp - mo;
-            for (uint32_t k = 0; k < ml; k++) dst[dp + k] = dst[from + k];
-        }
-        dp += ml;
-    }
-
-    /* Confirm all FSE payloads fully consumed. */
-    if (sll->payload_off  != sll->payload_size)  { st = TDC_E_CORRUPT; goto cleanup; }
-    if (sml->payload_off  != sml->payload_size)  { st = TDC_E_CORRUPT; goto cleanup; }
-    if (soff->payload_off != soff->payload_size) { st = TDC_E_CORRUPT; goto cleanup; }
-
-    if ((uint64_t)lp + trailing != total_lit)    { st = TDC_E_CORRUPT; goto cleanup; }
-    if (dp + trailing != dst_size)               { st = TDC_E_CORRUPT; goto cleanup; }
-    if (trailing > 0) memcpy(dst + dp, lit_raw + lp, trailing);
-
-    st = TDC_OK;
-
-    #undef LZS_FFSE_RECONSTRUCT
-    #undef LZS_FFSE_D
-
-cleanup:
-    free(sll); free(sml); free(soff);
-    return st;
-}
 
 static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
                               uint8_t       *dst, size_t dst_size) {
@@ -2717,12 +2066,11 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
     uint8_t flags   = src[1];
     if (version != 1u && version != 2u) return TDC_E_CORRUPT;
     if (flags & ~(uint8_t)(LZS_FLAG_REPCODES | LZS_FLAG_OFFSET_SHIFT
-                           | LZS_FLAG_LIT_CONTEXT | LZS_FLAG_SPLIT_EXTRAS
+                           | LZS_FLAG_LIT_CONTEXT
                            | LZS_FLAG_DELTA_OFFSETS))
         return TDC_E_CORRUPT;
     int has_repcodes      = (flags & LZS_FLAG_REPCODES)      != 0;
     int has_lit_ctx       = (flags & LZS_FLAG_LIT_CONTEXT)   != 0;
-    int has_split_extras  = (flags & LZS_FLAG_SPLIT_EXTRAS)  != 0;
     int has_delta_offsets = (flags & LZS_FLAG_DELTA_OFFSETS)  != 0;
     uint32_t offset_shift = (flags & LZS_FLAG_OFFSET_SHIFT) ? src[2] : 0;
     if (offset_shift > 7u) return TDC_E_CORRUPT;
@@ -2846,99 +2194,26 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
             const tdc_entropy_vt *sub_off = lzs_sub_vt(id_mo);
             if (!sub_ll || !sub_ml || !sub_off) { st = TDC_E_CORRUPT; goto done; }
 
-            /* Plan E fast path: all three streams FSE + split-extras +
-             * no delta/rep/shift. Drives three rANS state machines inline
-             * with execute, skipping the ll_dec/ml_dec/off_dec round-trip. */
-            int fuse_fse_ok = (id_ll == TDC_ENTROPY_FSE) &&
-                              (id_ml == TDC_ENTROPY_FSE) &&
-                              (id_mo == TDC_ENTROPY_FSE) &&
-                              has_split_extras &&
-                              !has_delta_offsets &&
-                              (offset_shift == 0);
-            const uint8_t *ll_enc = p;
-            const uint8_t *ml_enc = p + sz_ll;
-            const uint8_t *off_enc = p + sz_ll + sz_ml;
-
             uint64_t t_sd = tdc_dp_rdtsc();
-            if (!fuse_fse_ok) {
-                st = sub_ll->decode(p, sz_ll, ll_dec, n_seqs);
-                if (st != TDC_OK) goto done;
-                st = sub_ml->decode(ml_enc, sz_ml, ml_dec, n_seqs);
-                if (st != TDC_OK) goto done;
-                st = sub_off->decode(off_enc, sz_mo, off_dec, n_seqs);
-                if (st != TDC_OK) goto done;
-            }
+            st = sub_ll->decode(p, sz_ll, ll_dec, n_seqs);
+            if (st != TDC_OK) goto done;
+            st = sub_ml->decode(p + sz_ll, sz_ml, ml_dec, n_seqs);
+            if (st != TDC_OK) goto done;
+            st = sub_off->decode(p + sz_ll + sz_ml, sz_mo, off_dec, n_seqs);
+            if (st != TDC_OK) goto done;
             p += sz_ll + sz_ml + sz_mo;
             tdc_dp_add(TDC_DP_STREAMDEC, t_sd);
 
-            if (has_split_extras) {
-                /* Split-extras: sub-header (13 bytes) + lm_raw + off_enc. */
-                if (sz_extra < LZS_SPLIT_EXTRAS_HDR) { st = TDC_E_CORRUPT; goto done; }
-                uint32_t d_lm_bytes, d_off_raw_bytes, d_off_enc_bytes;
-                memcpy(&d_lm_bytes,      p,     4);
-                memcpy(&d_off_raw_bytes,  p + 4, 4);
-                memcpy(&d_off_enc_bytes,  p + 8, 4);
-                tdc_entropy_id d_off_id = (tdc_entropy_id)p[12];
-                p += LZS_SPLIT_EXTRAS_HDR;
-                if ((uint64_t)LZS_SPLIT_EXTRAS_HDR + d_lm_bytes + d_off_enc_bytes > sz_extra) {
-                    st = TDC_E_CORRUPT; goto done;
-                }
-
-                const uint8_t *d_lm_ptr = p;
-                p += d_lm_bytes;
-                const uint8_t *d_off_enc_ptr = p;
-
-                /* Decode offset extras. */
-                uint8_t *d_off_dec = NULL;
-                if (d_off_raw_bytes > 0) {
-                    d_off_dec = (uint8_t *)malloc(d_off_raw_bytes);
-                    if (!d_off_dec) { st = TDC_E_NOMEM; goto done; }
-                    if ((uint8_t)d_off_id == 0xFFu) {
-                        st = lzs_decode_lit_context(d_off_enc_ptr, d_off_enc_bytes,
-                                                     d_off_dec, d_off_raw_bytes);
-                    } else {
-                        const tdc_entropy_vt *sub_oe = lzs_sub_vt(d_off_id);
-                        if (!sub_oe) { free(d_off_dec); st = TDC_E_CORRUPT; goto done; }
-                        st = sub_oe->decode(d_off_enc_ptr, d_off_enc_bytes,
-                                             d_off_dec, d_off_raw_bytes);
-                    }
-                    if (st != TDC_OK) { free(d_off_dec); goto done; }
-                }
-
-                {
-                    uint64_t t_sp = tdc_dp_rdtsc();
-                    if (fuse_fse_ok) {
-                        st = lzs_decode_fused_fse_split(
-                            ll_enc, sz_ll, ml_enc, sz_ml, off_enc, sz_mo,
-                            d_lm_ptr, d_lm_bytes,
-                            d_off_dec ? d_off_dec : d_off_enc_ptr, d_off_raw_bytes,
-                            lit_raw, total_lit, trailing,
-                            n_seqs, has_repcodes, dst, dst_size);
-                    } else {
-                        st = lzs_decode_fused_split_prefetch(
-                            ll_dec, ml_dec, off_dec,
-                            d_lm_ptr, d_lm_bytes,
-                            d_off_dec ? d_off_dec : d_off_enc_ptr, d_off_raw_bytes,
-                            lit_raw, total_lit, trailing,
-                            n_seqs, has_delta_offsets, has_repcodes,
-                            offset_shift, dst, dst_size);
-                    }
-                    tdc_dp_add(TDC_DP_SYMPRE, t_sp);
-                }
-                free(d_off_dec);
-                goto done;
-            } else {
-                /* Fused single-pass decode: symbol reconstruct + repcode +
-                 * offset shift + sequence execution in one loop. Skips the
-                 * intermediate uint32 arrays entirely. */
-                st = lzs_decode_fused(ll_dec, ml_dec, off_dec,
-                                       p, sz_extra,
-                                       lit_raw, total_lit, trailing,
-                                       n_seqs, has_delta_offsets,
-                                       has_repcodes, offset_shift,
-                                       dst, dst_size);
-                goto done;
-            }
+            /* Fused single-pass decode: symbol reconstruct + repcode +
+             * offset shift + sequence execution in one loop. Skips the
+             * intermediate uint32 arrays entirely. */
+            st = lzs_decode_fused(ll_dec, ml_dec, off_dec,
+                                   p, sz_extra,
+                                   lit_raw, total_lit, trailing,
+                                   n_seqs, has_delta_offsets,
+                                   has_repcodes, offset_shift,
+                                   dst, dst_size);
+            goto done;
         }
 
         if (has_repcodes) {
