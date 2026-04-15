@@ -236,6 +236,9 @@ if(TDC_BUILD_BENCH)
 
     add_executable(bench_lz_streams_quick bench/bench_lz_streams_quick.c)
     target_link_libraries(bench_lz_streams_quick PRIVATE tdc)
+
+    add_executable(bench_lz_decode_micro bench/bench_lz_decode_micro.c)
+    target_link_libraries(bench_lz_decode_micro PRIVATE tdc)
     # Round-trip smoke gate: runs every bench pipeline once on a tiny block
     # and asserts bytes match. Sub-second; catches any pipeline that breaks
     # round-trip between bench runs. SPEEDUP-TODO P3.2.
