@@ -26,10 +26,16 @@
 #include <math.h>
 
 #include "../src/core/timer.h"
+#include "../src/core/decode_profile.h"
 #define now_seconds tdc_now_secs
 
 #define ITERS_FULL  5
 #define ITERS_SMOKE 1
+
+/* --decode-only: skip encode timing, run more decode iters for stable
+ * numbers (task 0.2). Still encodes once for correctness. */
+static int g_decode_only = 0;
+static int g_decode_iters = 0;  /* 0 => use g_iters */
 
 /* Set by --smoke. When non-zero, every case runs once with a tiny block
  * (~1 KiB), asserting round-trip cleanly and exiting non-zero on any
@@ -90,10 +96,13 @@ static int run_case(const char *label, const char *block_desc,
     size_t  raw_bytes = (size_t)n_elems * elem;
 
     /* Encode timing: best of ITERS. Reuse the same buffer; the realloc_fn
-     * will keep capacity stable after the first iteration. */
+     * will keep capacity stable after the first iteration.
+     * In --decode-only mode we still encode once (for correctness) but
+     * skip the timing loop. */
     tdc_buffer enc = make_buffer();
     double best_enc = 1e18;
-    for (int i = 0; i < g_iters; ++i) {
+    int enc_iters = g_decode_only ? 1 : g_iters;
+    for (int i = 0; i < enc_iters; ++i) {
         enc.size = 0;  /* reset, retain capacity */
         double t0 = now_seconds();
         tdc_status st = tdc_encode_block(src, spec, &enc);
@@ -106,6 +115,7 @@ static int run_case(const char *label, const char *block_desc,
         if (dt < best_enc) best_enc = dt;
     }
     size_t enc_bytes = enc.size;
+    if (g_decode_only) best_enc = 0.0;  /* sentinel: not measured */
 
     /* Decode timing: best of ITERS into a reusable destination. */
     void *dst_data = malloc(raw_bytes ? raw_bytes : 1);
@@ -118,8 +128,10 @@ static int run_case(const char *label, const char *block_desc,
     dst.shape   = src->shape;
     dst.offsets = NULL;
 
+    int dec_iters = g_decode_iters > 0 ? g_decode_iters : g_iters;
     double best_dec = 1e18;
-    for (int i = 0; i < g_iters; ++i) {
+    tdc_dp_reset();
+    for (int i = 0; i < dec_iters; ++i) {
         double t0 = now_seconds();
         tdc_status st = tdc_decode_block(enc.data, enc.size, &dst);
         double t1 = now_seconds();
@@ -130,6 +142,7 @@ static int run_case(const char *label, const char *block_desc,
         double dt = t1 - t0;
         if (dt < best_dec) best_dec = dt;
     }
+    tdc_dp_dump(label);
 
     /* Round-trip sanity: bytes must match. */
     if (memcmp(dst_data, src->data, raw_bytes) != 0) {
@@ -1077,11 +1090,12 @@ static void usage(const char *argv0) {
     fprintf(stderr,
         "usage: %s                                  # synthetic suite\n"
         "       %s --smoke                          # round-trip smoke (~ms)\n"
+        "       %s --decode-only [--decode-iters N] # skip encode timing\n"
         "       %s --from PATH --dtype NAME --shape DIMS [--layout L]\n"
         "  NAME  in {i8,u8,i16,u16,i32,u32,i64,u64,f32,f64}\n"
         "  DIMS  e.g. 16777216 or 2048x2048\n"
         "  L     in {vec1d,rast2d,vol3d} (defaults from rank)\n",
-        argv0, argv0, argv0);
+        argv0, argv0, argv0, argv0);
 }
 
 int main(int argc, char **argv) {
@@ -1095,6 +1109,11 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--shape")  && i + 1 < argc) shape_s  = argv[++i];
         else if (!strcmp(argv[i], "--layout") && i + 1 < argc) layout_s = argv[++i];
         else if (!strcmp(argv[i], "--smoke")) g_smoke = 1;
+        else if (!strcmp(argv[i], "--decode-only")) g_decode_only = 1;
+        else if (!strcmp(argv[i], "--profile")) tdc_dp_force_enable();
+        else if (!strcmp(argv[i], "--decode-iters") && i + 1 < argc) {
+            g_decode_iters = atoi(argv[++i]);
+        }
         else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
             usage(argv[0]); return 0;
         } else {

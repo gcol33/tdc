@@ -43,6 +43,7 @@ set(TDC_SOURCES
     src/core/arena.c
     src/core/registry.c
     src/core/error.c
+    src/core/decode_profile.c
 
     src/layout/traverse.c
     src/layout/tiling.c

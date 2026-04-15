@@ -73,6 +73,7 @@
 #include "lz_internal.h"
 #include "../core/buffer.h"
 #include "../core/simd.h"
+#include "../core/decode_profile.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -227,6 +228,49 @@ static inline uint32_t lzs_symbol_to_code(uint8_t sym, uint32_t extra) {
     uint32_t lg = (uint32_t)sym - 3u;
     return (1u << lg) + extra + 3u;
 }
+
+/* Branchless reconstruct via lookup. (base, nbits) per symbol; reconstruct
+ * is `base + read(nbits)`. Replaces the per-sequence sym<=1 / sym>=3 branches
+ * in the fused decode hot loop. Tables are tiny (cache-resident). */
+typedef struct { uint32_t base; uint8_t nbits; } lzs_recon_t;
+
+/* LL/ML uint reconstruct: sym 0→(0,0), 1→(1,0), k≥2→(1<<(k-1), k-1). */
+static const lzs_recon_t LZS_UINT_RECON[LZS_MAX_LL_SYMBOL + 1u] = {
+    {0u, 0}, {1u, 0},
+    {1u << 1, 1},  {1u << 2, 2},  {1u << 3, 3},  {1u << 4, 4},
+    {1u << 5, 5},  {1u << 6, 6},  {1u << 7, 7},  {1u << 8, 8},
+    {1u << 9, 9},  {1u <<10,10},  {1u <<11,11},  {1u <<12,12},
+    {1u <<13,13},  {1u <<14,14},  {1u <<15,15},  {1u <<16,16},
+    {1u <<17,17},  {1u <<18,18},  {1u <<19,19},  {1u <<20,20},
+};
+
+/* Non-delta offset reconstruct: sym 0..2→(1..3, 0), k≥3→((1<<(k-3))+3, k-3). */
+static const lzs_recon_t LZS_OFF_RECON[LZS_MAX_OFFSET_SYMBOL + 1u] = {
+    {1u, 0}, {2u, 0}, {3u, 0},
+    {(1u << 0) + 3u, 0},
+    {(1u << 1) + 3u, 1},
+    {(1u << 2) + 3u, 2},
+    {(1u << 3) + 3u, 3},
+    {(1u << 4) + 3u, 4},
+    {(1u << 5) + 3u, 5},
+    {(1u << 6) + 3u, 6},
+    {(1u << 7) + 3u, 7},
+    {(1u << 8) + 3u, 8},
+    {(1u << 9) + 3u, 9},
+    {(1u <<10) + 3u,10},
+    {(1u <<11) + 3u,11},
+    {(1u <<12) + 3u,12},
+    {(1u <<13) + 3u,13},
+    {(1u <<14) + 3u,14},
+    {(1u <<15) + 3u,15},
+    {(1u <<16) + 3u,16},
+    {(1u <<17) + 3u,17},
+    {(1u <<18) + 3u,18},
+    {(1u <<19) + 3u,19},
+    {(1u <<20) + 3u,20},
+    {(1u <<21) + 3u,21},
+    {(1u <<22) + 3u,22},
+};
 
 /* Zigzag encoding for signed→unsigned mapping of offset deltas.
  * Branchless: standard protobuf-style zigzag via arithmetic shift. */
@@ -1691,9 +1735,9 @@ static inline void lzs_br_refill(lzs_br *br) {
 }
 
 /* Read `nb` bits from the buffer (LSB-first, matching the extras layout).
- * Caller must ensure nbits <= 25 (max extra bits for any symbol). */
+ * Caller must ensure nbits <= 25 (max extra bits for any symbol).
+ * Branchless on nb==0: mask `(1<<0)-1 == 0`, shifts by 0 are no-ops. */
 static inline uint32_t lzs_br_read(lzs_br *br, uint32_t nb) {
-    if (nb == 0) return 0;
     if (br->nbits < (int)nb) lzs_br_refill(br);
     uint32_t val = (uint32_t)br->bits & ((1u << nb) - 1u);
     br->bits >>= nb;
@@ -1746,20 +1790,20 @@ static tdc_status lzs_decode_fused(
         }
     }
 
+    tdc_dp_count_seqs(n_seqs);
     for (uint32_t i = 0; i < n_seqs; i++) {
-        uint8_t s; uint32_t ex, nb;
+        uint8_t s;
+        uint64_t t_sym = tdc_dp_rdtsc();
 
-        /* --- Reconstruct lit_len --- */
+        /* --- Reconstruct lit_len (table-driven, branchless) --- */
         s = ll_dec[i];
-        nb = (s >= 2u) ? (uint32_t)s - 1u : 0u;
-        ex = lzs_br_read(&br, nb);
-        uint32_t ll = lzs_symbol_to_uint(s, ex);
+        lzs_recon_t r = LZS_UINT_RECON[s];
+        uint32_t ll = r.base + lzs_br_read(&br, r.nbits);
 
         /* --- Reconstruct match_len --- */
         s = ml_dec[i];
-        nb = (s >= 2u) ? (uint32_t)s - 1u : 0u;
-        ex = lzs_br_read(&br, nb);
-        uint32_t ml = lzs_symbol_to_uint(s, ex) + LZ_MIN_MATCH;
+        r = LZS_UINT_RECON[s];
+        uint32_t ml = r.base + lzs_br_read(&br, r.nbits) + LZ_MIN_MATCH;
 
         /* --- Reconstruct offset code --- */
         uint32_t mo;
@@ -1770,9 +1814,8 @@ static tdc_status lzs_decode_fused(
                 lzs_rep_update(mo, &dr1, &dr2, &dr3);
             } else {
                 uint8_t usym = (uint8_t)(s - 3u);
-                nb = (usym >= 2u) ? (uint32_t)usym - 1u : 0u;
-                ex = lzs_br_read(&br, nb);
-                uint32_t zigzag = lzs_symbol_to_uint(usym, ex);
+                r = LZS_UINT_RECON[usym];
+                uint32_t zigzag = r.base + lzs_br_read(&br, r.nbits);
                 int32_t delta = lzs_zigzag_decode(zigzag);
                 int64_t off64 = (int64_t)dr1 + delta;
                 if (off64 <= 0) return TDC_E_CORRUPT;
@@ -1780,9 +1823,8 @@ static tdc_status lzs_decode_fused(
                 lzs_rep_update(mo, &dr1, &dr2, &dr3);
             }
         } else {
-            nb = (s >= 3u) ? (uint32_t)s - 3u : 0u;
-            ex = lzs_br_read(&br, nb);
-            mo = lzs_symbol_to_code(s, ex);
+            r = LZS_OFF_RECON[s];
+            mo = r.base + lzs_br_read(&br, r.nbits);
         }
 
         /* --- Repcode decode (inline) --- */
@@ -1806,14 +1848,19 @@ static tdc_status lzs_decode_fused(
 
         /* --- Offset stride shift --- */
         if (offset_shift > 0) mo <<= offset_shift;
+        tdc_dp_count_offset(mo);
+        tdc_dp_add(TDC_DP_SYMBOL, t_sym);
 
         /* --- Execute: prefetch match address (item 1.5) --- */
+        uint64_t t_other = tdc_dp_rdtsc();
         if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
         if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
         if (mo != 0 && mo <= dp)
             TDC_PREFETCH_L1(dst + dp - mo + ll);
+        tdc_dp_add(TDC_DP_OTHER, t_other);
 
         /* --- Execute: copy literals (item 4.3) --- */
+        uint64_t t_lit = tdc_dp_rdtsc();
         if (ll > 0) {
             if (ll <= 16 && dp + ll <= safe_end) {
                 tdc_copy16(dst + dp, lit_raw + lp);
@@ -1823,12 +1870,16 @@ static tdc_status lzs_decode_fused(
             dp += ll;
             lp += ll;
         }
+        tdc_dp_add(TDC_DP_LIT, t_lit);
 
         /* --- Execute: match copy --- */
+        uint64_t t_mch0 = tdc_dp_rdtsc();
         if (ml < LZ_MIN_MATCH)            return TDC_E_CORRUPT;
         if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
         if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
+        tdc_dp_add(TDC_DP_OTHER, t_mch0);
 
+        uint64_t t_mch = tdc_dp_rdtsc();
         if (dp + ml <= safe_end) {
             tdc_match_copy(dst + dp, mo, ml);
         } else {
@@ -1837,6 +1888,7 @@ static tdc_status lzs_decode_fused(
                 dst[dp + k] = dst[from + k];
         }
         dp += ml;
+        tdc_dp_add(TDC_DP_MATCH, t_mch);
     }
 
     if ((uint64_t)lp + trailing != total_lit) return TDC_E_CORRUPT;
@@ -1895,6 +1947,8 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
      *     memory; the execute loop will catch the actual corruption. */
 
     /* Prime: walk dp_ahead forward D sequences, prefetching each match. */
+    tdc_dp_count_seqs(n_seqs);
+    for (uint32_t k = 0; k < n_seqs; k++) tdc_dp_count_offset(match_offs[k]);
     size_t dp_ahead = 0;
     uint32_t primed = (n_seqs < LZS_PREFETCH_DIST) ? n_seqs : LZS_PREFETCH_DIST;
     for (uint32_t k = 0; k < primed; k++) {
@@ -1918,7 +1972,9 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
         uint32_t mo = match_offs[i];
 
         /* Prefetch seq[i+D]. dp_ahead tracks the D-ahead position; mo_a
-         * uses that same ahead position. */
+         * uses that same ahead position. Counted as SYMBOL since the
+         * address-walk is the reconstruct-side cost. */
+        uint64_t t_sym = tdc_dp_rdtsc();
         uint32_t ll_a = lit_lens[i + LZS_PREFETCH_DIST];
         uint32_t ml_a = match_lens[i + LZS_PREFETCH_DIST];
         uint32_t mo_a = match_offs[i + LZS_PREFETCH_DIST];
@@ -1927,7 +1983,9 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
             TDC_PREFETCH_L1(dst + addr_a - mo_a);
         dp_ahead = addr_a + ml_a;
         if (dp_ahead > dst_size) dp_ahead = dst_size;
+        tdc_dp_add(TDC_DP_SYMBOL, t_sym);
 
+        uint64_t t_lit = tdc_dp_rdtsc();
         if (ll > 0) {
             if (ll <= 16 && dp + ll <= safe_end) {
                 tdc_copy16(dst + dp, lit_raw + lp);
@@ -1937,9 +1995,13 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
             dp += ll;
             lp += ll;
         }
+        tdc_dp_add(TDC_DP_LIT, t_lit);
 
+        uint64_t t_other = tdc_dp_rdtsc();
         if (mo == 0 || mo > dp) return TDC_E_CORRUPT;
+        tdc_dp_add(TDC_DP_OTHER, t_other);
 
+        uint64_t t_mch = tdc_dp_rdtsc();
         if (dp + ml <= safe_end) {
             tdc_match_copy(dst + dp, mo, ml);
         } else {
@@ -1948,6 +2010,7 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
                 dst[dp + k] = dst[from + k];
         }
         dp += ml;
+        tdc_dp_add(TDC_DP_MATCH, t_mch);
     }
 
     /* Drain: execute the last D sequences without further prefetch. */
@@ -2142,6 +2205,228 @@ static tdc_status lzs_reconstruct_symbols_split(
     return TDC_OK;
 }
 
+/* Fused split-extras decode with 8-ahead prefetch pipeline.
+ *
+ * Replaces lzs_reconstruct_symbols_split + lzs_reconstruct with a single
+ * pass. Two 64-bit bit buffers consume lm_extras (ll+ml) and off_extras
+ * separately. Reconstruction runs D=8 ahead of execution; each step
+ * reconstructs seq[i+D], prefetches its match address, and executes
+ * seq[i]. Eliminates the 3 × n_seqs uint32 scratch arrays.
+ *
+ * Compatible with has_repcodes and offset_shift — both are applied
+ * inline per sequence before prefetch.
+ *
+ * Note: delta_offsets and has_repcodes are mutually exclusive by design
+ * (delta-offset has its own rep state dr1/dr2/dr3 encoded in the symbol).
+ */
+static tdc_status lzs_decode_fused_split_prefetch(
+    const uint8_t *ll_dec, const uint8_t *ml_dec, const uint8_t *off_dec,
+    const uint8_t *lm_extra_ptr,  uint32_t lm_extra_size,
+    const uint8_t *off_extra_ptr, uint32_t off_extra_size,
+    const uint8_t *lit_raw, uint32_t total_lit, uint32_t trailing,
+    uint32_t n_seqs, int delta_offsets, int has_repcodes,
+    uint32_t offset_shift,
+    uint8_t *dst, size_t dst_size)
+{
+    /* Upfront symbol-range validation (hoist per-seq bounds). */
+    {
+        uint8_t off_max = delta_offsets ? (uint8_t)LZS_MAX_OFFSET_DELTA_SYMBOL
+                                        : (uint8_t)LZS_MAX_OFFSET_SYMBOL;
+        for (uint32_t i = 0; i < n_seqs; i++) {
+            if (ll_dec[i]  > LZS_MAX_LL_SYMBOL) return TDC_E_CORRUPT;
+            if (ml_dec[i]  > LZS_MAX_ML_SYMBOL) return TDC_E_CORRUPT;
+            if (off_dec[i] > off_max)            return TDC_E_CORRUPT;
+        }
+    }
+
+    lzs_br br_lm, br_off;
+    lzs_br_init(&br_lm,  lm_extra_ptr,  lm_extra_size);
+    lzs_br_init(&br_off, off_extra_ptr, off_extra_size);
+
+    uint32_t dr1 = LZS_REP_INIT_1, dr2 = LZS_REP_INIT_2, dr3 = LZS_REP_INIT_3;
+    uint32_t r1  = LZS_REP_INIT_1, r2  = LZS_REP_INIT_2, r3  = LZS_REP_INIT_3;
+
+    size_t dp = 0, lp = 0;
+    size_t safe_end = (dst_size >= 15) ? dst_size - 15 : 0;
+
+    /* Ring buffer of D=8 reconstructed sequences. Index by i & (D-1). */
+    #define LZS_FSP_D 8u
+    uint32_t ring_ll[LZS_FSP_D];
+    uint32_t ring_ml[LZS_FSP_D];
+    uint32_t ring_mo[LZS_FSP_D];
+
+    /* Inline reconstruct: produces (ll, ml, mo) from symbol arrays and
+     * bit buffers, applies repcodes and offset_shift. */
+    #define LZS_FSP_RECONSTRUCT(IDX, OUT_LL, OUT_ML, OUT_MO) do {              \
+        uint8_t  _s; uint32_t _mo; lzs_recon_t _r;                             \
+        _s = ll_dec[IDX];                                                      \
+        _r = LZS_UINT_RECON[_s];                                               \
+        (OUT_LL) = _r.base + lzs_br_read(&br_lm, _r.nbits);                    \
+                                                                               \
+        _s = ml_dec[IDX];                                                      \
+        _r = LZS_UINT_RECON[_s];                                               \
+        (OUT_ML) = _r.base + lzs_br_read(&br_lm, _r.nbits) + LZ_MIN_MATCH;     \
+                                                                               \
+        _s = off_dec[IDX];                                                     \
+        if (delta_offsets) {                                                   \
+            if (_s <= 2u) {                                                    \
+                _mo = (uint32_t)_s + 1u;                                       \
+                lzs_rep_update(_mo, &dr1, &dr2, &dr3);                         \
+            } else {                                                           \
+                uint8_t _us = (uint8_t)(_s - 3u);                              \
+                _r = LZS_UINT_RECON[_us];                                      \
+                uint32_t _zz = _r.base + lzs_br_read(&br_off, _r.nbits);       \
+                int32_t  _dl = lzs_zigzag_decode(_zz);                         \
+                int64_t  _of = (int64_t)dr1 + _dl;                             \
+                if (_of <= 0) return TDC_E_CORRUPT;                            \
+                _mo = (uint32_t)_of + 3u;                                      \
+                lzs_rep_update(_mo, &dr1, &dr2, &dr3);                         \
+            }                                                                  \
+        } else {                                                               \
+            _r = LZS_OFF_RECON[_s];                                            \
+            _mo = _r.base + lzs_br_read(&br_off, _r.nbits);                    \
+        }                                                                      \
+        if (has_repcodes) {                                                    \
+            uint32_t _code = _mo;                                              \
+            if (_code == 0u) return TDC_E_CORRUPT;                             \
+            if (_code == 1u) {                                                 \
+                _mo = r1;                                                      \
+            } else if (_code == 2u) {                                          \
+                _mo = r2;                                                      \
+                uint32_t _t = r1; r1 = r2; r2 = _t;                            \
+            } else if (_code == 3u) {                                          \
+                _mo = r3;                                                      \
+                uint32_t _t = r3; r3 = r2; r2 = r1; r1 = _t;                   \
+            } else {                                                           \
+                _mo = _code - 3u;                                              \
+                if (_mo == 0u || _mo > LZ_MAX_OFFSET) return TDC_E_CORRUPT;    \
+                r3 = r2; r2 = r1; r1 = _mo;                                    \
+            }                                                                  \
+        }                                                                      \
+        if (offset_shift > 0) _mo <<= offset_shift;                            \
+        (OUT_MO) = _mo;                                                        \
+    } while (0)
+
+    tdc_dp_count_seqs(n_seqs);
+
+    /* Prime: reconstruct first min(D, n_seqs) seqs, prefetch each. */
+    uint32_t primed = (n_seqs < LZS_FSP_D) ? n_seqs : LZS_FSP_D;
+    size_t dp_ahead = 0;
+    for (uint32_t k = 0; k < primed; k++) {
+        uint32_t ll_k, ml_k, mo_k;
+        LZS_FSP_RECONSTRUCT(k, ll_k, ml_k, mo_k);
+        ring_ll[k & (LZS_FSP_D - 1u)] = ll_k;
+        ring_ml[k & (LZS_FSP_D - 1u)] = ml_k;
+        ring_mo[k & (LZS_FSP_D - 1u)] = mo_k;
+        tdc_dp_count_offset(mo_k);
+        size_t addr = dp_ahead + ll_k;
+        if (mo_k != 0 && mo_k <= addr && addr < dst_size)
+            TDC_PREFETCH_L1(dst + addr - mo_k);
+        dp_ahead = addr + ml_k;
+        if (dp_ahead > dst_size) dp_ahead = dst_size;
+    }
+
+    uint32_t main_end = (n_seqs > LZS_FSP_D) ? (n_seqs - LZS_FSP_D) : 0;
+
+    /* Main loop: execute seq[i] from ring, then reconstruct seq[i+D] into
+     * that same slot (which aliases under mod-D indexing). */
+    uint32_t i = 0;
+    for (; i < main_end; i++) {
+        /* Execute seq[i] BEFORE overwriting its ring slot. */
+        uint32_t ll = ring_ll[i & (LZS_FSP_D - 1u)];
+        uint32_t ml = ring_ml[i & (LZS_FSP_D - 1u)];
+        uint32_t mo = ring_mo[i & (LZS_FSP_D - 1u)];
+
+        uint64_t t_lit = tdc_dp_rdtsc();
+        if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
+        if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
+        if (ll > 0) {
+            if (ll <= 16 && dp + ll <= safe_end) {
+                tdc_copy16(dst + dp, lit_raw + lp);
+            } else {
+                memcpy(dst + dp, lit_raw + lp, ll);
+            }
+            dp += ll;
+            lp += ll;
+        }
+        tdc_dp_add(TDC_DP_LIT, t_lit);
+
+        uint64_t t_mch0 = tdc_dp_rdtsc();
+        if (ml < LZ_MIN_MATCH)            return TDC_E_CORRUPT;
+        if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
+        if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
+        tdc_dp_add(TDC_DP_OTHER, t_mch0);
+
+        uint64_t t_mch = tdc_dp_rdtsc();
+        if (dp + ml <= safe_end) {
+            tdc_match_copy(dst + dp, mo, ml);
+        } else {
+            size_t from = dp - mo;
+            for (uint32_t k = 0; k < ml; k++)
+                dst[dp + k] = dst[from + k];
+        }
+        dp += ml;
+        tdc_dp_add(TDC_DP_MATCH, t_mch);
+
+        /* Reconstruct seq[i+D] into the now-free ring slot (i & (D-1)),
+         * prefetch its match address. */
+        uint64_t t_sym = tdc_dp_rdtsc();
+        uint32_t j = i + LZS_FSP_D;
+        uint32_t ll_a, ml_a, mo_a;
+        LZS_FSP_RECONSTRUCT(j, ll_a, ml_a, mo_a);
+        ring_ll[j & (LZS_FSP_D - 1u)] = ll_a;
+        ring_ml[j & (LZS_FSP_D - 1u)] = ml_a;
+        ring_mo[j & (LZS_FSP_D - 1u)] = mo_a;
+        tdc_dp_count_offset(mo_a);
+        size_t addr_a = dp_ahead + ll_a;
+        if (mo_a != 0 && mo_a <= addr_a && addr_a < dst_size)
+            TDC_PREFETCH_L1(dst + addr_a - mo_a);
+        dp_ahead = addr_a + ml_a;
+        if (dp_ahead > dst_size) dp_ahead = dst_size;
+        tdc_dp_add(TDC_DP_SYMBOL, t_sym);
+    }
+
+    /* Drain: execute the last D seqs already in the ring. */
+    for (; i < n_seqs; i++) {
+        uint32_t ll = ring_ll[i & (LZS_FSP_D - 1u)];
+        uint32_t ml = ring_ml[i & (LZS_FSP_D - 1u)];
+        uint32_t mo = ring_mo[i & (LZS_FSP_D - 1u)];
+
+        if ((uint64_t)lp + ll > total_lit) return TDC_E_CORRUPT;
+        if ((uint64_t)dp + ll > dst_size)  return TDC_E_CORRUPT;
+        if (ll > 0) {
+            if (ll <= 16 && dp + ll <= safe_end) {
+                tdc_copy16(dst + dp, lit_raw + lp);
+            } else {
+                memcpy(dst + dp, lit_raw + lp, ll);
+            }
+            dp += ll;
+            lp += ll;
+        }
+
+        if (ml < LZ_MIN_MATCH)            return TDC_E_CORRUPT;
+        if (mo == 0 || mo > dp)            return TDC_E_CORRUPT;
+        if ((uint64_t)dp + ml > dst_size)  return TDC_E_CORRUPT;
+
+        if (dp + ml <= safe_end) {
+            tdc_match_copy(dst + dp, mo, ml);
+        } else {
+            size_t from = dp - mo;
+            for (uint32_t k = 0; k < ml; k++)
+                dst[dp + k] = dst[from + k];
+        }
+        dp += ml;
+    }
+
+    if ((uint64_t)lp + trailing != total_lit) return TDC_E_CORRUPT;
+    if (dp + trailing != dst_size)            return TDC_E_CORRUPT;
+    if (trailing > 0) memcpy(dst + dp, lit_raw + lp, trailing);
+
+    #undef LZS_FSP_RECONSTRUCT
+    #undef LZS_FSP_D
+    return TDC_OK;
+}
+
 static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
                               uint8_t       *dst, size_t dst_size) {
     if (src_size < LZS_HEADER_SIZE_V1) return TDC_E_CORRUPT;
@@ -2208,7 +2493,7 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
     size_t v2_sym_size  = 3u * (size_t)n_seqs;
     size_t v1_raw_size  = 3u * stream_bytes;
     size_t per_version  = (version == 2u) ? v2_sym_size : v1_raw_size;
-    int use_fused = (version == 2u) && !has_split_extras;
+    int use_fused = (version == 2u);  /* both split and non-split paths are fused */
     size_t u32_arrays   = use_fused ? 0 : 3u * (size_t)n_seqs * sizeof(uint32_t);
     size_t scratch_bytes = (size_t)total_lit + per_version + u32_arrays;
     uint8_t *scratch = scratch_bytes ? (uint8_t *)malloc(scratch_bytes) : NULL;
@@ -2280,6 +2565,7 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
             const tdc_entropy_vt *sub_off = lzs_sub_vt(id_mo);
             if (!sub_ll || !sub_ml || !sub_off) { st = TDC_E_CORRUPT; goto done; }
 
+            uint64_t t_sd = tdc_dp_rdtsc();
             st = sub_ll->decode(p, sz_ll, ll_dec, n_seqs);
             if (st != TDC_OK) goto done;
             p += sz_ll;
@@ -2289,6 +2575,7 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
             st = sub_off->decode(p, sz_mo, off_dec, n_seqs);
             if (st != TDC_OK) goto done;
             p += sz_mo;
+            tdc_dp_add(TDC_DP_STREAMDEC, t_sd);
 
             if (has_split_extras) {
                 /* Split-extras: sub-header (13 bytes) + lm_raw + off_enc. */
@@ -2324,14 +2611,19 @@ static tdc_status lzs_decode(const uint8_t *src, size_t src_size,
                     if (st != TDC_OK) { free(d_off_dec); goto done; }
                 }
 
-                st = lzs_reconstruct_symbols_split(
-                    ll_dec, ml_dec, off_dec,
-                    d_lm_ptr, d_lm_bytes,
-                    d_off_dec ? d_off_dec : d_off_enc_ptr, d_off_raw_bytes,
-                    n_seqs, has_delta_offsets,
-                    lit_lens, match_lens, match_offs);
+                {
+                    uint64_t t_sp = tdc_dp_rdtsc();
+                    st = lzs_decode_fused_split_prefetch(
+                        ll_dec, ml_dec, off_dec,
+                        d_lm_ptr, d_lm_bytes,
+                        d_off_dec ? d_off_dec : d_off_enc_ptr, d_off_raw_bytes,
+                        lit_raw, total_lit, trailing,
+                        n_seqs, has_delta_offsets, has_repcodes,
+                        offset_shift, dst, dst_size);
+                    tdc_dp_add(TDC_DP_SYMPRE, t_sp);
+                }
                 free(d_off_dec);
-                if (st != TDC_OK) goto done;
+                goto done;
             } else {
                 /* Fused single-pass decode: symbol reconstruct + repcode +
                  * offset shift + sequence execution in one loop. Skips the
