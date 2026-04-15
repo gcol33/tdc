@@ -78,6 +78,7 @@
 
 #include "tdc/entropy.h"
 #include "entropy_internal.h"
+#include "fse_internal.h"
 #include "../core/buffer.h"
 #include "../format/metadata_internal.h"
 
@@ -86,12 +87,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define FSE_NSYMS          256
-#define FSE_TABLE_LOG_MIN  5u
-#define FSE_TABLE_LOG_MAX  12u
-#define FSE_TABLE_SIZE_MAX (1u << FSE_TABLE_LOG_MAX)
-#define FSE_L_MIN          (1u << 16)
-#define FSE_HDR_PREFIX     16u   /* fixed portion: 4+4+4+1+1+2 */
+#define FSE_NSYMS          TDC_FSE_NSYMS
+#define FSE_TABLE_LOG_MIN  TDC_FSE_TABLE_LOG_MIN
+#define FSE_TABLE_LOG_MAX  TDC_FSE_TABLE_LOG_MAX
+#define FSE_TABLE_SIZE_MAX TDC_FSE_TABLE_SIZE_MAX
+#define FSE_L_MIN          TDC_FSE_L_MIN
+#define FSE_HDR_PREFIX     TDC_FSE_HDR_PREFIX
+
+typedef tdc_fse_fat_decode_entry fse_fat_decode_entry;
+typedef tdc_fse_fat_decode_table fse_fat_decode_table;
 
 /* ----- Adaptive table_log ------------------------------------------------- */
 /*
@@ -179,20 +183,8 @@ typedef struct {
     uint16_t slot_to_sym[FSE_TABLE_SIZE_MAX];
 } fse_decode_tables;
 
-/* Fat decode entry: packs symbol + freq + cum into a single struct so the
- * decode loop touches one cache line per symbol instead of three separate
- * arrays (slot_to_sym[], norm[], cum[]). 8 bytes per entry; TABLE_LOG=12
- * gives 4096 × 8 = 32 KiB — fits in L1d on modern CPUs. */
-typedef struct {
-    uint16_t freq;    /* norm[symbol] */
-    uint16_t cum;     /* cumulative frequency for symbol */
-    uint8_t  symbol;
-    uint8_t  pad[3];
-} fse_fat_decode_entry;
-
-typedef struct {
-    fse_fat_decode_entry entries[FSE_TABLE_SIZE_MAX];
-} fse_fat_decode_table;
+/* Fat decode entry definitions live in fse_internal.h so lz_streams.c
+ * can drive the rANS state machine directly for its fused decode path. */
 
 static tdc_status fse_build_tables(const uint16_t *norm, uint32_t n_syms,
                                    uint32_t table_size,
@@ -218,9 +210,9 @@ static tdc_status fse_build_tables(const uint16_t *norm, uint32_t n_syms,
     return TDC_OK;
 }
 
-static tdc_status fse_build_fat_table(const uint16_t *norm, uint32_t n_syms,
-                                       uint32_t table_size,
-                                       fse_fat_decode_table *ft) {
+tdc_status tdc_fse_build_fat_table(const uint16_t *norm, uint32_t n_syms,
+                                    uint32_t table_size,
+                                    tdc_fse_fat_decode_table *ft) {
     uint16_t cum[FSE_NSYMS + 1];
     uint32_t acc = 0;
     for (uint32_t s = 0; s < n_syms; ++s) {
@@ -411,7 +403,7 @@ static tdc_status fse_decode(const uint8_t *src, size_t src_size,
      * than the split tables (9 KiB) but the per-symbol decode loop does
      * one load instead of three, which eliminates two L1d miss slots. */
     fse_fat_decode_table ft;
-    tdc_status st = fse_build_fat_table(norm, max_symbol, table_size, &ft);
+    tdc_status st = tdc_fse_build_fat_table(norm, max_symbol, table_size, &ft);
     if (st != TDC_OK) return st;
 
     if (hdr_final_state < FSE_L_MIN || hdr_final_state >= (FSE_L_MIN << 8)) {
