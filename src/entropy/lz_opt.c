@@ -41,18 +41,26 @@
 #define LZ_OPT_HASH_BITS   18
 #define LZ_OPT_HASH_SIZE   (1u << LZ_OPT_HASH_BITS)
 
-/* Chain walk depth limit. Bounds per-position chain-walk cost. 128 gives
- * measurable gains on periodic f64 data (seasonal patterns) over the
- * original 32 — deeper walks find matches at annual/multi-year offsets
- * that the chain front doesn't surface. Diminishing returns past 128. */
-#define LZ_OPT_MAX_CHAIN   256u
+/* Chain walk depth limit. Bounds per-position chain-walk cost.
+ *
+ * Sweep on PRED2D+BSHUF residuals (rast2d u16 2048×2048):
+ *   chain=256 -> 0.3 MB/s @ 2.11x   (deep matches lose to leb128 offset cost)
+ *   chain=64  -> 1.2 MB/s @ 2.14x
+ *   chain=32  -> 2.1 MB/s @ 2.16x
+ *   chain=16  -> 3.4 MB/s @ 2.15x   <-- elbow, settled here
+ *   chain=8   -> 4.9 MB/s @ 2.11x   (now missing useful matches)
+ *
+ * On periodic data with very long matches, COMMIT_LEN's fast-skip absorbs
+ * most of the cost regardless of chain depth, so 16 is also a non-loss
+ * there. Revisit only if a workload surfaces that wants depth >16. */
+#define LZ_OPT_MAX_CHAIN   16u
 
 /* Per-candidate extension cap. Each chain candidate is extended by at most
  * this many bytes during the walk. Keeps chain-walk work bounded at
  * O(LZ_OPT_MAX_CHAIN × LZ_OPT_EXTEND_CAP) per position regardless of
  * input entropy. On periodic inputs the longest candidate would otherwise
  * extend to end-of-input, giving an O(N²) walk. */
-#define LZ_OPT_EXTEND_CAP  256u
+#define LZ_OPT_EXTEND_CAP  64u
 
 /* Commit-and-skip threshold. If the longest match at position r (after
  * greedy-extending past the cap) reaches this length, we emit the full
@@ -730,8 +738,22 @@ static inline uint32_t lz_opt_rep_extend(const uint8_t *src, uint32_t src_size,
                                           uint32_t pos, uint32_t off) {
     if (off == 0u || off > pos) return 0u;
     uint32_t cand = pos - off;
-    uint32_t max_len = src_size - pos;
-    return lz_opt_extend(src, pos, cand, max_len);
+    uint32_t max_remain = src_size - pos;
+    /* Cap to LZ_OPT_COMMIT_LEN. On periodic inputs (smooth f64, residuals
+     * with a recurring offset), an uncapped rep extend walks for thousands
+     * of bytes; called up to 6× per position × 3 priced passes this drives
+     * the parser to ~0.4 MB/s on 16 MiB f64.
+     *
+     * Why COMMIT_LEN and not EXTEND_CAP: at lengths >= COMMIT_LEN, the
+     * DP commit-and-skip path fires (post_match update + skip_until), so
+     * the parser fast-forwards past the match without further per-byte
+     * DP work. Capping at COMMIT_LEN means we recognize "this is a long
+     * match, commit it" without walking arbitrarily further; the actual
+     * match length is reconstructed at decode from the emitted token
+     * (we may under-report by truncating, accepting a small ratio cost
+     * on inputs whose typical rep extends past 256). */
+    uint32_t cap = (max_remain < LZ_OPT_COMMIT_LEN) ? max_remain : LZ_OPT_COMMIT_LEN;
+    return lz_opt_extend(src, pos, cand, cap);
 }
 
 /* Emit a DP transition: if candidate cost < current best at `end`,
