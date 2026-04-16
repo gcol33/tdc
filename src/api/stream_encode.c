@@ -23,6 +23,7 @@
 #include "tdc/format.h"
 #include "tdc/types.h"
 #include "../format/schema_internal.h"
+#include "../format/metadata_internal.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -100,32 +101,6 @@ static void v2_free(v2_stream_encoder_state *e, void *ptr) {
     if (ptr) e->realloc_fn(e->alloc_user, ptr, 0);
 }
 
-/* Write a little-endian u16 into buf. */
-static void put_le16(uint8_t *buf, uint16_t v) {
-    buf[0] = (uint8_t)(v);
-    buf[1] = (uint8_t)(v >> 8);
-}
-
-/* Write a little-endian u32 into buf. */
-static void put_le32(uint8_t *buf, uint32_t v) {
-    buf[0] = (uint8_t)(v);
-    buf[1] = (uint8_t)(v >> 8);
-    buf[2] = (uint8_t)(v >> 16);
-    buf[3] = (uint8_t)(v >> 24);
-}
-
-/* Write a little-endian u64 into buf. */
-static void put_le64(uint8_t *buf, uint64_t v) {
-    buf[0] = (uint8_t)(v);
-    buf[1] = (uint8_t)(v >> 8);
-    buf[2] = (uint8_t)(v >> 16);
-    buf[3] = (uint8_t)(v >> 24);
-    buf[4] = (uint8_t)(v >> 32);
-    buf[5] = (uint8_t)(v >> 40);
-    buf[6] = (uint8_t)(v >> 48);
-    buf[7] = (uint8_t)(v >> 56);
-}
-
 /* Build and write the 64-byte container header (version 2). */
 static tdc_status v2_write_header(v2_stream_encoder_state *e,
                                   uint64_t n_blocks,
@@ -175,20 +150,20 @@ static size_t v2_index_serialize(const v2_stream_encoder_state *e,
                                  uint8_t *buf) {
     uint8_t *p = buf;
 
-    put_le64(p, e->n_groups); p += 8;
+    tdc_le_store_u64(p, e->n_groups); p += 8;
 
     for (uint64_t i = 0; i < e->n_groups; ++i) {
         const v2_rowgroup_entry *rg = &e->groups[i];
 
-        put_le64(p, rg->offset);  p += 8;
-        put_le64(p, rg->n_rows);  p += 8;
-        put_le16(p, rg->n_cols);  p += 2;
-        put_le16(p, 0);           p += 2;  /* _pad */
-        put_le32(p, 0);           p += 4;  /* _reserved */
+        tdc_le_store_u64(p, rg->offset);  p += 8;
+        tdc_le_store_u64(p, rg->n_rows);  p += 8;
+        tdc_le_store_u16(p, rg->n_cols);  p += 2;
+        tdc_le_store_u16(p, 0);           p += 2;  /* _pad */
+        tdc_le_store_u32(p, 0);           p += 4;  /* _reserved */
 
         for (uint16_t c = 0; c < rg->n_cols; ++c) {
-            put_le64(p, rg->cols[c].block_offset); p += 8;
-            put_le64(p, rg->cols[c].block_total);  p += 8;
+            tdc_le_store_u64(p, rg->cols[c].block_offset); p += 8;
+            tdc_le_store_u64(p, rg->cols[c].block_total);  p += 8;
         }
     }
 

@@ -18,6 +18,7 @@
  */
 
 #include "schema_internal.h"
+#include "metadata_internal.h"
 
 #include <string.h>
 
@@ -45,30 +46,25 @@ size_t tdc_schema_serialized_size(const tdc_schema *schema) {
 
 /* ----- serialize ---------------------------------------------------------- */
 
-/* Write a u16 little-endian into buf. */
-static void put_u16(uint8_t *buf, uint16_t v) {
-    memcpy(buf, &v, 2);
-}
-
 size_t tdc_schema_serialize(const tdc_schema *schema, uint8_t *buf) {
     if (!schema || !buf || schema->n_columns == 0) return 0;
 
     uint8_t *p = buf;
 
-    put_u16(p, schema->n_columns);
+    tdc_le_store_u16(p, schema->n_columns);
     p += 2;
 
     for (uint16_t i = 0; i < schema->n_columns; ++i) {
         const tdc_column_desc *c = &schema->columns[i];
 
-        put_u16(p, c->name_len);
+        tdc_le_store_u16(p, c->name_len);
         p += 2;
         memcpy(p, c->name, c->name_len);
         p += c->name_len;
 
         *p++ = c->dtype;
 
-        put_u16(p, c->ann_len);
+        tdc_le_store_u16(p, c->ann_len);
         p += 2;
         if (c->ann_len > 0 && c->annotation) {
             memcpy(p, c->annotation, c->ann_len);
@@ -80,29 +76,6 @@ size_t tdc_schema_serialize(const tdc_schema *schema, uint8_t *buf) {
 }
 
 /* ----- parse -------------------------------------------------------------- */
-
-/* Read a u16 little-endian from buf. */
-static uint16_t get_u16(const uint8_t *buf) {
-    uint16_t v;
-    memcpy(&v, buf, 2);
-    return v;
-}
-
-/*
- * Allocate via realloc_fn(user, NULL, n). Returns NULL on failure.
- */
-static void *schema_alloc(void *(*realloc_fn)(void *, void *, size_t),
-                           void *user, size_t n) {
-    return realloc_fn(user, NULL, n);
-}
-
-/*
- * Free via realloc_fn(user, ptr, 0).
- */
-static void schema_free(void *(*realloc_fn)(void *, void *, size_t),
-                         void *user, void *ptr) {
-    realloc_fn(user, ptr, 0);
-}
 
 tdc_status tdc_schema_parse(const uint8_t *buf, size_t buf_size,
                             void *(*realloc_fn)(void *user, void *ptr, size_t sz),
@@ -118,7 +91,7 @@ tdc_status tdc_schema_parse(const uint8_t *buf, size_t buf_size,
     /* Need at least 2 bytes for n_columns. */
     if (buf_size < 2) return TDC_E_CORRUPT;
 
-    uint16_t n_columns = get_u16(buf);
+    uint16_t n_columns = tdc_le_load_u16(buf);
     size_t pos = 2;
 
     if (n_columns == 0) {
@@ -127,15 +100,15 @@ tdc_status tdc_schema_parse(const uint8_t *buf, size_t buf_size,
     }
 
     /* Allocate column descriptor array. */
-    tdc_column_desc *cols = (tdc_column_desc *)schema_alloc(
-        realloc_fn, alloc_user, (size_t)n_columns * sizeof(tdc_column_desc));
+    tdc_column_desc *cols = (tdc_column_desc *)realloc_fn(
+        alloc_user, NULL, (size_t)n_columns * sizeof(tdc_column_desc));
     if (!cols) return TDC_E_NOMEM;
     memset(cols, 0, (size_t)n_columns * sizeof(tdc_column_desc));
 
     for (uint16_t i = 0; i < n_columns; ++i) {
         /* name_len (u16) */
         if (pos + 2 > buf_size) goto corrupt;
-        uint16_t name_len = get_u16(buf + pos);
+        uint16_t name_len = tdc_le_load_u16(buf + pos);
         pos += 2;
 
         /* Column must have a name. */
@@ -145,8 +118,8 @@ tdc_status tdc_schema_parse(const uint8_t *buf, size_t buf_size,
         if (pos + (size_t)name_len > buf_size) goto corrupt;
 
         /* Allocate name_len + 1 for null terminator. */
-        char *name = (char *)schema_alloc(realloc_fn, alloc_user,
-                                          (size_t)name_len + 1);
+        char *name = (char *)realloc_fn(alloc_user, NULL,
+                                        (size_t)name_len + 1);
         if (!name) goto nomem;
         memcpy(name, buf + pos, name_len);
         name[name_len] = '\0';
@@ -163,14 +136,14 @@ tdc_status tdc_schema_parse(const uint8_t *buf, size_t buf_size,
 
         /* ann_len (u16) */
         if (pos + 2 > buf_size) goto corrupt;
-        uint16_t ann_len = get_u16(buf + pos);
+        uint16_t ann_len = tdc_le_load_u16(buf + pos);
         pos += 2;
 
         /* annotation bytes */
         if (ann_len > 0) {
             if (pos + (size_t)ann_len > buf_size) goto corrupt;
-            char *ann = (char *)schema_alloc(realloc_fn, alloc_user,
-                                             (size_t)ann_len + 1);
+            char *ann = (char *)realloc_fn(alloc_user, NULL,
+                                           (size_t)ann_len + 1);
             if (!ann) goto nomem;
             memcpy(ann, buf + pos, ann_len);
             ann[ann_len] = '\0';
@@ -208,9 +181,9 @@ void tdc_schema_free(tdc_column_desc *columns, uint16_t n_columns,
 
     for (uint16_t i = 0; i < n_columns; ++i) {
         if (columns[i].name)
-            schema_free(realloc_fn, alloc_user, (void *)(uintptr_t)columns[i].name);
+            realloc_fn(alloc_user, (void *)(uintptr_t)columns[i].name, 0);
         if (columns[i].annotation)
-            schema_free(realloc_fn, alloc_user, (void *)(uintptr_t)columns[i].annotation);
+            realloc_fn(alloc_user, (void *)(uintptr_t)columns[i].annotation, 0);
     }
-    schema_free(realloc_fn, alloc_user, columns);
+    realloc_fn(alloc_user, columns, 0);
 }

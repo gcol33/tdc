@@ -55,6 +55,7 @@ set(TDC_SOURCES
     src/model/plane2d.c
     src/model/stack2d.c
     src/model/pred3d.c
+    src/model/pred3d_float.c
     src/model/delta2_1d.c
     src/model/fpc1d.c
 
@@ -72,6 +73,7 @@ set(TDC_SOURCES
     src/entropy/lz_streams.c
     src/entropy/deflate.c
     src/entropy/huffman.c
+    src/entropy/huffman4.c
     src/entropy/fse.c
     src/entropy/lane.c
 
