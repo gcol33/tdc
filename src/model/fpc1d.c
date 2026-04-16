@@ -47,6 +47,10 @@
                        * Encode side uses residual_out->realloc_fn. */
 #include <string.h>
 
+#if defined(_MSC_VER)
+#  include <intrin.h>
+#endif
+
 /* ----- Acceptance bitmasks ------------------------------------------------- */
 
 #define FPC_ACCEPTED_DTYPES (              \
@@ -73,16 +77,36 @@ static inline uint32_t fpc_hash(uint64_t bits, unsigned table_bits) {
     return (uint32_t)(h >> (64u - table_bits));
 }
 
-/* ----- Leading zero byte count --------------------------------------------- */
+/* ----- Leading zero byte count --------------------------------------------- *
+ *
+ * Hot path: called twice per input element on the encode side. Replacing
+ * the scalar byte-shift loop with a hardware CLZ drops ~7 dependent ops
+ * per call on f64 down to one instruction. Decode doesn't need it — the
+ * winner is read from the selector bitstream.
+ *
+ * For width W < 8, the caller passes a uint64_t whose high (8-W) bytes
+ * are zero. clz on a sub-W-byte value would return >= (8-W)*8; we subtract
+ * that offset to recover the true count. The v == 0 case is guarded
+ * explicitly because clz(0) is undefined on both intrinsics.
+ */
+static inline unsigned fpc_clz64(uint64_t v) {
+#if defined(__GNUC__) || defined(__clang__)
+    return (unsigned)__builtin_clzll(v);
+#elif defined(_MSC_VER)
+    unsigned long idx;
+    _BitScanReverse64(&idx, v);
+    return 63u - (unsigned)idx;
+#else
+    unsigned n = 0;
+    while ((v & 0x8000000000000000ULL) == 0) { v <<= 1; n++; }
+    return n;
+#endif
+}
 
 static inline unsigned count_lzb(uint64_t v, unsigned width) {
     if (v == 0) return width;
-    unsigned lzb = 0;
-    for (unsigned shift = (width - 1) * 8; shift < width * 8; shift -= 8) {
-        if ((v >> shift) & 0xFF) break;
-        lzb++;
-    }
-    return lzb;
+    unsigned shift_bits = (8u - width) * 8u;
+    return (fpc_clz64(v) - shift_bits) >> 3;
 }
 
 /* ----- Encode kernel (macro-generated per width) --------------------------- */
@@ -112,16 +136,15 @@ static void fpc_encode_##SUFFIX(const uint8_t *src, uint8_t *dst,             \
         unsigned dfcm_lzb = count_lzb((uint64_t)dfcm_xor, (W));             \
                                                                               \
         /* Pick winner. Tie goes to DFCM (trend predictor). */               \
-        int use_dfcm = (dfcm_lzb >= fcm_lzb);                               \
+        unsigned use_dfcm = (unsigned)(dfcm_lzb >= fcm_lzb);                 \
         UT chosen_xor = use_dfcm ? dfcm_xor : fcm_xor;                      \
                                                                               \
         /* Write residual (same width as input). */                          \
         memcpy(dst + (size_t)i * (W), &chosen_xor, (W));                    \
                                                                               \
-        /* Write selector bit. */                                            \
-        if (use_dfcm) {                                                      \
-            selectors[(size_t)i / 8u] |= (uint8_t)(1u << ((size_t)i % 8u)); \
-        }                                                                     \
+        /* Branchless selector write. OR'ing 0 is a no-op when FCM wins. */  \
+        selectors[(size_t)i >> 3u] |=                                        \
+            (uint8_t)(use_dfcm << ((size_t)i & 7u));                         \
                                                                               \
         /* Update tables. */                                                 \
         fcm_table[fcm_idx] = cur_bits;                                       \
