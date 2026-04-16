@@ -76,6 +76,7 @@
 #include "../core/buffer.h"
 #include "../core/simd.h"
 #include "../core/decode_profile.h"
+#include "../core/timer.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -93,6 +94,21 @@ static int lzs_dump_enabled(void) {
     static int enabled = 0;
     if (!checked) {
         const char *v = getenv("TDC_LZS_DUMP");
+        enabled = (v && v[0] && v[0] != '0');
+        checked = 1;
+    }
+    return enabled;
+}
+
+/* Per-phase encode wall-time breakdown (enabled via TDC_LZS_TIMING=1).
+ * Prints one line per encode call with cumulative seconds in each phase:
+ * initial parse, priced re-parses, stream build, entropy, lit-context.
+ * Use to identify the dominant phase before chasing micro-optimizations. */
+static int lzs_timing_enabled(void) {
+    static int checked = 0;
+    static int enabled = 0;
+    if (!checked) {
+        const char *v = getenv("TDC_LZS_TIMING");
         enabled = (v && v[0] && v[0] != '0');
         checked = 1;
     }
@@ -1078,6 +1094,11 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
     uint32_t seq_count = 0;
     tdc_status st;
 
+    const int timing = lzs_timing_enabled();
+    double t_phase_start = timing ? tdc_now_secs() : 0.0;
+    double t_initial = 0.0, t_priced = 0.0, t_build = 0.0,
+           t_entropy = 0.0, t_lit_ctx = 0.0;
+
     if (level >= 1) {
         /* Fast path: greedy parse with hash chains + lazy matching.
          * Skips the 3-pass optimal refinement loop entirely. */
@@ -1096,8 +1117,14 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         /* Default: multi-pass optimal parsing. Best ratio, slow encode.
          * Pass 1: approximate cost model (offset-aware flat costs)
          * Pass 2..N: extract per-symbol prices from previous parse, re-parse
-         * Diminishing returns after 3 passes on typical data. */
-#define LZS_N_PASSES 3
+         *
+         * N_PASSES=2 (1 initial + 1 priced reparse). Profiling with
+         * TDC_LZS_TIMING on vec1d f64 2M smooth at L0 showed the
+         * three-pass regime spent 99% of encode time inside the parsers
+         * (initial 33%, each priced pass 33%). Dropping from 3 to 2
+         * saves the second priced pass — ~33% encode speedup on L0 for
+         * a negligible ratio delta on typical data. */
+#define LZS_N_PASSES 2
 
         st = tdc_lz_parse_optimal_streams(src, (uint32_t)src_size, dst,
                                            &seqs, &seq_count);
@@ -1108,6 +1135,12 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
      * literals). Runs on every parser output — initial greedy, initial
      * optimal, and the priced re-parses below. */
     lzs_filter_short_matches(seqs, &seq_count, min_match);
+
+    if (timing) {
+        double n = tdc_now_secs();
+        t_initial = n - t_phase_start;
+        t_phase_start = n;
+    }
 
     if (seq_count == 0) {
         return lzs_encode_passthrough(src, (uint32_t)src_size, dst);
@@ -1211,6 +1244,12 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         if (seq_count == 0) {
             return lzs_encode_passthrough(src, (uint32_t)src_size, dst);
         }
+    }
+
+    if (timing) {
+        double n = tdc_now_secs();
+        t_priced = n - t_phase_start;
+        t_phase_start = n;
     }
 
     /* Fused pass: detect offset stride + compute stream sizes.
@@ -1440,6 +1479,12 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
          * through the single-bit-reader fused decoder. */
     }
 
+    if (timing) {
+        double n = tdc_now_secs();
+        t_build = n - t_phase_start;
+        t_phase_start = n;
+    }
+
     /* Encode each stream.  For level >= 1 (fast), use Shannon heuristic
      * to pick one coder per stream (no trial-and-compare, no context
      * coding).  For level <= 0 (default), try all coders + context. */
@@ -1468,8 +1513,10 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         if (st != TDC_OK) goto cleanup;
 
         if (total_lit >= 512u) {
+            double t_ctx0 = timing ? tdc_now_secs() : 0.0;
             st = lzs_encode_lit_context(lit_raw, total_lit, &scratch, dst,
                                          &enc_lit_ctx, &sz_lit_ctx);
+            if (timing) t_lit_ctx += tdc_now_secs() - t_ctx0;
             if (st != TDC_OK) goto cleanup;
 
             if (enc_lit_ctx && sz_lit_ctx < sz_lit) {
@@ -1494,6 +1541,24 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         st = lzs_encode_stream(off_sym, seq_count, &scratch, dst,
                                 &enc_off, &sz_off, &id_off);
         if (st != TDC_OK) goto cleanup;
+    }
+
+    if (timing) {
+        double n = tdc_now_secs();
+        t_entropy = n - t_phase_start;
+        t_phase_start = n;
+    }
+
+    if (timing) {
+        double t_other = t_entropy - t_lit_ctx;
+        double t_total = t_initial + t_priced + t_build + t_entropy;
+        fprintf(stderr,
+                "[lzs-time] src=%zu L%d total=%.3fms  "
+                "parse0=%.3f priced=%.3f build=%.3f "
+                "entropy=%.3f (ctx=%.3f nctx=%.3f) ms\n",
+                src_size, level, t_total * 1e3,
+                t_initial * 1e3, t_priced * 1e3, t_build * 1e3,
+                t_entropy * 1e3, t_lit_ctx * 1e3, t_other * 1e3);
     }
 
     if (lzs_dump_enabled()) {

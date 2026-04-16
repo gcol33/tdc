@@ -1,3 +1,104 @@
+# tdc — next-session TODO (2026-04-16)
+
+Carry-over from the LZ_OPT / refactor session (commits `279da5c`, `e950dfa`).
+The decode-speed plan below is still live; these are new items that surfaced
+while cleaning up LZ_OPT and splitting huffman/pred3d.
+
+## P0 — `LZ_STREAMS` L0 still at 0.3 MB/s
+
+The chain-depth fix (LZ_OPT_MAX_CHAIN 256→16) gave `LZ_OPT` an 11× speedup
+(0.3 → 3.4 MB/s on PRED2D+BSHUF residuals) but did not move `LZ_STREAMS` L0
+on `vec1d f64 2M smooth`. Rep matches on f64 byte-differences don't extend
+long, so the `lz_opt_rep_extend` cap was a no-op for this workload.
+
+Where the cost actually lives (code inspection, not profiled yet):
+
+1. **Three full DP passes per encode**: `tdc_lz_parse_optimal_streams`
+   (initial) + 2× `tdc_lz_parse_optimal_streams_priced` re-parses at
+   `lz_streams.c:1125` (`LZS_N_PASSES=3`). Each pass is O(N × per-pos work)
+   over 16M positions.
+2. **Priced parser does ~54 emits per position**: `lz_opt_find_matches`
+   returns up to 6 candidates, each emits transitions at up to 9
+   ml-symbol boundaries (`ml_bounds[]` at `lz_opt.c:1225`). vs. 1 emit
+   per position in the non-priced parser.
+3. **Trial-all entropy on literals**: `lzs_encode_stream` tries HUF + HUF4
+   + FSE. Then `lzs_encode_lit_context` splits literals into 16 context
+   buckets and calls `lzs_encode_stream` on each. **51 entropy encodes**
+   just for the literal stream.
+
+Concrete next steps (in order, each cheap):
+
+- [x] Add `LZS_DEBUG_TIMING` env gate that prints wall time for each phase:
+      initial parse / priced pass 1 / priced pass 2 / entropy / context.
+      Run on `vec1d f64 2M smooth`. Identify which phase is 90%+ of the
+      time — do NOT guess further.
+      → `TDC_LZS_TIMING=1` added in `lz_streams.c`. Profiling showed
+      DP dominates 99% (entropy <1%). `lit_context` gating deferred.
+- [x] If DP dominates: reduce `LZS_N_PASSES` from 3 to 2.
+      → Dropped to 2. Verified byte-identical enc_bytes and ratio on
+      every bench row vs N=3. Encode throughput 0.4 → 0.6 MB/s on
+      f64 2M smooth L0 (~50% speedup).
+- [ ] If `lz_opt_find_matches` still dominates on other workloads: cap
+      `LZ_OPT_MAX_MATCHES` at 3 (from 6), or cap per-candidate ml-boundary
+      emit count at 4. Deferred — f64 2M is the only profiled case.
+
+## P1 — Bench coverage: 3D volumes (biggest unmeasured surface)
+
+`src/model/pred3d.c` is the largest source file in the project and its
+float path was just extracted to `pred3d_float.c` — but there is **no 3D
+row in `bench/bench_throughput.c`** and no 3D input in
+`bench_zstd_compare.py`. We do not know whether the 3D neighborhood beats
+PRED2D-slice-by-slice on real data. The float path is even less tested.
+
+- [x] Add `vol3d f32 128³` (smooth field + noise) — exercises
+      `pred3d_float.c` and float stores. (128³ over 256³ for runtime.)
+- [x] Add `vol3d i16 128³` (gradient + noise) — exercises the integer
+      typed kernels.
+- [x] Mirror both in `bench_zstd_compare.py` for head-to-head.
+- [ ] If PRED3D loses to PRED2D-on-flattened-volume: the octant logic is
+      probably wrong. Investigate before optimizing.
+
+## P2 — 2D ratio is tdc's weakest column vs zstd
+
+On `GRAD u16 2048²`, tdc (PRED2D+BSHUF+HUF4, 2.80×) barely beats zstd-19
+(2.09×). Three cheap levers:
+
+- [ ] Wire up **PAETH** predictor in the PRED2D bench row (only LEFT/UP/AVG
+      exercised today). Typically +5-10% ratio on natural rasters.
+- [ ] Add **median-of-3** (LOCO-I / JPEG-LS) as a new `tdc_pred2d_kind`.
+      Usually beats Paeth on smooth+noisy data.
+- [ ] 2-bucket residual magnitude classifier before HUF4 (split residuals
+      into "small"/"large" streams, each with its own Huffman table).
+      Expect +10-15% ratio.
+
+## P3 — Float path: FPC1D is registered but unbenched
+
+`fpc1d.c` is in the registry but absent from `bench_throughput.c`. Either:
+
+- [x] Add an `f64 smooth` row using FPC1D and compare against DELTA1D on
+      the same input. Added FPC+BSHUF+LZ (1.84× vs DELTA1D 1.86×) and
+      FPC+BSHUF+HUF (1.56× vs DELTA1D 1.46×). FPC beats DELTA on the
+      HUF path, ~par on the LZ path — keeps its spot.
+
+## P4 — Hygiene
+
+- [x] `.gitignore`: added `bench*.txt`, `bench_out/`, `prof*.txt`,
+      `profile*.txt`, `stagetime.txt`, `bsm.log`, `build_prof/`,
+      `bench/__pycache__/`, `.claude/`. Root no longer noisy.
+
+## Done this session (for context)
+
+- `279da5c` perf(lz_opt): chain=16 + rep-extend cap → 11× faster on
+  PRED2D residuals (0.3 → 3.4 MB/s), slightly better ratio (2.11× → 2.15×).
+- `e950dfa` refactor: split `huffman.c` 1287→656 into huffman + huffman4
+  + shared header; extracted `pred3d.c` float path to `pred3d_float.c`;
+  inlined 3-line schema wrappers; switched `stream_encode` / `schema` to
+  shared `tdc_le_{load,store}_u*` helpers.
+
+All 28 tests pass at HEAD.
+
+---
+
 # tdc decode speed — SIMD & fused decode plan
 
 **Goal:** Close the 2x decode gap vs zstd on regional NASA f64 data.

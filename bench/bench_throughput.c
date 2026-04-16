@@ -225,6 +225,37 @@ static void fill_split_planes_i32(int32_t *p, int ny, int nx) {
     }
 }
 
+/* 3D smooth scalar field + mild noise: exercise PRED3D's neighborhood. */
+static void fill_smooth_f32_vol(float *p, int nz, int ny, int nx) {
+    uint32_t s = 0xD0F3C0DEu;
+    for (int k = 0; k < nz; ++k) {
+        for (int r = 0; r < ny; ++r) {
+            for (int c = 0; c < nx; ++c) {
+                s = s * 1103515245u + 12345u;
+                float noise = (float)((int)((s >> 20) & 0xFF) - 128) * 1e-4f;
+                p[(k * ny + r) * nx + c] =
+                    0.1f * (float)k + 0.03f * (float)r + 0.02f * (float)c
+                    + noise;
+            }
+        }
+    }
+}
+
+/* 3D integer gradient + noise: exercise PRED3D integer kernels. */
+static void fill_grad_i16_vol(int16_t *p, int nz, int ny, int nx) {
+    uint32_t s = 0x0001BEEFu;
+    for (int k = 0; k < nz; ++k) {
+        for (int r = 0; r < ny; ++r) {
+            for (int c = 0; c < nx; ++c) {
+                s = s * 1103515245u + 12345u;
+                int noise = (int)((s >> 20) & 0x7) - 3;
+                p[(k * ny + r) * nx + c] =
+                    (int16_t)(k * 5 + r * 3 + c * 2 + noise);
+            }
+        }
+    }
+}
+
 /* ----- Cases ------------------------------------------------------------- */
 
 static int case_raw_none_u8(void) {
@@ -604,7 +635,127 @@ static int case_delta1d_f64(void) {
         s.entropy_params[0] = &lzs_l1;
         rc |= run_case("RAW+LZ_STREAMS L1", desc, &b, &s);
     }
+    /* FPC1D + BSHUF + LZ — head-to-head with DELTA1D on identical input. */
+    {
+        tdc_codec_spec s = {0};
+        s.model      = TDC_MODEL_FPC_1D;
+        s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0] = TDC_ENTROPY_LZ;
+        rc |= run_case("FPC+BSHUF+LZ", desc, &b, &s);
+    }
+    /* FPC1D + BSHUF + HUF */
+    {
+        tdc_codec_spec s = {0};
+        s.model      = TDC_MODEL_FPC_1D;
+        s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0] = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("FPC+BSHUF+HUF", desc, &b, &s);
+    }
 
+    free(data);
+    return rc;
+}
+
+/* 3D f32 volume: exercises pred3d_float.c. Size chosen to match the 2D
+ * bench (~8 MiB): 128³ f32 = 8 MiB. Smoke uses 16³. */
+static int case_pred3d_f32(void) {
+    const int N = g_smoke ? 16 : 128;
+    float *data = (float *)malloc(sizeof(float) * (size_t)N * N * N);
+    if (!data) return 1;
+    fill_smooth_f32_vol(data, N, N, N);
+
+    tdc_block b = {0};
+    b.data        = data;
+    b.dtype       = TDC_DT_F32;
+    b.layout      = TDC_LAYOUT_VOLUME_3D;
+    b.shape.rank  = 3;
+    b.shape.dim[0] = N; b.shape.dim[1] = N; b.shape.dim[2] = N;
+    tdc_shape_set_contiguous(&b.shape);
+
+    const char *desc = g_smoke ? "vol3d f32 16^3" : "vol3d f32 128^3";
+    tdc_pred3d_params params; params.kind = TDC_PRED3D_GRAD3D;
+    int rc = 0;
+
+    /* PRED3D(GRAD3D) + LZ */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_3D;
+        s.model_params = &params;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        rc |= run_case("PRED3D(GRAD)+LZ", desc, &b, &s);
+    }
+    /* PRED3D(GRAD3D) + BSHUF + LZ */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_3D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        rc |= run_case("PRED3D(GRAD)+BSHUF+LZ", desc, &b, &s);
+    }
+    /* PRED3D(AUTO) + BSHUF + HUF — let encoder pick predictor. */
+    {
+        tdc_pred3d_params auto_p = { .kind = TDC_PRED3D_AUTO };
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_3D;
+        s.model_params = &auto_p;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("PRED3D(AUTO)+BSHUF+HUF", desc, &b, &s);
+    }
+    free(data);
+    return rc;
+}
+
+/* 3D i16 volume: exercises pred3d.c integer kernels. 128³ = 4 MiB. */
+static int case_pred3d_i16(void) {
+    const int N = g_smoke ? 16 : 128;
+    int16_t *data = (int16_t *)malloc(sizeof(int16_t) * (size_t)N * N * N);
+    if (!data) return 1;
+    fill_grad_i16_vol(data, N, N, N);
+
+    tdc_block b = {0};
+    b.data        = data;
+    b.dtype       = TDC_DT_I16;
+    b.layout      = TDC_LAYOUT_VOLUME_3D;
+    b.shape.rank  = 3;
+    b.shape.dim[0] = N; b.shape.dim[1] = N; b.shape.dim[2] = N;
+    tdc_shape_set_contiguous(&b.shape);
+
+    const char *desc = g_smoke ? "vol3d i16 16^3" : "vol3d i16 128^3";
+    int rc = 0;
+
+    /* PRED3D(AUTO) + LZ — baseline. */
+    {
+        tdc_pred3d_params params = { .kind = TDC_PRED3D_AUTO };
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_3D;
+        s.model_params = &params;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        rc |= run_case("PRED3D(AUTO)+LZ", desc, &b, &s);
+    }
+    /* PRED3D(AUTO) + ZIGZAG + BSHUF + LZ — exercises residual pipeline. */
+    {
+        tdc_pred3d_params params = { .kind = TDC_PRED3D_AUTO };
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_3D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_ZIGZAG;
+        s.xform[1]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        rc |= run_case("PRED3D(AUTO)+ZZ+BSHUF+LZ", desc, &b, &s);
+    }
+    /* PRED3D(GRAD3D) + ZIGZAG + BSHUF + HUFFMAN */
+    {
+        tdc_pred3d_params params = { .kind = TDC_PRED3D_GRAD3D };
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_3D;
+        s.model_params = &params;
+        s.xform[0]     = TDC_XFORM_ZIGZAG;
+        s.xform[1]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("PRED3D(GRAD)+ZZ+BSHUF+HUF", desc, &b, &s);
+    }
     free(data);
     return rc;
 }
@@ -1154,6 +1305,8 @@ int main(int argc, char **argv) {
     rc |= case_delta1d_f64();
     rc |= case_pred2d_noisy_u16();
     rc |= case_plane2d_shuffle_lz();
+    rc |= case_pred3d_f32();
+    rc |= case_pred3d_i16();
 
     if (rc) {
         fprintf(stderr, "\nbench_throughput: FAIL\n");

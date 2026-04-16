@@ -71,12 +71,37 @@ def gen_split_planes_i32_1024() -> tuple[str, str, np.ndarray]:
     return "SPLIT-PLANES i32", "rast2d i32 1024x1024", arr
 
 
+def gen_smooth_f32_vol_128() -> tuple[str, str, np.ndarray]:
+    n = 128
+    rng = np.random.default_rng(0xD0F3C0DE)
+    noise = (rng.integers(-128, 128, size=(n, n, n), dtype=np.int32)
+             .astype(np.float32) * 1e-4)
+    ks = np.arange(n, dtype=np.float32)[:, None, None]
+    rs = np.arange(n, dtype=np.float32)[None, :, None]
+    cs = np.arange(n, dtype=np.float32)[None, None, :]
+    arr = (0.1 * ks + 0.03 * rs + 0.02 * cs + noise).astype(np.float32)
+    return "SMOOTH f32 vol", "vol3d f32 128^3", arr
+
+
+def gen_grad_i16_vol_128() -> tuple[str, str, np.ndarray]:
+    n = 128
+    rng = np.random.default_rng(0x0001BEEF)
+    noise = rng.integers(-3, 5, size=(n, n, n), dtype=np.int32)
+    ks = np.arange(n, dtype=np.int32)[:, None, None] * 5
+    rs = np.arange(n, dtype=np.int32)[None, :, None] * 3
+    cs = np.arange(n, dtype=np.int32)[None, None, :] * 2
+    arr = (ks + rs + cs + noise).astype(np.int16)
+    return "GRAD i16 vol", "vol3d i16 128^3", arr
+
+
 CASES = [
     gen_raw_u8_16M,
     gen_ramp_i32_4M,
     gen_walk_i16_8M,
     gen_grad_u16_2048,
     gen_split_planes_i32_1024,
+    gen_smooth_f32_vol_128,
+    gen_grad_i16_vol_128,
 ]
 
 

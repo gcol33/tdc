@@ -1,8 +1,21 @@
 build/
 build_release/
+build_prof/
 *.exe
 *.obj
 *.o
 *.dll
 *.so
 *.dylib
+
+# Bench output scratch files
+bench*.txt
+bench_out/
+prof*.txt
+profile*.txt
+stagetime.txt
+bsm.log
+
+# Tool caches
+bench/__pycache__/
+.claude/
