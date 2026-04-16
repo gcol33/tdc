@@ -25,7 +25,10 @@
 #include "entropy_internal.h"
 #include "lz_internal.h"
 #include "../core/buffer.h"
+#include "../core/simd.h"
+#include "../core/timer.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -35,6 +38,19 @@
 #if defined(_MSC_VER)
 #  include <intrin.h>
 #endif
+
+/* Per-phase timing + branch counters for tdc_lz_parse_optimal_streams.
+ * Enable via TDC_LZ_OPT_TIMING=1. One line per initial-parse call. */
+static int lz_opt_timing_enabled(void) {
+    static int checked = 0;
+    static int enabled = 0;
+    if (!checked) {
+        const char *v = getenv("TDC_LZ_OPT_TIMING");
+        enabled = (v && v[0] && v[0] != '0');
+        checked = 1;
+    }
+    return enabled;
+}
 
 /* ----- Tunable constants ------------------------------------------------- */
 
@@ -209,6 +225,16 @@ static void lz_opt_find_longest(const uint8_t *src, uint32_t src_size,
 
     while (cand != 0xFFFFFFFFu && cand < pos && cand >= min_pos &&
            depth < LZ_OPT_MAX_CHAIN) {
+        /* Prefetch the next candidate's chain_prev entry and source bytes
+         * while we do this iteration's compare/extend. Hides the 64 MiB
+         * chain_prev[] cache-miss cost that otherwise dominates on inputs
+         * where every position walks a full chain (measured: 26 s / 16
+         * MiB on f64 smooth, 100% in this loop). */
+        uint32_t next_cand = chain_prev[cand];
+        if (next_cand != 0xFFFFFFFFu && next_cand < pos) {
+            TDC_PREFETCH_L1(&chain_prev[next_cand]);
+            TDC_PREFETCH_L1(src + next_cand);
+        }
 
         if (src[cand] == src[pos]) {
             uint32_t len = lz_opt_extend(src, pos, cand, cap);
@@ -228,7 +254,7 @@ static void lz_opt_find_longest(const uint8_t *src, uint32_t src_size,
             }
         }
 
-        cand = chain_prev[cand];
+        cand = next_cand;
         depth++;
     }
 
@@ -269,6 +295,11 @@ static uint32_t lz_opt_find_matches(const uint8_t *src, uint32_t src_size,
 
     while (cand != 0xFFFFFFFFu && cand < pos && cand >= min_pos &&
            depth < LZ_OPT_MAX_CHAIN) {
+        uint32_t next_cand = chain_prev[cand];
+        if (next_cand != 0xFFFFFFFFu && next_cand < pos) {
+            TDC_PREFETCH_L1(&chain_prev[next_cand]);
+            TDC_PREFETCH_L1(src + next_cand);
+        }
 
         if (src[cand] == src[pos]) {
             uint32_t len = lz_opt_extend(src, pos, cand, cap);
@@ -292,7 +323,7 @@ static uint32_t lz_opt_find_matches(const uint8_t *src, uint32_t src_size,
             }
         }
 
-        cand = chain_prev[cand];
+        cand = next_cand;
         depth++;
     }
 
@@ -784,6 +815,9 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
 
     if (src_size < LZ_MIN_MATCH + 1u) return TDC_OK;
 
+    const int timing = lz_opt_timing_enabled();
+    const double t_start = timing ? tdc_now_secs() : 0.0;
+
     uint32_t N = src_size;
 
     int64_t *post_match = (int64_t *)lz_opt_alloc(dst, (size_t)(N + 1u) * sizeof(int64_t));
@@ -809,6 +843,13 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
     memset(bt, 0, (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
     memset(chain_head, 0xFF, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
     memset(chain_prev, 0xFF, (size_t)N * sizeof(uint32_t));
+
+    const double t_init = timing ? tdc_now_secs() : 0.0;
+
+    /* Branch counters (zero cost when timing is off — compiler folds). */
+    uint64_t cnt_skip = 0, cnt_inf = 0, cnt_rep_skip = 0;
+    uint64_t cnt_chain = 0, cnt_chain_skip = 0;
+    uint64_t rep_bytes = 0, rep_calls = 0;
 
     /* Initialize rep state at position 0. */
     Lz2OptRepState rep_init = {LZ_OPT_REP_INIT_1, LZ_OPT_REP_INIT_2, LZ_OPT_REP_INIT_3};
@@ -870,6 +911,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
 
         /* Fast-forward inside a committed long match — chain insert only. */
         if (r < skip_until) {
+            cnt_skip++;
             if (r + LZ_MIN_MATCH + 1u <= src_size) {
                 uint32_t hs = lz_opt_hash4(src + r);
                 chain_prev[r] = chain_head[hs];
@@ -879,6 +921,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
         }
 
         if (best_start >= INF64) {
+            cnt_inf++;
             if (r + LZ_MIN_MATCH + 1u <= src_size) {
                 uint32_t hs = lz_opt_hash4(src + r);
                 chain_prev[r] = chain_head[hs];
@@ -896,6 +939,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
             uint32_t reps[3] = {cur_rep.r1, cur_rep.r2, cur_rep.r3};
             for (int ri = 0; ri < 3; ri++) {
                 uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps[ri]);
+                rep_calls++; rep_bytes += rlen;
                 if (rlen < LZ_MIN_MATCH) continue;
                 if (rlen > max_rep_rlen) max_rep_rlen = rlen;
                 int64_t cand_cost = best_start + C_REP;
@@ -914,6 +958,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
                 if (reps2[ri] == cur_rep.r1 || reps2[ri] == cur_rep.r2 ||
                     reps2[ri] == cur_rep.r3) continue;
                 uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps2[ri]);
+                rep_calls++; rep_bytes += rlen;
                 if (rlen < LZ_MIN_MATCH) continue;
                 if (rlen > max_rep_rlen) max_rep_rlen = rlen;
                 int64_t cand_cost = best_start2 + C_REP;
@@ -932,6 +977,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
          * offset) re-extend the full 256-byte cap at every position, making
          * L0 encode run at <1 MB/s on 16 MiB inputs. */
         if (max_rep_rlen >= LZ_OPT_COMMIT_LEN) {
+            cnt_rep_skip++;
             if (r + LZ_MIN_MATCH + 1u <= src_size) {
                 uint32_t hs = lz_opt_hash4(src + r);
                 chain_prev[r] = chain_head[hs];
@@ -942,6 +988,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
         }
 
         /* ----- Hash-chain match ---------------------------------------- */
+        cnt_chain++;
         uint32_t match_len = 0u, match_off = 0u, cand_pos = 0u;
         lz_opt_find_longest(src, src_size, r, chain_head, chain_prev,
                              &match_len, &match_off, &cand_pos);
@@ -963,6 +1010,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
 
             /* Commit-and-skip for long matches. */
             if (match_len >= LZ_OPT_COMMIT_LEN) {
+                cnt_chain_skip++;
                 lz_opt_streams_emit(best_start + c_match, r + match_len,
                     best_start_prev_p, r, match_len, match_off, new_rep,
                     post_match, bt, rep_at);
@@ -976,6 +1024,8 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
                 post_match, bt, rep_at);
         }
     }
+
+    const double t_loop = timing ? tdc_now_secs() : 0.0;
 
     /* Final: trailing literals at cost C_LIT per byte. */
     uint32_t best_final_p = 0u;
@@ -1026,6 +1076,32 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
     lz_opt_free(dst, rep_at);
     lz_opt_free(dst, chain_head);
     lz_opt_free(dst, chain_prev);
+
+    if (timing) {
+        double t_end = tdc_now_secs();
+        uint64_t cnt_total = (uint64_t)N;
+        uint64_t cnt_work = cnt_total - cnt_skip - cnt_inf;
+        fprintf(stderr,
+            "[lz_opt-time] N=%u init=%.1fms loop=%.1fms post=%.1fms\n"
+            "              pos: total=%llu  skip=%llu  inf=%llu  work=%llu\n"
+            "              work-branches: rep_skip=%llu  chain=%llu  chain_skip=%llu\n"
+            "              rep_extend: calls=%llu  bytes=%llu  avg=%.1f/call %.2f/pos\n",
+            N,
+            (t_init - t_start) * 1000.0,
+            (t_loop - t_init) * 1000.0,
+            (t_end  - t_loop) * 1000.0,
+            (unsigned long long)cnt_total,
+            (unsigned long long)cnt_skip,
+            (unsigned long long)cnt_inf,
+            (unsigned long long)cnt_work,
+            (unsigned long long)cnt_rep_skip,
+            (unsigned long long)cnt_chain,
+            (unsigned long long)cnt_chain_skip,
+            (unsigned long long)rep_calls,
+            (unsigned long long)rep_bytes,
+            rep_calls ? (double)rep_bytes / (double)rep_calls : 0.0,
+            cnt_total ? (double)rep_bytes / (double)cnt_total : 0.0);
+    }
 
     *out_seqs = seqs;
     *out_seq_count = seq_count;
