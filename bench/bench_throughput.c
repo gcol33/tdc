@@ -553,6 +553,46 @@ static int case_pred2d_noisy_u16(void) {
         rc |= run_case("PRED2D(UP)+BSHUF+LZ", desc, &b, &s);
     }
 
+    /* --- PAETH predictor variants: measure forced PAETH vs AUTO's pick --- */
+    tdc_pred2d_params paeth_params; paeth_params.kind = TDC_PRED2D_PAETH;
+
+    /* PRED2D(PAETH) + BSHUF + HUF */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &paeth_params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_HUFFMAN;
+        rc |= run_case("PRED2D(PAETH)+BSHUF+HUF", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + HUF4 */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &paeth_params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_HUFFMAN4;
+        rc |= run_case("PRED2D(PAETH)+BSHUF+HUF4", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + FSE */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &paeth_params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_FSE;
+        rc |= run_case("PRED2D(PAETH)+BSHUF+FSE", desc, &b, &s);
+    }
+    /* PRED2D(PAETH) + BSHUF + LZ */
+    {
+        tdc_codec_spec s = {0};
+        s.model        = TDC_MODEL_PRED_2D;
+        s.model_params = &paeth_params;
+        s.xform[0]     = TDC_XFORM_BYTE_SHUFFLE;
+        s.entropy[0]   = TDC_ENTROPY_LZ;
+        rc |= run_case("PRED2D(PAETH)+BSHUF+LZ", desc, &b, &s);
+    }
+
     free(data);
     return rc;
 }
@@ -621,11 +661,19 @@ static int case_delta1d_f64(void) {
         s.entropy[0] = TDC_ENTROPY_LZ;
         rc |= run_case("RAW+BSHUF+LZ", desc, &b, &s);
     }
-    /* RAW + LZ_STREAMS — per-stream entropy coding. */
+    /* RAW + LZ_STREAMS — per-stream entropy coding (default, L2). */
     {
         tdc_codec_spec s = tdc_codec_spec_raw();
         s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
-        rc |= run_case("RAW+LZ_STREAMS", desc, &b, &s);
+        rc |= run_case("RAW+LZ_STREAMS (default)", desc, &b, &s);
+    }
+    /* RAW + LZ_STREAMS optimal — explicit opt-in, max ratio, slow encode. */
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        static const tdc_lz_streams_params lzs_opt = { .level = -1 };
+        s.entropy_params[0] = &lzs_opt;
+        rc |= run_case("RAW+LZ_STREAMS optimal", desc, &b, &s);
     }
     /* RAW + LZ_STREAMS L1 — flat hash + accel step, fast encode. */
     {
@@ -634,6 +682,30 @@ static int case_delta1d_f64(void) {
         static const tdc_lz_streams_params lzs_l1 = { .level = 1 };
         s.entropy_params[0] = &lzs_l1;
         rc |= run_case("RAW+LZ_STREAMS L1", desc, &b, &s);
+    }
+    /* RAW + LZ_STREAMS L2 — HC4 + lazy1. */
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        static const tdc_lz_streams_params lzs_l2 = { .level = 2 };
+        s.entropy_params[0] = &lzs_l2;
+        rc |= run_case("RAW+LZ_STREAMS L2", desc, &b, &s);
+    }
+    /* RAW + LZ_STREAMS L3 — HC8 + lazy1. */
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        static const tdc_lz_streams_params lzs_l3 = { .level = 3 };
+        s.entropy_params[0] = &lzs_l3;
+        rc |= run_case("RAW+LZ_STREAMS L3", desc, &b, &s);
+    }
+    /* RAW + LZ_STREAMS L4 — HC16 + double-lazy. */
+    {
+        tdc_codec_spec s = tdc_codec_spec_raw();
+        s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+        static const tdc_lz_streams_params lzs_l4 = { .level = 4 };
+        s.entropy_params[0] = &lzs_l4;
+        rc |= run_case("RAW+LZ_STREAMS L4", desc, &b, &s);
     }
     /* FPC1D + BSHUF + LZ — head-to-head with DELTA1D on identical input. */
     {

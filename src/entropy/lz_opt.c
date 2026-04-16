@@ -891,11 +891,13 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
         /* Check matches at rep1, rep2, rep3 offsets from both prefix-min
          * entries. The secondary entry has a different rep1 and may
          * discover rep matches that the primary misses entirely. */
+        uint32_t max_rep_rlen = 0u;
         {
             uint32_t reps[3] = {cur_rep.r1, cur_rep.r2, cur_rep.r3};
             for (int ri = 0; ri < 3; ri++) {
                 uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps[ri]);
                 if (rlen < LZ_MIN_MATCH) continue;
+                if (rlen > max_rep_rlen) max_rep_rlen = rlen;
                 int64_t cand_cost = best_start + C_REP;
                 Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep, reps[ri]);
                 lz_opt_streams_emit(cand_cost, r + rlen,
@@ -913,12 +915,30 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
                     reps2[ri] == cur_rep.r3) continue;
                 uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps2[ri]);
                 if (rlen < LZ_MIN_MATCH) continue;
+                if (rlen > max_rep_rlen) max_rep_rlen = rlen;
                 int64_t cand_cost = best_start2 + C_REP;
                 Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep2, reps2[ri]);
                 lz_opt_streams_emit(cand_cost, r + rlen,
                     best_start2_prev_p, r, rlen, reps2[ri], new_rep,
                     post_match, bt, rep_at);
             }
+        }
+
+        /* Commit-and-skip on long rep matches. The rep_extend is capped at
+         * LZ_OPT_COMMIT_LEN, so a rlen at the cap means the match continues
+         * past the cap; fast-forward the parser past it (the next position
+         * can re-discover the rest as another rep). Without this, periodic
+         * inputs (smooth f64 at stride 8, residual planes with a recurring
+         * offset) re-extend the full 256-byte cap at every position, making
+         * L0 encode run at <1 MB/s on 16 MiB inputs. */
+        if (max_rep_rlen >= LZ_OPT_COMMIT_LEN) {
+            if (r + LZ_MIN_MATCH + 1u <= src_size) {
+                uint32_t hs = lz_opt_hash4(src + r);
+                chain_prev[r] = chain_head[hs];
+                chain_head[hs] = r;
+            }
+            skip_until = r + max_rep_rlen;
+            continue;
         }
 
         /* ----- Hash-chain match ---------------------------------------- */
@@ -1148,11 +1168,13 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
         }
 
         /* Rep-match candidates from primary entry. */
+        uint32_t max_rep_rlen = 0u;
         {
             uint32_t reps[3] = {cur_rep.r1, cur_rep.r2, cur_rep.r3};
             for (int ri = 0; ri < 3; ri++) {
                 uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps[ri]);
                 if (rlen < LZ_MIN_MATCH) continue;
+                if (rlen > max_rep_rlen) max_rep_rlen = rlen;
                 int64_t ml_c = (int64_t)prices->ml[lz_opt_ml_sym(rlen - LZ_MIN_MATCH)];
                 int64_t off_c = (int64_t)prices->off[ri];
                 int64_t cand_cost = best_start + prices->ll_avg + ml_c + off_c;
@@ -1172,6 +1194,7 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
                     reps2[ri] == cur_rep.r3) continue;
                 uint32_t rlen = lz_opt_rep_extend(src, src_size, r, reps2[ri]);
                 if (rlen < LZ_MIN_MATCH) continue;
+                if (rlen > max_rep_rlen) max_rep_rlen = rlen;
                 int64_t ml_c = (int64_t)prices->ml[lz_opt_ml_sym(rlen - LZ_MIN_MATCH)];
                 int64_t off_c = (int64_t)prices->off[ri];
                 int64_t cand_cost = best_start2 + prices->ll_avg + ml_c + off_c;
@@ -1180,6 +1203,17 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
                     best_start2_prev_p, r, rlen, reps2[ri], new_rep,
                     post_match, bt, rep_at);
             }
+        }
+
+        /* Commit-and-skip on long rep matches — see initial parser above. */
+        if (max_rep_rlen >= LZ_OPT_COMMIT_LEN) {
+            if (r + LZ_MIN_MATCH + 1u <= src_size) {
+                uint32_t hs = lz_opt_hash4(src + r);
+                chain_prev[r] = chain_head[hs];
+                chain_head[hs] = r;
+            }
+            skip_until = r + max_rep_rlen;
+            continue;
         }
 
         /* Hash-chain matches: find up to LZ_OPT_MAX_MATCHES candidates

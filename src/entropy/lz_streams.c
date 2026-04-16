@@ -1072,6 +1072,11 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
     if (src_size > 0 && !src)     return TDC_E_INVAL;
     if (src_size > UINT32_MAX)    return TDC_E_INVAL;
 
+    /* Level semantics:
+     *   level == 0   : default → L2 (HC4 + lazy1). Best measured Pareto.
+     *   level <  0   : optimal DP parser. Highest ratio, very slow encode
+     *                  (~0.3 MB/s on 16 MiB f64 smooth). Explicit opt-in.
+     *   level >= 1   : greedy hash-chain, level N. */
     int level = 0;
     uint32_t min_match = LZ_MIN_MATCH;
     if (params) {
@@ -1084,6 +1089,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         level = sp->level;
         if (sp->min_match > LZ_MIN_MATCH) min_match = sp->min_match;
     }
+    if (level == 0) level = 2;  /* remap default → L2 */
 
     /* Empty input: emit an empty passthrough record. */
     if (src_size == 0) {
@@ -1101,7 +1107,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
 
     if (level >= 1) {
         /* Fast path: greedy parse with hash chains + lazy matching.
-         * Skips the 3-pass optimal refinement loop entirely. */
+         * Skips the multi-pass optimal refinement loop entirely. */
         uint32_t chain_depth, lazy_depth;
         switch (level) {
         case 1:  chain_depth = 0;  lazy_depth = 0; break;
@@ -1114,7 +1120,8 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
                                   &seqs, &seq_count);
         if (st != TDC_OK) return st;
     } else {
-        /* Default: multi-pass optimal parsing. Best ratio, slow encode.
+        /* level < 0: explicit opt-in to multi-pass optimal parsing. Best
+         * ratio, slow encode.
          * Pass 1: approximate cost model (offset-aware flat costs)
          * Pass 2..N: extract per-symbol prices from previous parse, re-parse
          *
