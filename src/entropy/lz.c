@@ -374,6 +374,93 @@ static inline void lz_chain_insert(const uint8_t *src, uint32_t pos,
     htab[h] = pos;
 }
 
+/* Rep-at-literal probe. Tries each of the three remembered offsets
+ * (rep[0..2]) and returns the longest rep-hit at `pos` along with its
+ * offset. 0 means no hit >= LZ_MIN_MATCH. Much cheaper than walking the
+ * hash chain: 3 short prefix memcmps + a single extend on hit.
+ *
+ * Periodic data (e.g. daily/seasonal time series) hammers a few dominant
+ * strides. Once rep[0] locks onto the true period, repeated matches at
+ * that stride bypass the hash search entirely and encode in 1 offset
+ * symbol with 0 extra bits — vs ~20 bits for a novel offset in the same
+ * log2 bucket. Preferred over hash on hit because a rep match of length N
+ * beats a hash match of length N (same length, strictly cheaper offset).
+ * Only falls back to hash when no rep slot matches the first 3 bytes. */
+static inline uint32_t lz_rep_probe(const uint8_t *src, uint32_t src_size,
+                                     uint32_t pos, const uint32_t rep[3],
+                                     uint32_t *out_off) {
+    if (pos + LZ_MIN_MATCH > src_size) return 0;
+    uint32_t max_len = src_size - pos;
+    uint32_t best_len = 0;
+    uint32_t best_off = 0;
+    for (int i = 0; i < 3; i++) {
+        uint32_t ro = rep[i];
+        /* Skip unfilled slots. Rep state starts at zero; each slot becomes
+         * live once lz_rep_update has promoted a real match offset into it.
+         *
+         * Why not init with (1,4,8) like zstd's rep defaults: the
+         * LZ_STREAMS serializer runs lzs_detect_offset_shift (bitwise OR
+         * across all offsets) to detect the data's natural stride — a
+         * multiple of 8 for aligned f64. A single rep-hit at a synthetic
+         * init (1 or 4) contaminates the OR and drops the shift to 0,
+         * costing ~3 bits per offset on every sequence in the block
+         * (~13% ratio loss on USGS). Starting from zero means rep only
+         * fires at offsets that already appeared as real matches, so the
+         * stride alignment is inherited from the data. */
+        if (ro == 0u) continue;
+        if (pos < ro) continue;
+        if (memcmp(src + pos, src + pos - ro, LZ_MIN_MATCH) != 0) continue;
+        uint32_t len = LZ_MIN_MATCH;
+        while (len + 8 <= max_len) {
+            uint64_t a, b;
+            memcpy(&a, src + pos + len, 8);
+            memcpy(&b, src + pos - ro + len, 8);
+            if (a != b) {
+#if defined(__GNUC__) || defined(__clang__)
+                len += (uint32_t)(__builtin_ctzll(a ^ b) >> 3);
+#elif defined(_MSC_VER)
+                unsigned long idx;
+                _BitScanForward64(&idx, a ^ b);
+                len += (uint32_t)(idx >> 3);
+#else
+                uint64_t diff = a ^ b;
+                while (!(diff & 0xFFu)) { diff >>= 8; len++; }
+#endif
+                goto rep_cand_done;
+            }
+            len += 8;
+        }
+        while (len < max_len && src[pos + len] == src[pos - ro + len]) len++;
+    rep_cand_done:
+        if (len > best_len) {
+            best_len = len;
+            best_off = ro;
+        }
+    }
+    if (best_len >= LZ_MIN_MATCH) {
+        *out_off = best_off;
+        return best_len;
+    }
+    return 0;
+}
+
+/* Update the MRU rep state after emitting a match with offset `off`.
+ * Must match lz_streams.c's lzs_repcode_encode transitions exactly so the
+ * serializer's re-computation of the rep state lands on the same slot
+ * assignments the parser saw. */
+static inline void lz_rep_update(uint32_t rep[3], uint32_t off) {
+    if (off == rep[0]) return;
+    if (off == rep[1]) {
+        uint32_t t = rep[0]; rep[0] = rep[1]; rep[1] = t;
+        return;
+    }
+    if (off == rep[2]) {
+        uint32_t t = rep[2]; rep[2] = rep[1]; rep[1] = rep[0]; rep[0] = t;
+        return;
+    }
+    rep[2] = rep[1]; rep[1] = rep[0]; rep[0] = off;
+}
+
 /* Specialized fast path: flat hash, no lazy, accelerating step on misses.
  * zstd-style: after consecutive misses, step grows so we skip positions.
  * On low-compressibility data this is 3-5x faster than hashing every byte.
@@ -531,16 +618,59 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
 
     uint32_t sp = 0;
     uint32_t lit_start = 0;
+    /* Start rep state empty (all zeros). lz_rep_probe treats 0 slots as
+     * unfilled and skips them; each slot becomes live only after a real
+     * match has been emitted and promoted in via lz_rep_update. See the
+     * long comment in lz_rep_probe for why synthetic inits like (1,4,8)
+     * break LZ_STREAMS's stride-shift detection on aligned f64 inputs. */
+    uint32_t rep[3] = { 0u, 0u, 0u };
 
     while (sp < src_size) {
         uint32_t match_off = 0;
-        uint32_t match_len = lz_find_best_match(src, src_size, sp,
-                                                 htab, chain_prev,
-                                                 chain_depth, &match_off);
+        uint32_t match_len = 0;
+        int is_rep_hit = 0;
+
+        /* Probe both rep-at-literal and the hash chain; pick the better.
+         *
+         * Rep matches encode with a 1-symbol offset (0 extra bits) vs
+         * ~10-20 extra bits for a novel offset in the common log2 buckets.
+         * For rep and hash at the same match length, rep is strictly
+         * cheaper. Conservative rule: take rep only when it matches or
+         * beats the hash length. This keeps ratio monotone vs the pre-rep
+         * baseline on non-periodic data (hash wins every strict comparison)
+         * while letting rep dominate on periodic data (the hash usually
+         * finds the same length at a noisier offset).
+         *
+         * Rep is also preferred when it ties a hash match of LZ_MIN_MATCH —
+         * the ultra-cheap rep offset makes the match worth keeping where
+         * the equivalent novel-offset match might not break even. */
+        uint32_t rep_off = 0;
+        uint32_t rep_len = lz_rep_probe(src, src_size, sp, rep, &rep_off);
+        uint32_t hash_off = 0;
+        uint32_t hash_len = lz_find_best_match(src, src_size, sp,
+                                                htab, chain_prev,
+                                                chain_depth, &hash_off);
+
+        if (rep_len >= LZ_MIN_MATCH && rep_len >= hash_len) {
+            match_len = rep_len;
+            match_off = rep_off;
+            is_rep_hit = 1;
+        } else {
+            match_len = hash_len;
+            match_off = hash_off;
+        }
 
         /* Lazy matching: if enabled, check whether position sp+1 yields a
          * strictly longer match. If so, emit sp as a literal and take the
-         * better match at sp+1. This repeats up to lazy_depth times. */
+         * better match at sp+1. This repeats up to lazy_depth times.
+         *
+         * Runs even on rep hits. A rep-at-sp that wins the length race
+         * against a short hash match at sp is still vulnerable to a much
+         * longer hash match at sp+1 — losing that lazy win on noisy data
+         * (temperature/streamflow) costs ratio. When the rep is truly
+         * dominant (length matches the period), next_len at sp+1 won't
+         * strictly exceed cur_len and the loop breaks on the first probe. */
+        (void)is_rep_hit;
         if (match_len >= LZ_MIN_MATCH && lazy_depth > 0) {
             uint32_t cur_pos = sp;
             uint32_t cur_len = match_len;
@@ -598,6 +728,11 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
             seqs[seq_count].match_len = match_len;
             seqs[seq_count].match_off = match_off;
             seq_count++;
+
+            /* Update MRU rep state. Kept in sync with the serializer's
+             * re-computation (lz_streams.c lzs_repcode_encode) so both
+             * ends assign the same code to each match_off. */
+            lz_rep_update(rep, match_off);
 
             /* Insert positions within the match into the hash chain so
              * future matches can reference them. Every 4th position is a

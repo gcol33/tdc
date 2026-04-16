@@ -744,10 +744,11 @@ static inline int64_t lz_opt_novel_cost(uint32_t off) {
     return base + (int64_t)lg * 8;
 }
 
-/* Initial repcode values (must match lz_streams.c). */
-#define LZ_OPT_REP_INIT_1   1u
-#define LZ_OPT_REP_INIT_2   4u
-#define LZ_OPT_REP_INIT_3   8u
+/* Repcode init values live in lz_internal.h (shared with greedy parser
+ * in lz.c and streams serializer in lz_streams.c). */
+#define LZ_OPT_REP_INIT_1   LZ_REP_INIT_1
+#define LZ_OPT_REP_INIT_2   LZ_REP_INIT_2
+#define LZ_OPT_REP_INIT_3   LZ_REP_INIT_3
 
 /* Rep state at each DP position. Stored in a parallel array. */
 typedef struct {

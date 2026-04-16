@@ -139,10 +139,12 @@ static int lzs_timing_enabled(void) {
 #define LZS_LIT_N_CTX         16u
 #define LZS_LIT_CTX_HDR_SIZE  (LZS_LIT_N_CTX + 2u * LZS_LIT_N_CTX * 4u)  /* 144 bytes */
 
-/* Initial repcode values (match zstd's rep-init). */
-#define LZS_REP_INIT_1       1u
-#define LZS_REP_INIT_2       4u
-#define LZS_REP_INIT_3       8u
+/* Repcode init values live in lz_internal.h (shared with lz.c greedy
+ * parser and lz_opt.c optimal parser). Alias the old names locally so
+ * the existing static helpers read naturally. */
+#define LZS_REP_INIT_1       LZ_REP_INIT_1
+#define LZS_REP_INIT_2       LZ_REP_INIT_2
+#define LZS_REP_INIT_3       LZ_REP_INIT_3
 
 /* ----- Log2-prefix offset encoding (format v2) --------------------------- */
 /*

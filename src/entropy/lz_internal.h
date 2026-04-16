@@ -28,6 +28,14 @@ extern "C" {
 #define LZ_MAX_OFFSET  (1u << 22)  /* 4 MiB window — 22-bit offset range */
 #define LZ_HEADER_SIZE 8u          /* uint32 n_sequences + uint32 literals_size */
 
+/* Initial repcode offsets (zstd defaults). Shared by the greedy parser
+ * (rep-at-literal probing in lz.c), the optimal parser (repcode-aware DP
+ * in lz_opt.c), and the streams serializer (MRU transform in lz_streams.c)
+ * so all three start from the same state. */
+#define LZ_REP_INIT_1  1u
+#define LZ_REP_INIT_2  4u
+#define LZ_REP_INIT_3  8u
+
 /* Encoder-side sequence descriptor.
  *   lit_len   — literal bytes emitted before this match (0 .. N)
  *   match_len — actual match length, >= LZ_MIN_MATCH
