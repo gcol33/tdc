@@ -82,6 +82,473 @@
 #include <stdint.h>
 #include <string.h>
 
+/* ----- SIMD: row / slab / inner-box kernels ------------------------------ *
+ *
+ * Every helper is modular at element width `esz` (1/2/4/8 bytes). The
+ * scalar path computes in a signed wider working type and truncates on
+ * store — the residual written to memory is the same bit pattern as the
+ * element-width modular computation, so SIMDing at native element width
+ * is bit-equivalent without ever needing sign extension.
+ *
+ * Three kernels cover every vectorizable site in pred3d_{enc,dec}:
+ *
+ *   sub_row     r[i] = a[i] - b[i]        — LEFT/UP/FRONT encode
+ *   add_row     d[i] = r[i] + b[i]        — UP/FRONT decode
+ *   grad3d_enc  r[x] = val - pred         — GRAD3D inner-box (O8) encode
+ *
+ * AVG3 inner-box stays scalar: its `(a+b+c)/3` step needs wider lanes
+ * and magic-multiply for SIMD, and AUTO picks GRAD3D on smooth data
+ * where the hot bench rows live. PAETH3D inner-box stays scalar: the
+ * branchy tie-break chain is not worth vectorizing relative to the
+ * Paeth-lite gain already built into pred2d. Decode LEFT/AVG3/GRAD3D/
+ * PAETH3D inner-box stays scalar because `a = dst[x-1]` is an
+ * intrinsic read-after-write dependency.
+ */
+#if defined(__SSE2__) || defined(_M_X64) || \
+    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#  include <emmintrin.h>
+#  define TDC_PRED3D_HAVE_SSE2 1
+#endif
+
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#  include <arm_neon.h>
+#  define TDC_PRED3D_HAVE_NEON 1
+#endif
+
+#ifdef TDC_PRED3D_HAVE_SSE2
+
+static void pred3d_sub_row_sse2(uint8_t *dst, const uint8_t *a,
+                                const uint8_t *b,
+                                size_t nbytes, size_t esz) {
+    size_t i = 0;
+    if (esz == 1) {
+        for (; i + 16 <= nbytes; i += 16) {
+            __m128i va = _mm_loadu_si128((const __m128i *)(a + i));
+            __m128i vb = _mm_loadu_si128((const __m128i *)(b + i));
+            _mm_storeu_si128((__m128i *)(dst + i), _mm_sub_epi8(va, vb));
+        }
+        for (; i < nbytes; ++i) dst[i] = (uint8_t)(a[i] - b[i]);
+    } else if (esz == 2) {
+        for (; i + 16 <= nbytes; i += 16) {
+            __m128i va = _mm_loadu_si128((const __m128i *)(a + i));
+            __m128i vb = _mm_loadu_si128((const __m128i *)(b + i));
+            _mm_storeu_si128((__m128i *)(dst + i), _mm_sub_epi16(va, vb));
+        }
+        for (; i + 2 <= nbytes; i += 2) {
+            uint16_t x, y;
+            memcpy(&x, a + i, 2); memcpy(&y, b + i, 2);
+            uint16_t r = (uint16_t)(x - y);
+            memcpy(dst + i, &r, 2);
+        }
+    } else if (esz == 4) {
+        for (; i + 16 <= nbytes; i += 16) {
+            __m128i va = _mm_loadu_si128((const __m128i *)(a + i));
+            __m128i vb = _mm_loadu_si128((const __m128i *)(b + i));
+            _mm_storeu_si128((__m128i *)(dst + i), _mm_sub_epi32(va, vb));
+        }
+        for (; i + 4 <= nbytes; i += 4) {
+            uint32_t x, y;
+            memcpy(&x, a + i, 4); memcpy(&y, b + i, 4);
+            uint32_t r = x - y;
+            memcpy(dst + i, &r, 4);
+        }
+    } else { /* esz == 8 */
+        for (; i + 16 <= nbytes; i += 16) {
+            __m128i va = _mm_loadu_si128((const __m128i *)(a + i));
+            __m128i vb = _mm_loadu_si128((const __m128i *)(b + i));
+            _mm_storeu_si128((__m128i *)(dst + i), _mm_sub_epi64(va, vb));
+        }
+        for (; i + 8 <= nbytes; i += 8) {
+            uint64_t x, y;
+            memcpy(&x, a + i, 8); memcpy(&y, b + i, 8);
+            uint64_t r = x - y;
+            memcpy(dst + i, &r, 8);
+        }
+    }
+}
+
+static void pred3d_add_row_sse2(uint8_t *dst, const uint8_t *a,
+                                const uint8_t *b,
+                                size_t nbytes, size_t esz) {
+    size_t i = 0;
+    if (esz == 1) {
+        for (; i + 16 <= nbytes; i += 16) {
+            __m128i va = _mm_loadu_si128((const __m128i *)(a + i));
+            __m128i vb = _mm_loadu_si128((const __m128i *)(b + i));
+            _mm_storeu_si128((__m128i *)(dst + i), _mm_add_epi8(va, vb));
+        }
+        for (; i < nbytes; ++i) dst[i] = (uint8_t)(a[i] + b[i]);
+    } else if (esz == 2) {
+        for (; i + 16 <= nbytes; i += 16) {
+            __m128i va = _mm_loadu_si128((const __m128i *)(a + i));
+            __m128i vb = _mm_loadu_si128((const __m128i *)(b + i));
+            _mm_storeu_si128((__m128i *)(dst + i), _mm_add_epi16(va, vb));
+        }
+        for (; i + 2 <= nbytes; i += 2) {
+            uint16_t x, y;
+            memcpy(&x, a + i, 2); memcpy(&y, b + i, 2);
+            uint16_t r = (uint16_t)(x + y);
+            memcpy(dst + i, &r, 2);
+        }
+    } else if (esz == 4) {
+        for (; i + 16 <= nbytes; i += 16) {
+            __m128i va = _mm_loadu_si128((const __m128i *)(a + i));
+            __m128i vb = _mm_loadu_si128((const __m128i *)(b + i));
+            _mm_storeu_si128((__m128i *)(dst + i), _mm_add_epi32(va, vb));
+        }
+        for (; i + 4 <= nbytes; i += 4) {
+            uint32_t x, y;
+            memcpy(&x, a + i, 4); memcpy(&y, b + i, 4);
+            uint32_t r = x + y;
+            memcpy(dst + i, &r, 4);
+        }
+    } else { /* esz == 8 */
+        for (; i + 16 <= nbytes; i += 16) {
+            __m128i va = _mm_loadu_si128((const __m128i *)(a + i));
+            __m128i vb = _mm_loadu_si128((const __m128i *)(b + i));
+            _mm_storeu_si128((__m128i *)(dst + i), _mm_add_epi64(va, vb));
+        }
+        for (; i + 8 <= nbytes; i += 8) {
+            uint64_t x, y;
+            memcpy(&x, a + i, 8); memcpy(&y, b + i, 8);
+            uint64_t r = x + y;
+            memcpy(dst + i, &r, 8);
+        }
+    }
+}
+
+/* GRAD3D inner-box (O8) encode, one row.
+ *
+ * Pointers are element-0 of the row for each neighbor plane:
+ *   s     = row at (z,   y  )   (val)
+ *   sy    = row at (z,   y-1)
+ *   sz    = row at (z-1, y  )
+ *   syz   = row at (z-1, y-1)
+ * The helper walks x=1..nx-1, reading s[x-1] etc. as shifted loads.
+ *
+ * Identity (modular at element width):
+ *   res = val - (a + b + c - ab - ac - bc + abc)
+ *       = val - a - b - c + ab + ac + bc - abc
+ * with
+ *   val = s[x], a = s[x-1],
+ *   b   = sy[x], ab = sy[x-1],
+ *   c   = sz[x], ac = sz[x-1],
+ *   bc  = syz[x], abc = syz[x-1].
+ */
+static void pred3d_grad3d_enc_row_sse2(
+    uint8_t       *dst,
+    const uint8_t *s,   const uint8_t *sy,
+    const uint8_t *sz,  const uint8_t *syz,
+    int64_t nx, size_t esz) {
+    if (nx < 2) return;
+    const size_t nbytes = (size_t)(nx - 1) * esz;
+    uint8_t       *rp   = dst + esz;        /* writes start at x=1     */
+    const uint8_t *p_s  = s   + esz, *p_sm  = s;    /* s[x], s[x-1]    */
+    const uint8_t *p_sy = sy  + esz, *p_sym = sy;   /* sy[x], sy[x-1]  */
+    const uint8_t *p_sz = sz  + esz, *p_szm = sz;   /* sz[x], sz[x-1]  */
+    const uint8_t *p_sz2= syz + esz, *p_sz2m= syz;  /* syz[x], syz[x-1]*/
+    size_t i = 0;
+
+#define VEC_STEP(ADD, SUB) \
+    do { \
+        __m128i vs   = _mm_loadu_si128((const __m128i *)(p_s   + i)); \
+        __m128i vsm  = _mm_loadu_si128((const __m128i *)(p_sm  + i)); \
+        __m128i vsy  = _mm_loadu_si128((const __m128i *)(p_sy  + i)); \
+        __m128i vsym = _mm_loadu_si128((const __m128i *)(p_sym + i)); \
+        __m128i vsz  = _mm_loadu_si128((const __m128i *)(p_sz  + i)); \
+        __m128i vszm = _mm_loadu_si128((const __m128i *)(p_szm + i)); \
+        __m128i vsyz = _mm_loadu_si128((const __m128i *)(p_sz2 + i)); \
+        __m128i vsyzm= _mm_loadu_si128((const __m128i *)(p_sz2m+ i)); \
+        __m128i t = SUB(vs,  vsm); \
+        t = SUB(t, vsy); \
+        t = SUB(t, vsz); \
+        t = ADD(t, vsym); \
+        t = ADD(t, vszm); \
+        t = ADD(t, vsyz); \
+        t = SUB(t, vsyzm); \
+        _mm_storeu_si128((__m128i *)(rp + i), t); \
+    } while (0)
+
+    if (esz == 1) {
+        for (; i + 16 <= nbytes; i += 16) VEC_STEP(_mm_add_epi8, _mm_sub_epi8);
+        for (; i < nbytes; ++i) {
+            uint8_t r = (uint8_t)(p_s[i] - p_sm[i] - p_sy[i] - p_sz[i]
+                                 + p_sym[i] + p_szm[i] + p_sz2[i] - p_sz2m[i]);
+            rp[i] = r;
+        }
+    } else if (esz == 2) {
+        for (; i + 16 <= nbytes; i += 16) VEC_STEP(_mm_add_epi16, _mm_sub_epi16);
+        for (; i + 2 <= nbytes; i += 2) {
+            uint16_t a0, a1, a2, a3, a4, a5, a6, a7;
+            memcpy(&a0, p_s   + i, 2); memcpy(&a1, p_sm   + i, 2);
+            memcpy(&a2, p_sy  + i, 2); memcpy(&a3, p_sym  + i, 2);
+            memcpy(&a4, p_sz  + i, 2); memcpy(&a5, p_szm  + i, 2);
+            memcpy(&a6, p_sz2 + i, 2); memcpy(&a7, p_sz2m + i, 2);
+            uint16_t r = (uint16_t)(a0 - a1 - a2 - a4 + a3 + a5 + a6 - a7);
+            memcpy(rp + i, &r, 2);
+        }
+    } else if (esz == 4) {
+        for (; i + 16 <= nbytes; i += 16) VEC_STEP(_mm_add_epi32, _mm_sub_epi32);
+        for (; i + 4 <= nbytes; i += 4) {
+            uint32_t a0, a1, a2, a3, a4, a5, a6, a7;
+            memcpy(&a0, p_s   + i, 4); memcpy(&a1, p_sm   + i, 4);
+            memcpy(&a2, p_sy  + i, 4); memcpy(&a3, p_sym  + i, 4);
+            memcpy(&a4, p_sz  + i, 4); memcpy(&a5, p_szm  + i, 4);
+            memcpy(&a6, p_sz2 + i, 4); memcpy(&a7, p_sz2m + i, 4);
+            uint32_t r = a0 - a1 - a2 - a4 + a3 + a5 + a6 - a7;
+            memcpy(rp + i, &r, 4);
+        }
+    } else { /* esz == 8 */
+        for (; i + 16 <= nbytes; i += 16) VEC_STEP(_mm_add_epi64, _mm_sub_epi64);
+        for (; i + 8 <= nbytes; i += 8) {
+            uint64_t a0, a1, a2, a3, a4, a5, a6, a7;
+            memcpy(&a0, p_s   + i, 8); memcpy(&a1, p_sm   + i, 8);
+            memcpy(&a2, p_sy  + i, 8); memcpy(&a3, p_sym  + i, 8);
+            memcpy(&a4, p_sz  + i, 8); memcpy(&a5, p_szm  + i, 8);
+            memcpy(&a6, p_sz2 + i, 8); memcpy(&a7, p_sz2m + i, 8);
+            uint64_t r = a0 - a1 - a2 - a4 + a3 + a5 + a6 - a7;
+            memcpy(rp + i, &r, 8);
+        }
+    }
+#undef VEC_STEP
+}
+#endif /* TDC_PRED3D_HAVE_SSE2 */
+
+#ifdef TDC_PRED3D_HAVE_NEON
+
+static void pred3d_sub_row_neon(uint8_t *dst, const uint8_t *a,
+                                const uint8_t *b,
+                                size_t nbytes, size_t esz) {
+    size_t i = 0;
+    if (esz == 1) {
+        for (; i + 16 <= nbytes; i += 16) {
+            uint8x16_t va = vld1q_u8(a + i);
+            uint8x16_t vb = vld1q_u8(b + i);
+            vst1q_u8(dst + i, vsubq_u8(va, vb));
+        }
+        for (; i < nbytes; ++i) dst[i] = (uint8_t)(a[i] - b[i]);
+    } else if (esz == 2) {
+        for (; i + 16 <= nbytes; i += 16) {
+            uint16x8_t va = vld1q_u16((const uint16_t *)(a + i));
+            uint16x8_t vb = vld1q_u16((const uint16_t *)(b + i));
+            vst1q_u16((uint16_t *)(dst + i), vsubq_u16(va, vb));
+        }
+        for (; i + 2 <= nbytes; i += 2) {
+            uint16_t x, y;
+            memcpy(&x, a + i, 2); memcpy(&y, b + i, 2);
+            uint16_t r = (uint16_t)(x - y);
+            memcpy(dst + i, &r, 2);
+        }
+    } else if (esz == 4) {
+        for (; i + 16 <= nbytes; i += 16) {
+            uint32x4_t va = vld1q_u32((const uint32_t *)(a + i));
+            uint32x4_t vb = vld1q_u32((const uint32_t *)(b + i));
+            vst1q_u32((uint32_t *)(dst + i), vsubq_u32(va, vb));
+        }
+        for (; i + 4 <= nbytes; i += 4) {
+            uint32_t x, y;
+            memcpy(&x, a + i, 4); memcpy(&y, b + i, 4);
+            uint32_t r = x - y;
+            memcpy(dst + i, &r, 4);
+        }
+    } else {
+        for (; i + 16 <= nbytes; i += 16) {
+            uint64x2_t va = vld1q_u64((const uint64_t *)(a + i));
+            uint64x2_t vb = vld1q_u64((const uint64_t *)(b + i));
+            vst1q_u64((uint64_t *)(dst + i), vsubq_u64(va, vb));
+        }
+        for (; i + 8 <= nbytes; i += 8) {
+            uint64_t x, y;
+            memcpy(&x, a + i, 8); memcpy(&y, b + i, 8);
+            uint64_t r = x - y;
+            memcpy(dst + i, &r, 8);
+        }
+    }
+}
+
+static void pred3d_add_row_neon(uint8_t *dst, const uint8_t *a,
+                                const uint8_t *b,
+                                size_t nbytes, size_t esz) {
+    size_t i = 0;
+    if (esz == 1) {
+        for (; i + 16 <= nbytes; i += 16) {
+            uint8x16_t va = vld1q_u8(a + i);
+            uint8x16_t vb = vld1q_u8(b + i);
+            vst1q_u8(dst + i, vaddq_u8(va, vb));
+        }
+        for (; i < nbytes; ++i) dst[i] = (uint8_t)(a[i] + b[i]);
+    } else if (esz == 2) {
+        for (; i + 16 <= nbytes; i += 16) {
+            uint16x8_t va = vld1q_u16((const uint16_t *)(a + i));
+            uint16x8_t vb = vld1q_u16((const uint16_t *)(b + i));
+            vst1q_u16((uint16_t *)(dst + i), vaddq_u16(va, vb));
+        }
+        for (; i + 2 <= nbytes; i += 2) {
+            uint16_t x, y;
+            memcpy(&x, a + i, 2); memcpy(&y, b + i, 2);
+            uint16_t r = (uint16_t)(x + y);
+            memcpy(dst + i, &r, 2);
+        }
+    } else if (esz == 4) {
+        for (; i + 16 <= nbytes; i += 16) {
+            uint32x4_t va = vld1q_u32((const uint32_t *)(a + i));
+            uint32x4_t vb = vld1q_u32((const uint32_t *)(b + i));
+            vst1q_u32((uint32_t *)(dst + i), vaddq_u32(va, vb));
+        }
+        for (; i + 4 <= nbytes; i += 4) {
+            uint32_t x, y;
+            memcpy(&x, a + i, 4); memcpy(&y, b + i, 4);
+            uint32_t r = x + y;
+            memcpy(dst + i, &r, 4);
+        }
+    } else {
+        for (; i + 16 <= nbytes; i += 16) {
+            uint64x2_t va = vld1q_u64((const uint64_t *)(a + i));
+            uint64x2_t vb = vld1q_u64((const uint64_t *)(b + i));
+            vst1q_u64((uint64_t *)(dst + i), vaddq_u64(va, vb));
+        }
+        for (; i + 8 <= nbytes; i += 8) {
+            uint64_t x, y;
+            memcpy(&x, a + i, 8); memcpy(&y, b + i, 8);
+            uint64_t r = x + y;
+            memcpy(dst + i, &r, 8);
+        }
+    }
+}
+
+static void pred3d_grad3d_enc_row_neon(
+    uint8_t       *dst,
+    const uint8_t *s,   const uint8_t *sy,
+    const uint8_t *sz,  const uint8_t *syz,
+    int64_t nx, size_t esz) {
+    if (nx < 2) return;
+    const size_t nbytes = (size_t)(nx - 1) * esz;
+    uint8_t       *rp   = dst + esz;
+    const uint8_t *p_s  = s   + esz, *p_sm  = s;
+    const uint8_t *p_sy = sy  + esz, *p_sym = sy;
+    const uint8_t *p_sz = sz  + esz, *p_szm = sz;
+    const uint8_t *p_sz2= syz + esz, *p_sz2m= syz;
+    size_t i = 0;
+
+#define VEC_STEP_NEON(LD, ST, ADD, SUB, TY) \
+    do { \
+        TY vs   = LD((const void *)(p_s   + i)); \
+        TY vsm  = LD((const void *)(p_sm  + i)); \
+        TY vsy  = LD((const void *)(p_sy  + i)); \
+        TY vsym = LD((const void *)(p_sym + i)); \
+        TY vsz  = LD((const void *)(p_sz  + i)); \
+        TY vszm = LD((const void *)(p_szm + i)); \
+        TY vsyz = LD((const void *)(p_sz2 + i)); \
+        TY vsyzm= LD((const void *)(p_sz2m+ i)); \
+        TY t = SUB(vs,  vsm); \
+        t = SUB(t, vsy); \
+        t = SUB(t, vsz); \
+        t = ADD(t, vsym); \
+        t = ADD(t, vszm); \
+        t = ADD(t, vsyz); \
+        t = SUB(t, vsyzm); \
+        ST((void *)(rp + i), t); \
+    } while (0)
+
+    if (esz == 1) {
+        for (; i + 16 <= nbytes; i += 16)
+            VEC_STEP_NEON(vld1q_u8, vst1q_u8, vaddq_u8, vsubq_u8, uint8x16_t);
+        for (; i < nbytes; ++i) {
+            uint8_t r = (uint8_t)(p_s[i] - p_sm[i] - p_sy[i] - p_sz[i]
+                                 + p_sym[i] + p_szm[i] + p_sz2[i] - p_sz2m[i]);
+            rp[i] = r;
+        }
+    } else if (esz == 2) {
+#define LD16(p) vld1q_u16((const uint16_t *)(p))
+#define ST16(p, v) vst1q_u16((uint16_t *)(p), (v))
+        for (; i + 16 <= nbytes; i += 16)
+            VEC_STEP_NEON(LD16, ST16, vaddq_u16, vsubq_u16, uint16x8_t);
+#undef LD16
+#undef ST16
+        for (; i + 2 <= nbytes; i += 2) {
+            uint16_t a0,a1,a2,a3,a4,a5,a6,a7;
+            memcpy(&a0, p_s   + i, 2); memcpy(&a1, p_sm   + i, 2);
+            memcpy(&a2, p_sy  + i, 2); memcpy(&a3, p_sym  + i, 2);
+            memcpy(&a4, p_sz  + i, 2); memcpy(&a5, p_szm  + i, 2);
+            memcpy(&a6, p_sz2 + i, 2); memcpy(&a7, p_sz2m + i, 2);
+            uint16_t r = (uint16_t)(a0 - a1 - a2 - a4 + a3 + a5 + a6 - a7);
+            memcpy(rp + i, &r, 2);
+        }
+    } else if (esz == 4) {
+#define LD32(p) vld1q_u32((const uint32_t *)(p))
+#define ST32(p, v) vst1q_u32((uint32_t *)(p), (v))
+        for (; i + 16 <= nbytes; i += 16)
+            VEC_STEP_NEON(LD32, ST32, vaddq_u32, vsubq_u32, uint32x4_t);
+#undef LD32
+#undef ST32
+        for (; i + 4 <= nbytes; i += 4) {
+            uint32_t a0,a1,a2,a3,a4,a5,a6,a7;
+            memcpy(&a0, p_s   + i, 4); memcpy(&a1, p_sm   + i, 4);
+            memcpy(&a2, p_sy  + i, 4); memcpy(&a3, p_sym  + i, 4);
+            memcpy(&a4, p_sz  + i, 4); memcpy(&a5, p_szm  + i, 4);
+            memcpy(&a6, p_sz2 + i, 4); memcpy(&a7, p_sz2m + i, 4);
+            uint32_t r = a0 - a1 - a2 - a4 + a3 + a5 + a6 - a7;
+            memcpy(rp + i, &r, 4);
+        }
+    } else {
+#define LD64(p) vld1q_u64((const uint64_t *)(p))
+#define ST64(p, v) vst1q_u64((uint64_t *)(p), (v))
+        for (; i + 16 <= nbytes; i += 16)
+            VEC_STEP_NEON(LD64, ST64, vaddq_u64, vsubq_u64, uint64x2_t);
+#undef LD64
+#undef ST64
+        for (; i + 8 <= nbytes; i += 8) {
+            uint64_t a0,a1,a2,a3,a4,a5,a6,a7;
+            memcpy(&a0, p_s   + i, 8); memcpy(&a1, p_sm   + i, 8);
+            memcpy(&a2, p_sy  + i, 8); memcpy(&a3, p_sym  + i, 8);
+            memcpy(&a4, p_sz  + i, 8); memcpy(&a5, p_szm  + i, 8);
+            memcpy(&a6, p_sz2 + i, 8); memcpy(&a7, p_sz2m + i, 8);
+            uint64_t r = a0 - a1 - a2 - a4 + a3 + a5 + a6 - a7;
+            memcpy(rp + i, &r, 8);
+        }
+    }
+#undef VEC_STEP_NEON
+}
+
+#endif /* TDC_PRED3D_HAVE_NEON */
+
+/* Dispatch shims used inside DEFINE_PRED3D_TYPED. */
+#if defined(TDC_PRED3D_HAVE_SSE2)
+#  define PRED3D_SUB_ROW(dst, a, b, nb, esz) \
+     pred3d_sub_row_sse2((uint8_t *)(dst), (const uint8_t *)(a), \
+                         (const uint8_t *)(b), (nb), (esz))
+#  define PRED3D_ADD_ROW(dst, a, b, nb, esz) \
+     pred3d_add_row_sse2((uint8_t *)(dst), (const uint8_t *)(a), \
+                         (const uint8_t *)(b), (nb), (esz))
+#  define PRED3D_GRAD3D_ENC_ROW(dst, s, sy, sz, syz, nx, esz) \
+     pred3d_grad3d_enc_row_sse2((uint8_t *)(dst), \
+         (const uint8_t *)(s), (const uint8_t *)(sy), \
+         (const uint8_t *)(sz), (const uint8_t *)(syz), (nx), (esz))
+#  define PRED3D_HAVE_SIMD 1
+#elif defined(TDC_PRED3D_HAVE_NEON)
+#  define PRED3D_SUB_ROW(dst, a, b, nb, esz) \
+     pred3d_sub_row_neon((uint8_t *)(dst), (const uint8_t *)(a), \
+                         (const uint8_t *)(b), (nb), (esz))
+#  define PRED3D_ADD_ROW(dst, a, b, nb, esz) \
+     pred3d_add_row_neon((uint8_t *)(dst), (const uint8_t *)(a), \
+                         (const uint8_t *)(b), (nb), (esz))
+#  define PRED3D_GRAD3D_ENC_ROW(dst, s, sy, sz, syz, nx, esz) \
+     pred3d_grad3d_enc_row_neon((uint8_t *)(dst), \
+         (const uint8_t *)(s), (const uint8_t *)(sy), \
+         (const uint8_t *)(sz), (const uint8_t *)(syz), (nx), (esz))
+#  define PRED3D_HAVE_SIMD 1
+#else
+#  define PRED3D_HAVE_SIMD 0
+#endif
+
+#if PRED3D_HAVE_SIMD
+#  define IF_SIMD(code)   code
+#  define IF_NOSIMD(code)
+#else
+#  define IF_SIMD(code)
+#  define IF_NOSIMD(code) code
+#endif
+
 /* ----- Acceptance bitmasks ----------------------------------------------- */
 
 #define PRED3D_ACCEPTED_DTYPES (         \
@@ -163,11 +630,14 @@ static void pred3d_enc_##SUFFIX(tdc_pred3d_kind kind,                          \
                     const T *s = src + z * slab + y * nx;                      \
                     T       *r = res + z * slab + y * nx;                      \
                     *(U *)&r[0] = (U)(W)s[0];                                  \
-                    for (int64_t x = 1; x < nx; ++x) {                         \
+IF_SIMD(            PRED3D_SUB_ROW(r + 1, s + 1, s,                            \
+                         (size_t)(nx > 1 ? nx - 1 : 0) * sizeof(T),            \
+                         sizeof(T));)                                          \
+IF_NOSIMD(          for (int64_t x = 1; x < nx; ++x) {                         \
                         W val  = (W)s[x];                                      \
                         W left = (W)s[x - 1];                                  \
                         *(U *)&r[x] = (U)(val - left);                         \
-                    }                                                          \
+                    })                                                         \
                 }                                                              \
             }                                                                  \
             break;                                                             \
@@ -184,11 +654,12 @@ static void pred3d_enc_##SUFFIX(tdc_pred3d_kind kind,                          \
                     const T *s  = src + z * slab + y       * nx;               \
                     const T *sy = src + z * slab + (y - 1) * nx;               \
                     T       *r  = res + z * slab + y       * nx;               \
-                    for (int64_t x = 0; x < nx; ++x) {                         \
+IF_SIMD(            PRED3D_SUB_ROW(r, s, sy, (size_t)nx * sizeof(T), sizeof(T));)\
+IF_NOSIMD(          for (int64_t x = 0; x < nx; ++x) {                         \
                         W val = (W)s[x];                                       \
                         W up  = (W)sy[x];                                      \
                         *(U *)&r[x] = (U)(val - up);                           \
-                    }                                                          \
+                    })                                                         \
                 }                                                              \
             }                                                                  \
             break;                                                             \
@@ -204,11 +675,12 @@ static void pred3d_enc_##SUFFIX(tdc_pred3d_kind kind,                          \
                 const T *s  = src + z       * slab;                            \
                 const T *sz = src + (z - 1) * slab;                            \
                 T       *r  = res + z       * slab;                            \
-                for (int64_t i = 0; i < slab; ++i) {                           \
+IF_SIMD(        PRED3D_SUB_ROW(r, s, sz, (size_t)slab * sizeof(T), sizeof(T));)\
+IF_NOSIMD(      for (int64_t i = 0; i < slab; ++i) {                           \
                     W val   = (W)s[i];                                         \
                     W front = (W)sz[i];                                        \
                     *(U *)&r[i] = (U)(val - front);                            \
-                }                                                              \
+                })                                                             \
             }                                                                  \
             break;                                                             \
         }                                                                      \
@@ -357,7 +829,9 @@ static void pred3d_enc_##SUFFIX(tdc_pred3d_kind kind,                          \
                     const T *sz  = src + (z - 1) * slab + y       * nx;        \
                     const T *syz = src + (z - 1) * slab + (y - 1) * nx;        \
                     T       *r   = res + z       * slab + y       * nx;        \
-                    for (int64_t x = 1; x < nx; ++x) {                         \
+                    /* x=0 column handled in O7 above */                       \
+IF_SIMD(            PRED3D_GRAD3D_ENC_ROW(r, s, sy, sz, syz, nx, sizeof(T));)  \
+IF_NOSIMD(          for (int64_t x = 1; x < nx; ++x) {                         \
                         W val = (W)s[x];                                       \
                         W a   = (W)s[x - 1];                                   \
                         W b   = (W)sy[x];                                      \
@@ -368,7 +842,7 @@ static void pred3d_enc_##SUFFIX(tdc_pred3d_kind kind,                          \
                         W abc = (W)syz[x - 1];                                 \
                         W pred = a + b + c - ab - ac - bc + abc;               \
                         *(U *)&r[x] = (U)(val - pred);                         \
-                    }                                                          \
+                    })                                                         \
                 }                                                              \
             }                                                                  \
             break;                                                             \
@@ -497,11 +971,12 @@ static void pred3d_dec_##SUFFIX(tdc_pred3d_kind kind,                          \
                     const T *r  = res + z * slab + y       * nx;               \
                     T       *d  = dst + z * slab + y       * nx;               \
                     const T *dy = dst + z * slab + (y - 1) * nx;               \
-                    for (int64_t x = 0; x < nx; ++x) {                         \
+IF_SIMD(            PRED3D_ADD_ROW(d, r, dy, (size_t)nx * sizeof(T), sizeof(T));)\
+IF_NOSIMD(          for (int64_t x = 0; x < nx; ++x) {                         \
                         W rv = (W)r[x];                                        \
                         W up = (W)dy[x];                                       \
                         *(U *)&d[x] = (U)(rv + up);                            \
-                    }                                                          \
+                    })                                                         \
                 }                                                              \
             }                                                                  \
             break;                                                             \
@@ -517,11 +992,12 @@ static void pred3d_dec_##SUFFIX(tdc_pred3d_kind kind,                          \
                 const T *r  = res + z       * slab;                            \
                 T       *d  = dst + z       * slab;                            \
                 const T *dz = dst + (z - 1) * slab;                            \
-                for (int64_t i = 0; i < slab; ++i) {                           \
+IF_SIMD(        PRED3D_ADD_ROW(d, r, dz, (size_t)slab * sizeof(T), sizeof(T));)\
+IF_NOSIMD(      for (int64_t i = 0; i < slab; ++i) {                           \
                     W rv    = (W)r[i];                                         \
                     W front = (W)dz[i];                                        \
                     *(U *)&d[i] = (U)(rv + front);                             \
-                }                                                              \
+                })                                                             \
             }                                                                  \
             break;                                                             \
         }                                                                      \
