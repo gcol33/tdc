@@ -198,11 +198,16 @@ static inline uint32_t lzs_symbol_to_uint(uint8_t sym, uint32_t extra) {
     return (1u << lg) + extra;
 }
 
-/* Max symbol for lit_len: lit_len can be up to src_size (~1 MiB).
- * floor_log2(1048576) + 1 = 21. */
-#define LZS_MAX_LL_SYMBOL  21u
-/* Max symbol for match_len_m3: up to ~1 MiB - 3. Same range. */
-#define LZS_MAX_ML_SYMBOL  21u
+/* Max symbol for lit_len / match_len_m3. Covers src blocks up to
+ * (1<<25) = 32 MiB (sym 25 encodes [2^24, 2^25-1]). The original cap of
+ * 21 assumed ~1 MiB blocks, but nothing in the pipeline enforced that,
+ * so larger inputs (e.g. DICT_NUMERIC u32 indices from a 1M-elem f64
+ * block → ~4 MiB post-shuffle) silently produced sym 22+ which the
+ * decoder's range check rejected as corrupt. 25 matches
+ * LZS_MAX_OFFSET_SYMBOL and stays within the 25-bit single-read budget
+ * of lzs_br_read. */
+#define LZS_MAX_LL_SYMBOL  25u
+#define LZS_MAX_ML_SYMBOL  25u
 
 /* --- Offset log2-prefix with repcode symbols ----------------------------- */
 
@@ -242,6 +247,7 @@ static const lzs_recon_t LZS_UINT_RECON[LZS_MAX_LL_SYMBOL + 1u] = {
     {1u << 9, 9},  {1u <<10,10},  {1u <<11,11},  {1u <<12,12},
     {1u <<13,13},  {1u <<14,14},  {1u <<15,15},  {1u <<16,16},
     {1u <<17,17},  {1u <<18,18},  {1u <<19,19},  {1u <<20,20},
+    {1u <<21,21},  {1u <<22,22},  {1u <<23,23},  {1u <<24,24},
 };
 
 /* Non-delta offset reconstruct: sym 0..2→(1..3, 0), k≥3→((1<<(k-3))+3, k-3). */

@@ -164,6 +164,21 @@ int main(void) {
         if (check(small, sizeof small, "periodic 64B", 0)) any_fail = 1;
     }
 
+    /* Large-block match-length coverage. Inputs > 2 MiB can produce
+     * match_len symbols above 21, which was the LL/ML cap before it was
+     * raised to 25. Regression guard: DICT_NUMERIC+BSHUF output on real
+     * low-cardinality f64 grids (~4 MiB of shuffled u32 indices, mostly
+     * zero high bytes) hit this path and the decoder returned
+     * TDC_E_CORRUPT until the cap was raised. */
+    {
+        const size_t NBIG = 4u * 1024u * 1024u;
+        uint8_t *big = (uint8_t *)malloc(NBIG);
+        if (!big) { fprintf(stderr, "alloc failed\n"); return 1; }
+        fill_zeros(big, NBIG);
+        if (check(big, NBIG, "all zeros 4MB", 0)) any_fail = 1;
+        free(big);
+    }
+
     free(src);
     if (any_fail) {
         printf("test_lz_streams_roundtrip: FAIL\n");
