@@ -38,6 +38,7 @@
 #include "tdc/entropy.h"
 #include "entropy_internal.h"
 #include "lz_internal.h"
+#include "match_finder.h"
 #include "../core/buffer.h"
 #include "../core/simd.h"
 
@@ -105,6 +106,14 @@ static void lz_free(tdc_buffer *buf, void *p) {
  * source of truth — see src/core/buffer.h. */
 
 /* ----- Match finder primitives ------------------------------------------- */
+/*
+ * lz_hash4 (the 4-byte Fibonacci hash) lives in mf_hashchain.c now, along
+ * with the chain walk, prefetch, and per-position chain insert. The
+ * fast-path below keeps a local copy because it bypasses the vtable for
+ * speed (single-probe, accelerating step, no chain_prev allocation).
+ * Both copies use the same constant (2654435761u) and the same number of
+ * hash bits (LZ_HASH_BITS) so bucket distribution is identical.
+ */
 
 static inline uint32_t lz_hash4(const uint8_t *p) {
     uint32_t h = ((uint32_t)p[0]) |
@@ -291,88 +300,11 @@ tdc_status tdc_lz_serialize_sequences(const uint8_t *src, uint32_t src_size,
  * current position as a literal and take the better match instead).
  */
 
-/* Find the best match at position `pos` by walking the hash chain.
- * Returns match length (0 if no match found). Sets *out_off on success. */
-static uint32_t lz_find_best_match(const uint8_t *src, uint32_t src_size,
-                                    uint32_t pos,
-                                    const uint32_t *htab,
-                                    const uint32_t *chain_prev,
-                                    uint32_t chain_depth,
-                                    uint32_t *out_off) {
-    if (pos + LZ_MIN_MATCH + 1 > src_size)
-        return 0;
-
-    uint32_t h = lz_hash4(src + pos);
-    uint32_t cand = htab[h];
-    uint32_t best_len = LZ_MIN_MATCH - 1;
-    uint32_t best_off = 0;
-    uint32_t max_len = src_size - pos;
-    uint32_t depth = chain_depth + 1; /* +1 because htab[h] is the first candidate */
-
-    while (cand != 0xFFFFFFFF && depth > 0) {
-        if (cand >= pos) goto next_chain;
-        uint32_t off = pos - cand;
-        if (off > LZ_MAX_OFFSET) break; /* further candidates are even older */
-
-        /* Quick rejection: check the byte just past current best length.
-         * This avoids running the full 8-byte compare loop on candidates
-         * that can't beat the current best. */
-        if (best_len >= LZ_MIN_MATCH &&
-            src[cand + best_len] != src[pos + best_len])
-            goto next_chain;
-
-        if (src[cand] == src[pos]) {
-            uint32_t len = 0;
-            while (len + 8 <= max_len) {
-                uint64_t a, b;
-                memcpy(&a, src + pos + len, 8);
-                memcpy(&b, src + cand + len, 8);
-                if (a != b) {
-#if defined(__GNUC__) || defined(__clang__)
-                    len += (uint32_t)(__builtin_ctzll(a ^ b) >> 3);
-#elif defined(_MSC_VER)
-                    unsigned long idx;
-                    _BitScanForward64(&idx, a ^ b);
-                    len += (uint32_t)(idx >> 3);
-#else
-                    uint64_t diff = a ^ b;
-                    while (!(diff & 0xFF)) { diff >>= 8; len++; }
-#endif
-                    goto lz_cand_done;
-                }
-                len += 8;
-            }
-            while (len < max_len && src[pos + len] == src[cand + len])
-                len++;
-            lz_cand_done:;
-            if (len > best_len) {
-                best_len = len;
-                best_off = off;
-                if (len == max_len) break; /* can't do better */
-            }
-        }
-
-    next_chain:
-        cand = (chain_prev != NULL) ? chain_prev[cand] : 0xFFFFFFFF;
-        depth--;
-    }
-
-    if (best_len >= LZ_MIN_MATCH) {
-        *out_off = best_off;
-        return best_len;
-    }
-    return 0;
-}
-
-/* Insert position `pos` into the hash chain. Updates htab and chain_prev. */
-static inline void lz_chain_insert(const uint8_t *src, uint32_t pos,
-                                    uint32_t src_size,
-                                    uint32_t *htab, uint32_t *chain_prev) {
-    if (pos + LZ_MIN_MATCH + 1 > src_size) return;
-    uint32_t h = lz_hash4(src + pos);
-    if (chain_prev != NULL) chain_prev[pos] = htab[h];
-    htab[h] = pos;
-}
+/* lz_find_best_match and lz_chain_insert previously lived here. Both have
+ * been replaced by the match-finder vtable in match_finder.h — the
+ * default backend (mf_hashchain.c) carries the equivalent chain walk and
+ * insert, with extras (per-candidate prefetch, optional extension cap)
+ * that subsume the old optimal-parser variants in one implementation. */
 
 /* Rep-at-literal probe. Tries each of the three remembered offsets
  * (rep[0..2]) and returns the longest rep-hit at `pos` along with its
@@ -589,30 +521,21 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
         return TDC_OK;
     }
 
-    /* Hash table: head of chain per bucket. 0xFFFFFFFF = empty. */
-    uint32_t *htab = (uint32_t *)lz_alloc(dst, LZ_HASH_SIZE * sizeof(uint32_t));
-    if (!htab) return TDC_E_NOMEM;
-    memset(htab, 0xFF, LZ_HASH_SIZE * sizeof(uint32_t));
-
-    /* Chain-prev array: links positions sharing the same hash bucket.
-     * Only allocated when chain_depth > 0; with depth 0 (flat hash) the
-     * htab alone holds the single most recent position per bucket. */
-    uint32_t *chain_prev = NULL;
-    if (chain_depth > 0) {
-        chain_prev = (uint32_t *)lz_alloc(dst, (size_t)src_size * sizeof(uint32_t));
-        if (!chain_prev) {
-            lz_free(dst, htab);
-            return TDC_E_NOMEM;
-        }
-        memset(chain_prev, 0xFF, (size_t)src_size * sizeof(uint32_t));
-    }
+    /* Match finder owns htab + chain_prev allocation. chain_depth here is
+     * "links past htab" — chain_depth == 0 means flat hash (no chain_prev). */
+    const tdc_lz_mf_vt *mf = &tdc_lz_mf_hashchain_vt;
+    tdc_lz_mf_params mf_params = {
+        .chain_depth = chain_depth,
+        .hash_bits   = LZ_HASH_BITS,
+    };
+    tdc_lz_mf_ctx *mf_ctx = mf->create(src, src_size, &mf_params, dst);
+    if (!mf_ctx) return TDC_E_NOMEM;
 
     uint32_t seq_cap = 4096;
     uint32_t seq_count = 0;
     LZSeq *seqs = (LZSeq *)lz_alloc(dst, seq_cap * sizeof(LZSeq));
     if (!seqs) {
-        lz_free(dst, chain_prev);
-        lz_free(dst, htab);
+        mf->destroy(mf_ctx, dst);
         return TDC_E_NOMEM;
     }
 
@@ -628,7 +551,6 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
     while (sp < src_size) {
         uint32_t match_off = 0;
         uint32_t match_len = 0;
-        int is_rep_hit = 0;
 
         /* Probe both rep-at-literal and the hash chain; pick the better.
          *
@@ -647,14 +569,11 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
         uint32_t rep_off = 0;
         uint32_t rep_len = lz_rep_probe(src, src_size, sp, rep, &rep_off);
         uint32_t hash_off = 0;
-        uint32_t hash_len = lz_find_best_match(src, src_size, sp,
-                                                htab, chain_prev,
-                                                chain_depth, &hash_off);
+        uint32_t hash_len = mf->find_best(mf_ctx, sp, 0u, &hash_off);
 
         if (rep_len >= LZ_MIN_MATCH && rep_len >= hash_len) {
             match_len = rep_len;
             match_off = rep_off;
-            is_rep_hit = 1;
         } else {
             match_len = hash_len;
             match_off = hash_off;
@@ -670,7 +589,6 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
          * (temperature/streamflow) costs ratio. When the rep is truly
          * dominant (length matches the period), next_len at sp+1 won't
          * strictly exceed cur_len and the loop breaks on the first probe. */
-        (void)is_rep_hit;
         if (match_len >= LZ_MIN_MATCH && lazy_depth > 0) {
             uint32_t cur_pos = sp;
             uint32_t cur_len = match_len;
@@ -679,12 +597,10 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
             for (uint32_t lazy = 0; lazy < lazy_depth; lazy++) {
                 /* Insert current position before probing the next one,
                  * so that the chain is up to date. */
-                lz_chain_insert(src, cur_pos, src_size, htab, chain_prev);
+                mf->insert(mf_ctx, cur_pos);
 
                 uint32_t next_off = 0;
-                uint32_t next_len = lz_find_best_match(
-                    src, src_size, cur_pos + 1,
-                    htab, chain_prev, chain_depth, &next_off);
+                uint32_t next_len = mf->find_best(mf_ctx, cur_pos + 1, 0u, &next_off);
 
                 if (next_len > cur_len) {
                     /* Better match at next position — skip current as literal. */
@@ -706,7 +622,7 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
             match_off = cur_off;
         }
 
-        lz_chain_insert(src, sp, src_size, htab, chain_prev);
+        mf->insert(mf_ctx, sp);
 
         if (match_len >= LZ_MIN_MATCH) {
             uint32_t pending_lit = sp - lit_start;
@@ -716,8 +632,7 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
                 LZSeq *new_seqs = (LZSeq *)dst->realloc_fn(
                     dst->user, seqs, new_cap * sizeof(LZSeq));
                 if (!new_seqs) {
-                    lz_free(dst, chain_prev);
-                    lz_free(dst, htab);
+                    mf->destroy(mf_ctx, dst);
                     lz_free(dst, seqs);
                     return TDC_E_NOMEM;
                 }
@@ -738,7 +653,7 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
              * future matches can reference them. Every 4th position is a
              * balance between chain quality and insert cost. */
             for (uint32_t i = 1; i < match_len && sp + i + LZ_MIN_MATCH + 1 <= src_size; i += 4) {
-                lz_chain_insert(src, sp + i, src_size, htab, chain_prev);
+                mf->insert(mf_ctx, sp + i);
             }
             sp += match_len;
             lit_start = sp;
@@ -747,8 +662,7 @@ tdc_status tdc_lz_parse_greedy(const uint8_t *src, uint32_t src_size,
         }
     }
 
-    lz_free(dst, chain_prev);
-    lz_free(dst, htab);
+    mf->destroy(mf_ctx, dst);
 
     *out_seqs = seqs;
     *out_seq_count = seq_count;

@@ -136,3 +136,106 @@ wider 8-stream variant. Only pursue if P0–P2 aren't enough.
   chain-depth caps) — that's the right lever.
 - **FSE.** Encode table ops are serial dependency chains; SIMD gains
   are small and the whole FSE row is a fallback, not a hot path.
+
+---
+
+# LZ match-finder abstraction + btree backend (2026-04-17)
+
+## Motivation
+
+Ratio gap to zstd L19 on f64 data (NASA regional −26%, NASA T2M −10%,
+USGS −12%) is **not** window-limited and **not** chain-depth-limited.
+Both tested, both null results:
+
+- Window 4 MiB → 16 MiB: zero ratio change on any pipeline.
+- Chain depth already at documented elbow (`lz_opt.c:60-71`); deeper
+  makes ratio *worse* due to LEB128 offset cost.
+
+Real cause: hash-chain match finder only sees most-recent same-hash
+candidates. Distant matches are invisible unless they happen to be
+among the first N collisions. zstd L19 uses a btree that finds the
+longest match in O(log N) regardless of where in the window it lives.
+
+## Phase A — MF abstraction + hashchain backend
+
+Pure refactor. Zero ratio / throughput change expected. This phase
+exists to give phase B a clean plug-in point.
+
+**Deliverables:**
+
+1. `src/entropy/match_finder.h` — vtable:
+   - `create / find_best / find_multi / insert / destroy`
+   - Params struct with MF-specific knobs (hashchain: `chain_depth`,
+     `hash_bits`; btree: none for v1).
+   - Opaque `tdc_lz_mf_ctx`. Promote `LzOptMatch` from `lz_opt.c`.
+2. `src/entropy/mf_hashchain.c` — extract existing logic:
+   - Move `htab` + `chain_prev` allocation + `chain_insert` here.
+   - Collapse the three near-duplicate chain walks
+     (`lz_find_best_match`, `lz_opt_find_longest`,
+     `lz_opt_find_matches`) into one implementation with two entry
+     points (best vs multi). Kills the copy-paste.
+3. Rewire `lz.c` greedy parser + `lz_opt.c` (all three entry points:
+   optimal-legacy, optimal-streams, optimal-streams-priced) to call
+   through the vtable.
+4. `src/entropy/entropy_internal.h`: `extern const tdc_lz_mf_vt
+   tdc_lz_mf_hashchain_vt;`.
+
+**Acceptance:**
+
+- All 28 ctest pass.
+- `bench_throughput` ratios identical (it's a refactor; ratios must
+  not move). Throughput within ±3% run-to-run noise.
+- No bare malloc in new files (`realloc_fn` via `tdc_buffer`).
+- Clean under MSVC `/W4 /permissive-` and gcc `-Wall -Wextra
+  -Wpedantic`.
+
+**Out of scope for phase A:** plugin-style API, dynamic MF selection
+via env var, any parser behavior change.
+
+## Phase B — btree backend
+
+**Deliverables:**
+
+5. `src/entropy/mf_btree.c` — zstd-style binary-tree match finder:
+   - Keyed by 4-byte prefix; descent accumulates candidates on the path.
+   - Two-pass per position: (a) split on descent, collect matches;
+     (b) link node at leaf.
+   - `tree_prev[src_size]`, `tree_next[src_size]` arrays (same
+     O(src_size) memory as current `chain_prev[]`).
+   - Support the same vtable as hashchain (`find_best` and
+     `find_multi` both fall out of the descent naturally).
+6. Selector: extend `tdc_entropy_params.lz` (or add
+   `tdc_entropy_params.lz_mf`) with `mf_type` enum
+   (`TDC_LZ_MF_HASHCHAIN` = default, `TDC_LZ_MF_BTREE`). Codec spec
+   carries it per-sequence so different pipelines can pick different
+   MFs.
+7. `src/core/registry.c`: dispatch to btree when `mf_type ==
+   TDC_LZ_MF_BTREE`.
+
+**Acceptance:**
+
+- `test_lz_roundtrip`, `test_lz_opt_roundtrip`, `test_lz_streams_roundtrip`
+  pass with `mf_type = TDC_LZ_MF_BTREE` (add a test variant).
+- Full ctest 28/28.
+- `bench_throughput` with btree MF shows **ratio-positive** deltas on
+  the f64 gap rows vs hashchain MF (NASA regional best tdc, USGS,
+  NASA T2M single-station, 16 MiB smooth f64). Encode-speed regression
+  is acceptable per ratio-first memory rule; decode must stay
+  identical (MF is encode-only).
+
+**Non-goals for phase B:**
+
+- Beating zstd L19 on every f64 row. The btree closes the *structural*
+  gap; per-dataset tuning is a separate follow-up.
+- `TDC_LZ_MF` env var / CLI flag. Add only if a user surfaces the need.
+
+## Known dead ends (do not retry)
+
+- Wider LZ window (4 MiB → 16 MiB): tested 2026-04-17, zero ratio
+  change. Not window-limited.
+- Deeper optimal-parser chain (16 → 64): `lz_opt.c:60-71` documents
+  this was already tested and regresses ratio on raster data; periodic
+  data is non-loss due to COMMIT_LEN fast-skip. Depth is not the lever.
+- Bumping `LZ_HASH_BITS` (18 → 20): untested but suspected to be same
+  story — hash quality at depth 16 is already fine, the issue is
+  distance not collision density.

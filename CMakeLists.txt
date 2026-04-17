@@ -71,6 +71,8 @@ set(TDC_SOURCES
     src/entropy/lz.c
     src/entropy/lz_opt.c
     src/entropy/lz_streams.c
+    src/entropy/mf_hashchain.c
+    src/entropy/mf_btree.c
     src/entropy/deflate.c
     src/entropy/huffman.c
     src/entropy/huffman4.c

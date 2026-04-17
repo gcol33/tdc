@@ -24,6 +24,7 @@
 #include "tdc/entropy.h"
 #include "entropy_internal.h"
 #include "lz_internal.h"
+#include "match_finder.h"
 #include "../core/buffer.h"
 #include "../core/simd.h"
 #include "../core/timer.h"
@@ -129,15 +130,9 @@ static void lz_opt_free(tdc_buffer *buf, void *p) {
     if (p) (void)buf->realloc_fn(buf->user, p, 0);
 }
 
-/* ----- 4-byte hash (same Fibonacci constant as greedy) ------------------- */
-
-static inline uint32_t lz_opt_hash4(const uint8_t *p) {
-    uint32_t h = ((uint32_t)p[0]) |
-                 ((uint32_t)p[1] << 8) |
-                 ((uint32_t)p[2] << 16) |
-                 ((uint32_t)p[3] << 24);
-    return (h * 2654435761u) >> (32u - LZ_OPT_HASH_BITS);
-}
+/* The 4-byte hash + chain walk + chain insert all live in mf_hashchain.c
+ * now. The DP only sees the abstract match finder (tdc_lz_mf_vt) and
+ * never reaches into the bucket array directly. */
 
 /* ----- Match-length extension (bytes) ------------------------------------ *
  * Mirrors the ml_m3-branch in lz_seq_encoded_size: ml_m3 >= 15 iff
@@ -186,149 +181,13 @@ static inline uint32_t lz_opt_extend(const uint8_t *src, uint32_t pos,
     return len;
 }
 
-/* ----- Hash-chain match finder ------------------------------------------- *
- *
- * For position `pos`, walk back from chain_head[h(pos)] through
- * chain_prev[] up to LZ_OPT_MAX_CHAIN candidates, staying within the
- * 64K back-reference window. Each candidate is extended by at most
- * LZ_OPT_EXTEND_CAP bytes during the walk so per-position work is
- * bounded regardless of input repetitiveness.
- *
- * Returns the longest match found plus the candidate position it came
- * from (so the caller can greedy-extend past the cap when needed to
- * preserve optimality on long matches).
- *
- * The caller inserts `pos` into the chain AFTER the lookup so the chain
- * at `pos` reflects only strictly-earlier positions.
- */
-static void lz_opt_find_longest(const uint8_t *src, uint32_t src_size,
-                                 uint32_t pos,
-                                 const uint32_t *chain_head,
-                                 const uint32_t *chain_prev,
-                                 uint32_t *out_len, uint32_t *out_off,
-                                 uint32_t *out_cand_pos) {
-    *out_len = 0u;
-    *out_off = 0u;
-    *out_cand_pos = 0u;
-
-    if (pos + LZ_MIN_MATCH + 1u > src_size) return;
-
-    uint32_t h = lz_opt_hash4(src + pos);
-    uint32_t cand = chain_head[h];
-    uint32_t depth = 0u;
-    uint32_t min_pos = (pos > LZ_MAX_OFFSET) ? (pos - LZ_MAX_OFFSET) : 0u;
-    uint32_t best_len = 0u;
-    uint32_t best_off = 0u;
-    uint32_t best_cand = 0u;
-    uint32_t max_remain = src_size - pos;
-    uint32_t cap = (max_remain < LZ_OPT_EXTEND_CAP) ? max_remain : LZ_OPT_EXTEND_CAP;
-
-    while (cand != 0xFFFFFFFFu && cand < pos && cand >= min_pos &&
-           depth < LZ_OPT_MAX_CHAIN) {
-        /* Prefetch the next candidate's chain_prev entry and source bytes
-         * while we do this iteration's compare/extend. Hides the 64 MiB
-         * chain_prev[] cache-miss cost that otherwise dominates on inputs
-         * where every position walks a full chain (measured: 26 s / 16
-         * MiB on f64 smooth, 100% in this loop). */
-        uint32_t next_cand = chain_prev[cand];
-        if (next_cand != 0xFFFFFFFFu && next_cand < pos) {
-            TDC_PREFETCH_L1(&chain_prev[next_cand]);
-            TDC_PREFETCH_L1(src + next_cand);
-        }
-
-        if (src[cand] == src[pos]) {
-            uint32_t len = lz_opt_extend(src, pos, cand, cap);
-            /* If this candidate hit the cap and could exceed the current
-             * best, do a full extension. This guarantees we find the true
-             * longest match for any cap-hitting candidate (required for
-             * the "opt ≤ greedy" invariant — greedy uses uncapped
-             * extensions, so we must not under-report match length). */
-            if (len == cap && cap < max_remain && len >= best_len) {
-                len += lz_opt_extend(src, pos + cap, cand + cap,
-                                      max_remain - cap);
-            }
-            if (len >= LZ_MIN_MATCH && len > best_len) {
-                best_len = len;
-                best_off = pos - cand;
-                best_cand = cand;
-            }
-        }
-
-        cand = next_cand;
-        depth++;
-    }
-
-    *out_len = best_len;
-    *out_off = best_off;
-    *out_cand_pos = best_cand;
-}
-
-/* Multi-match finder: returns up to LZ_OPT_MAX_MATCHES candidates.
- * Each entry is the closest (smallest offset) match at a strictly
- * longer length. This provides the DP with multiple offset choices
- * at different lengths, enabling offset-vs-length trade-offs. */
+/* Both find-paths previously implemented here (single-best
+ * lz_opt_find_longest and multi-best lz_opt_find_matches) now go through
+ * the match-finder vtable. The hashchain backend in mf_hashchain.c
+ * carries the equivalent walk: chain depth bound, per-candidate
+ * extension cap with full-extend on cap-hit best candidates, prefetch
+ * on the next chain link. The LzOptMatch type lives in match_finder.h. */
 #define LZ_OPT_MAX_MATCHES 6u
-
-typedef struct {
-    uint32_t len;
-    uint32_t off;
-} LzOptMatch;
-
-static uint32_t lz_opt_find_matches(const uint8_t *src, uint32_t src_size,
-                                     uint32_t pos,
-                                     const uint32_t *chain_head,
-                                     const uint32_t *chain_prev,
-                                     LzOptMatch *matches) {
-    uint32_t n_matches = 0u;
-
-    if (pos + LZ_MIN_MATCH + 1u > src_size) return 0u;
-
-    uint32_t h = lz_opt_hash4(src + pos);
-    uint32_t cand = chain_head[h];
-    uint32_t depth = 0u;
-    uint32_t min_pos = (pos > LZ_MAX_OFFSET) ? (pos - LZ_MAX_OFFSET) : 0u;
-    uint32_t max_remain = src_size - pos;
-    uint32_t cap = (max_remain < LZ_OPT_EXTEND_CAP) ? max_remain : LZ_OPT_EXTEND_CAP;
-
-    /* Track the best (closest) offset at each increasing-length level. */
-    uint32_t prev_best_len = LZ_MIN_MATCH - 1u;
-
-    while (cand != 0xFFFFFFFFu && cand < pos && cand >= min_pos &&
-           depth < LZ_OPT_MAX_CHAIN) {
-        uint32_t next_cand = chain_prev[cand];
-        if (next_cand != 0xFFFFFFFFu && next_cand < pos) {
-            TDC_PREFETCH_L1(&chain_prev[next_cand]);
-            TDC_PREFETCH_L1(src + next_cand);
-        }
-
-        if (src[cand] == src[pos]) {
-            uint32_t len = lz_opt_extend(src, pos, cand, cap);
-            if (len == cap && cap < max_remain && len > prev_best_len) {
-                len += lz_opt_extend(src, pos + cap, cand + cap,
-                                      max_remain - cap);
-            }
-            if (len >= LZ_MIN_MATCH && len > prev_best_len) {
-                uint32_t off = pos - cand;
-                /* New longest match — record it. If this candidate is
-                 * longer AND closer than the previous entry, just replace. */
-                if (n_matches > 0u && matches[n_matches - 1u].off >= off) {
-                    matches[n_matches - 1u].len = len;
-                    matches[n_matches - 1u].off = off;
-                } else if (n_matches < LZ_OPT_MAX_MATCHES) {
-                    matches[n_matches].len = len;
-                    matches[n_matches].off = off;
-                    n_matches++;
-                }
-                prev_best_len = len;
-            }
-        }
-
-        cand = next_cand;
-        depth++;
-    }
-
-    return n_matches;
-}
 
 /* ----- Monotonic deque (sliding-window min) ------------------------------ *
  *
@@ -430,26 +289,28 @@ tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
 
     uint32_t N = src_size;
 
-    /* ---- Allocate DP state and match-finder scratch ---- */
+    /* ---- Allocate DP state and match-finder ---- */
     int32_t *post_match = (int32_t *)lz_opt_alloc(dst, (size_t)(N + 1u) * sizeof(int32_t));
     Lz2OptBacktrack *bt = (Lz2OptBacktrack *)lz_opt_alloc(dst,
         (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
-    uint32_t *chain_head = (uint32_t *)lz_opt_alloc(dst, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
-    uint32_t *chain_prev = (uint32_t *)lz_opt_alloc(dst, (size_t)N * sizeof(uint32_t));
 
-    if (!post_match || !bt || !chain_head || !chain_prev) {
+    const tdc_lz_mf_vt *mf = tdc_lz_mf_select(src_size, /*prefer_quality=*/1);
+    tdc_lz_mf_params mf_params = {
+        .chain_depth = LZ_OPT_MAX_CHAIN - 1u,  /* MF walks chain_depth + 1 total */
+        .hash_bits   = LZ_OPT_HASH_BITS,
+    };
+    tdc_lz_mf_ctx *mf_ctx = mf->create(src, src_size, &mf_params, dst);
+
+    if (!post_match || !bt || !mf_ctx) {
         lz_opt_free(dst, post_match);
         lz_opt_free(dst, bt);
-        lz_opt_free(dst, chain_head);
-        lz_opt_free(dst, chain_prev);
+        if (mf_ctx) mf->destroy(mf_ctx, dst);
         return TDC_E_NOMEM;
     }
 
     for (uint32_t i = 0u; i <= N; i++) post_match[i] = LZ_OPT_INF;
     post_match[0] = 0;
     memset(bt, 0, (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
-    memset(chain_head, 0xFF, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
-    memset(chain_prev, 0xFF, (size_t)N * sizeof(uint32_t));
 
     /* Sliding-window deques, one per bracket. Stack-allocated (~32 KB). */
     Lz2OptDeque deques[LZ_OPT_NUM_BRACKETS];
@@ -566,39 +427,30 @@ tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
          * find matches into the skipped range, but skip match finding and
          * the inner L loop. */
         if (r < skip_until) {
-            if (r + LZ_MIN_MATCH + 1u <= src_size) {
-                uint32_t hs = lz_opt_hash4(src + r);
-                chain_prev[r] = chain_head[hs];
-                chain_head[hs] = r;
-            }
+            mf->insert(mf_ctx, r);
             continue;
         }
 
         if (best_start >= LZ_OPT_INF) {
             /* No reachable predecessor; still insert into the chain. */
-            if (r + LZ_MIN_MATCH + 1u <= src_size) {
-                uint32_t hs = lz_opt_hash4(src + r);
-                chain_prev[r] = chain_head[hs];
-                chain_head[hs] = r;
-            }
+            mf->insert(mf_ctx, r);
             continue;
         }
 
-        /* Step C: find matches at r (before inserting r itself into the
-         * chain, so the walk starts from strictly-earlier positions). */
-        uint32_t match_len = 0u, match_off = 0u, cand_pos = 0u;
-        lz_opt_find_longest(src, src_size, r, chain_head, chain_prev,
-                             &match_len, &match_off, &cand_pos);
+        /* Step C: find the longest match at r (before inserting r itself
+         * into the chain, so the walk starts from strictly-earlier
+         * positions). The MF caps each candidate's extension at
+         * LZ_OPT_EXTEND_CAP and full-extends any cap-hitting candidate
+         * that could be the new best — keeping the "opt ≤ greedy"
+         * invariant while bounding per-position work on periodic data. */
+        uint32_t match_off = 0u;
+        uint32_t match_len = mf->find_best(mf_ctx, r, LZ_OPT_EXTEND_CAP,
+                                            &match_off);
 
         /* Insert r into the chain after the lookup. */
-        if (r + LZ_MIN_MATCH + 1u <= src_size) {
-            uint32_t hs = lz_opt_hash4(src + r);
-            chain_prev[r] = chain_head[hs];
-            chain_head[hs] = r;
-        }
+        mf->insert(mf_ctx, r);
 
         if (match_len < LZ_MIN_MATCH) continue;
-        (void)cand_pos; /* full-extension handled inside find_longest */
 
         /* Match header cost in bits: 1 tag byte + variable offset. The
          * offset is the same for all L at this position, so compute once. */
@@ -667,8 +519,7 @@ tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
         if (!seqs) {
             lz_opt_free(dst, post_match);
             lz_opt_free(dst, bt);
-            lz_opt_free(dst, chain_head);
-            lz_opt_free(dst, chain_prev);
+            mf->destroy(mf_ctx, dst);
             return TDC_E_NOMEM;
         }
         uint32_t cur = best_final_p;
@@ -686,8 +537,7 @@ tdc_status tdc_lz_parse_optimal(const uint8_t *src, uint32_t src_size,
     /* ---- Free DP scratch ---- */
     lz_opt_free(dst, post_match);
     lz_opt_free(dst, bt);
-    lz_opt_free(dst, chain_head);
-    lz_opt_free(dst, chain_prev);
+    mf->destroy(mf_ctx, dst);
 
     *out_seqs = seqs;
     *out_seq_count = seq_count;
@@ -826,15 +676,19 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
         (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
     Lz2OptRepState *rep_at = (Lz2OptRepState *)lz_opt_alloc(dst,
         (size_t)(N + 1u) * sizeof(Lz2OptRepState));
-    uint32_t *chain_head = (uint32_t *)lz_opt_alloc(dst, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
-    uint32_t *chain_prev = (uint32_t *)lz_opt_alloc(dst, (size_t)N * sizeof(uint32_t));
 
-    if (!post_match || !bt || !rep_at || !chain_head || !chain_prev) {
+    const tdc_lz_mf_vt *mf = tdc_lz_mf_select(src_size, /*prefer_quality=*/1);
+    tdc_lz_mf_params mf_params = {
+        .chain_depth = LZ_OPT_MAX_CHAIN - 1u,
+        .hash_bits   = LZ_OPT_HASH_BITS,
+    };
+    tdc_lz_mf_ctx *mf_ctx = mf->create(src, src_size, &mf_params, dst);
+
+    if (!post_match || !bt || !rep_at || !mf_ctx) {
         lz_opt_free(dst, post_match);
         lz_opt_free(dst, bt);
         lz_opt_free(dst, rep_at);
-        lz_opt_free(dst, chain_head);
-        lz_opt_free(dst, chain_prev);
+        if (mf_ctx) mf->destroy(mf_ctx, dst);
         return TDC_E_NOMEM;
     }
 
@@ -842,8 +696,6 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
     for (uint32_t i = 0u; i <= N; i++) post_match[i] = INF64;
     post_match[0] = 0;
     memset(bt, 0, (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
-    memset(chain_head, 0xFF, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
-    memset(chain_prev, 0xFF, (size_t)N * sizeof(uint32_t));
 
     const double t_init = timing ? tdc_now_secs() : 0.0;
 
@@ -913,21 +765,13 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
         /* Fast-forward inside a committed long match — chain insert only. */
         if (r < skip_until) {
             cnt_skip++;
-            if (r + LZ_MIN_MATCH + 1u <= src_size) {
-                uint32_t hs = lz_opt_hash4(src + r);
-                chain_prev[r] = chain_head[hs];
-                chain_head[hs] = r;
-            }
+            mf->insert(mf_ctx, r);
             continue;
         }
 
         if (best_start >= INF64) {
             cnt_inf++;
-            if (r + LZ_MIN_MATCH + 1u <= src_size) {
-                uint32_t hs = lz_opt_hash4(src + r);
-                chain_prev[r] = chain_head[hs];
-                chain_head[hs] = r;
-            }
+            mf->insert(mf_ctx, r);
             continue;
         }
 
@@ -979,27 +823,18 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
          * L0 encode run at <1 MB/s on 16 MiB inputs. */
         if (max_rep_rlen >= LZ_OPT_COMMIT_LEN) {
             cnt_rep_skip++;
-            if (r + LZ_MIN_MATCH + 1u <= src_size) {
-                uint32_t hs = lz_opt_hash4(src + r);
-                chain_prev[r] = chain_head[hs];
-                chain_head[hs] = r;
-            }
+            mf->insert(mf_ctx, r);
             skip_until = r + max_rep_rlen;
             continue;
         }
 
         /* ----- Hash-chain match ---------------------------------------- */
         cnt_chain++;
-        uint32_t match_len = 0u, match_off = 0u, cand_pos = 0u;
-        lz_opt_find_longest(src, src_size, r, chain_head, chain_prev,
-                             &match_len, &match_off, &cand_pos);
-        (void)cand_pos;
+        uint32_t match_off = 0u;
+        uint32_t match_len = mf->find_best(mf_ctx, r, LZ_OPT_EXTEND_CAP,
+                                            &match_off);
 
-        if (r + LZ_MIN_MATCH + 1u <= src_size) {
-            uint32_t hs = lz_opt_hash4(src + r);
-            chain_prev[r] = chain_head[hs];
-            chain_head[hs] = r;
-        }
+        mf->insert(mf_ctx, r);
 
         if (match_len >= LZ_MIN_MATCH) {
             /* Is this hash-chain match at a rep offset? */
@@ -1056,8 +891,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
             lz_opt_free(dst, post_match);
             lz_opt_free(dst, bt);
             lz_opt_free(dst, rep_at);
-            lz_opt_free(dst, chain_head);
-            lz_opt_free(dst, chain_prev);
+            mf->destroy(mf_ctx, dst);
             return TDC_E_NOMEM;
         }
         uint32_t cur = best_final_p;
@@ -1075,8 +909,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
     lz_opt_free(dst, post_match);
     lz_opt_free(dst, bt);
     lz_opt_free(dst, rep_at);
-    lz_opt_free(dst, chain_head);
-    lz_opt_free(dst, chain_prev);
+    mf->destroy(mf_ctx, dst);
 
     if (timing) {
         double t_end = tdc_now_secs();
@@ -1152,18 +985,20 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
         (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
     Lz2OptRepState *rep_at = (Lz2OptRepState *)lz_opt_alloc(dst,
         (size_t)(N + 1u) * sizeof(Lz2OptRepState));
-    uint32_t *chain_head = (uint32_t *)lz_opt_alloc(dst,
-        LZ_OPT_HASH_SIZE * sizeof(uint32_t));
-    uint32_t *chain_prev = (uint32_t *)lz_opt_alloc(dst,
-        (size_t)N * sizeof(uint32_t));
 
-    if (!lit_prefix || !post_match || !bt || !rep_at || !chain_head || !chain_prev) {
+    const tdc_lz_mf_vt *mf = tdc_lz_mf_select(src_size, /*prefer_quality=*/1);
+    tdc_lz_mf_params mf_params = {
+        .chain_depth = LZ_OPT_MAX_CHAIN - 1u,
+        .hash_bits   = LZ_OPT_HASH_BITS,
+    };
+    tdc_lz_mf_ctx *mf_ctx = mf->create(src, src_size, &mf_params, dst);
+
+    if (!lit_prefix || !post_match || !bt || !rep_at || !mf_ctx) {
         lz_opt_free(dst, lit_prefix);
         lz_opt_free(dst, post_match);
         lz_opt_free(dst, bt);
         lz_opt_free(dst, rep_at);
-        lz_opt_free(dst, chain_head);
-        lz_opt_free(dst, chain_prev);
+        if (mf_ctx) mf->destroy(mf_ctx, dst);
         return TDC_E_NOMEM;
     }
 
@@ -1176,8 +1011,6 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
     for (uint32_t i = 0u; i <= N; i++) post_match[i] = INF64;
     post_match[0] = 0;
     memset(bt, 0, (size_t)(N + 1u) * sizeof(Lz2OptBacktrack));
-    memset(chain_head, 0xFF, LZ_OPT_HASH_SIZE * sizeof(uint32_t));
-    memset(chain_prev, 0xFF, (size_t)N * sizeof(uint32_t));
 
     Lz2OptRepState rep_init = {LZ_OPT_REP_INIT_1, LZ_OPT_REP_INIT_2, LZ_OPT_REP_INIT_3};
     rep_at[0] = rep_init;
@@ -1227,20 +1060,12 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
         Lz2OptRepState cur_rep2 = best_g2_rep;
 
         if (r < skip_until) {
-            if (r + LZ_MIN_MATCH + 1u <= src_size) {
-                uint32_t hs = lz_opt_hash4(src + r);
-                chain_prev[r] = chain_head[hs];
-                chain_head[hs] = r;
-            }
+            mf->insert(mf_ctx, r);
             continue;
         }
 
         if (best_start >= INF64) {
-            if (r + LZ_MIN_MATCH + 1u <= src_size) {
-                uint32_t hs = lz_opt_hash4(src + r);
-                chain_prev[r] = chain_head[hs];
-                chain_head[hs] = r;
-            }
+            mf->insert(mf_ctx, r);
             continue;
         }
 
@@ -1284,11 +1109,7 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
 
         /* Commit-and-skip on long rep matches — see initial parser above. */
         if (max_rep_rlen >= LZ_OPT_COMMIT_LEN) {
-            if (r + LZ_MIN_MATCH + 1u <= src_size) {
-                uint32_t hs = lz_opt_hash4(src + r);
-                chain_prev[r] = chain_head[hs];
-                chain_head[hs] = r;
-            }
+            mf->insert(mf_ctx, r);
             skip_until = r + max_rep_rlen;
             continue;
         }
@@ -1299,19 +1120,15 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
          * choose close-offset matches (fewer off extra bits) over long-
          * offset matches, and shorter matches that enable better
          * downstream transitions. */
-        LzOptMatch mf[LZ_OPT_MAX_MATCHES];
-        uint32_t n_mf = lz_opt_find_matches(src, src_size, r,
-                                              chain_head, chain_prev, mf);
+        LzOptMatch matches[LZ_OPT_MAX_MATCHES];
+        uint32_t n_matches = mf->find_multi(mf_ctx, r, LZ_OPT_EXTEND_CAP,
+                                             matches, LZ_OPT_MAX_MATCHES);
 
-        if (r + LZ_MIN_MATCH + 1u <= src_size) {
-            uint32_t hs = lz_opt_hash4(src + r);
-            chain_prev[r] = chain_head[hs];
-            chain_head[hs] = r;
-        }
+        mf->insert(mf_ctx, r);
 
-        for (uint32_t mi = 0u; mi < n_mf; mi++) {
-            uint32_t m_len = mf[mi].len;
-            uint32_t m_off = mf[mi].off;
+        for (uint32_t mi = 0u; mi < n_matches; mi++) {
+            uint32_t m_len = matches[mi].len;
+            uint32_t m_off = matches[mi].off;
 
             int rep_idx = -1;
             if (m_off == cur_rep.r1) rep_idx = 0;
@@ -1325,7 +1142,7 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
             Lz2OptRepState new_rep = lz_opt_rep_update(cur_rep, m_off);
 
             /* Commit-and-skip for long matches at the longest offset. */
-            if (mi == n_mf - 1u && m_len >= LZ_OPT_COMMIT_LEN) {
+            if (mi == n_matches - 1u && m_len >= LZ_OPT_COMMIT_LEN) {
                 int64_t ml_c = (int64_t)prices->ml[lz_opt_ml_sym(m_len - LZ_MIN_MATCH)];
                 lz_opt_streams_emit(best_start + prices->ll_avg + ml_c + off_c,
                     r + m_len, best_start_prev_p, r, m_len, m_off, new_rep,
@@ -1388,8 +1205,7 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
             lz_opt_free(dst, post_match);
             lz_opt_free(dst, bt);
             lz_opt_free(dst, rep_at);
-            lz_opt_free(dst, chain_head);
-            lz_opt_free(dst, chain_prev);
+            mf->destroy(mf_ctx, dst);
             return TDC_E_NOMEM;
         }
         uint32_t cur = best_final_p;
@@ -1408,8 +1224,7 @@ tdc_status tdc_lz_parse_optimal_streams_priced(
     lz_opt_free(dst, post_match);
     lz_opt_free(dst, bt);
     lz_opt_free(dst, rep_at);
-    lz_opt_free(dst, chain_head);
-    lz_opt_free(dst, chain_prev);
+    mf->destroy(mf_ctx, dst);
 
     *out_seqs = seqs;
     *out_seq_count = seq_count;
