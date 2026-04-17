@@ -202,8 +202,9 @@ static inline tdc_status driver_xform_params_parse(driver_xform_params_table *t,
 /*
  * Returns the residual dtype that model `mid` produces from input dtype
  * `in_dtype`. Most v0 models pass dtype through unchanged (residual dtype
- * == in_dtype). DICT_1D is the lone exception: it always emits u32
- * dictionary indices regardless of the input string layout.
+ * == in_dtype). The dictionary models are the exception: both DICT_1D
+ * (string) and DICT_NUMERIC_1D (fixed-width numeric) always emit u32
+ * indices regardless of the input dtype.
  *
  * The encoder learns the residual dtype directly from the model via the
  * out-parameter on encode(); only the decoder needs this static mapping,
@@ -213,8 +214,9 @@ static inline tdc_status driver_xform_params_parse(driver_xform_params_table *t,
 static inline tdc_dtype driver_model_residual_dtype(tdc_model_id mid,
                                                     tdc_dtype    in_dtype) {
     switch (mid) {
-        case TDC_MODEL_DICT_1D: return TDC_DT_U32;
-        default:                return in_dtype;
+        case TDC_MODEL_DICT_1D:         return TDC_DT_U32;
+        case TDC_MODEL_DICT_NUMERIC_1D: return TDC_DT_U32;
+        default:                        return in_dtype;
     }
 }
 

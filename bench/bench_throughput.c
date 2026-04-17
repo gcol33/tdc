@@ -1272,6 +1272,66 @@ static int run_from_file(const char *path, const char *dtype_s,
             rc |= run_case("FPC+BSHUF+LZ+HUF", block_desc, &b, &s);
         }
     }
+    /* DICT_NUMERIC — value dictionary + u32 indices. Accepted on any
+     * multi-byte numeric VECTOR_1D. Wins when the value set is small
+     * (low-precision sensor data, quantized grids) where predictor
+     * residuals have higher byte-entropy than the raw bytes. */
+    if (layout == TDC_LAYOUT_VECTOR_1D && tdc_dtype_size(dtype) >= 2u) {
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            rc |= run_case("DICT_NUMERIC+LZ", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            rc |= run_case("DICT_NUMERIC+BSHUF+LZ", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("DICT_NUMERIC+BSHUF+HUF", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_HUFFMAN4;
+            rc |= run_case("DICT_NUMERIC+BSHUF+HUF4", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_FSE;
+            rc |= run_case("DICT_NUMERIC+BSHUF+FSE", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ;
+            s.entropy[1] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("DICT_NUMERIC+BSHUF+LZ+HUF", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+            rc |= run_case("DICT_NUMERIC+LZ_STREAMS", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.entropy[0] = TDC_ENTROPY_LZ_SPLIT;
+            rc |= run_case("DICT_NUMERIC+LZ_SPLIT", block_desc, &b, &s);
+        }
+    }
     /* PRED2D + PLANE2D — only on 2D integer rasters. */
     if (layout == TDC_LAYOUT_RASTER_2D &&
         dtype != TDC_DT_F32 && dtype != TDC_DT_F64) {

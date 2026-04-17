@@ -58,6 +58,7 @@ set(TDC_SOURCES
     src/model/pred3d_float.c
     src/model/delta2_1d.c
     src/model/fpc1d.c
+    src/model/dict_numeric.c
 
     src/transform/quantize.c
     src/transform/zigzag.c
@@ -170,6 +171,14 @@ if(TDC_BUILD_TESTS)
     add_executable(test_dict1d_roundtrip tests/test_dict1d_roundtrip.c)
     target_link_libraries(test_dict1d_roundtrip PRIVATE tdc)
     add_test(NAME dict1d_roundtrip COMMAND test_dict1d_roundtrip)
+
+    add_executable(test_dict_numeric_roundtrip tests/test_dict_numeric_roundtrip.c)
+    target_link_libraries(test_dict_numeric_roundtrip PRIVATE tdc)
+    add_test(NAME dict_numeric_roundtrip COMMAND test_dict_numeric_roundtrip)
+
+    add_executable(test_dnum_e2e tests/test_dnum_e2e.c)
+    target_link_libraries(test_dnum_e2e PRIVATE tdc)
+    add_test(NAME dnum_e2e COMMAND test_dnum_e2e)
 
     add_executable(test_lane_roundtrip tests/test_lane_roundtrip.c)
     target_link_libraries(test_lane_roundtrip PRIVATE tdc)

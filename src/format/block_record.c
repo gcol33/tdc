@@ -59,7 +59,7 @@ static int blk_layout_rank(uint8_t lo) {
  * User-defined ids (0xFF00-0xFFFF) are accepted by all three validators
  * so that blocks encoded with plugin backends can be decoded. */
 static int blk_model_id_valid(uint16_t id) {
-    return (id >= TDC_MODEL_RAW && id <= TDC_MODEL_FPC_1D) ||
+    return (id >= TDC_MODEL_RAW && id <= TDC_MODEL_DICT_NUMERIC_1D) ||
            (id >= 0xFF00u && id <= 0xFFFFu);
 }
 

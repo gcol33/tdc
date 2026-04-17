@@ -1,6 +1,8 @@
 # tdc bench results
 
-Date: 2026-04-16 (post 1 MiB LZ window: ratio-first defaults, encode cost
+Date: 2026-04-17 (DICT_NUMERIC_1D added — numeric value dictionary for
+low-cardinality f64 grids; closes the NASA regional gap vs zstd L19).
+Prior: 2026-04-16 (post 1 MiB LZ window: ratio-first defaults, encode cost
 documented; new 3D pipelines, HUF4, PAETH/UP variants).
 Host: the-beast (Windows 11, MSVC 19.50, RTX 5080 / 64 GB — CPU bench, GPU unused)
 tdc build: `cmake --build build_release --config Release` (MSVC `/W4 /permissive-`, default Release flags)
@@ -266,51 +268,67 @@ decodes at 1.2 GB/s — 1.85× zstd L19's decode.
 ### NASA POWER T2M Regional — flat f64 grid (1,084,842 samples, 8.28 MiB)
 
 Regional temperature grid, 1084842 f64 values. Large enough for stable
-benchmarks (small datasets above are noisier).
+benchmarks (small datasets above are noisier). 5426 unique f64 values
+out of 1 084 842 (0.50% cardinality) — low-precision rounding makes this
+dictionary-friendly.
 
 | codec                          | ratio  | enc MB/s | dec MB/s | notes |
 |--------------------------------|-------:|---------:|---------:|-------|
-| **zstd L19**                   | **4.28x** |     2.6 |    728.6 | best ratio |
+| **tdc DICT_NUMERIC+BSHUF+LZ+HUF** | **4.31x** |    68.0 |    612.3 | **beats zstd L19** |
+| zstd L19                       |  4.28x |      2.6 |    728.6 | |
+| tdc DICT_NUMERIC+LZ_SPLIT      |  4.02x |      7.6 |    435.4 | |
+| tdc DICT_NUMERIC+BSHUF+LZ      |  3.99x |     71.1 |   1161.2 | best ratio+speed tradeoff |
+| tdc DICT_NUMERIC+LZ_STREAMS    |  3.74x |     61.8 |    477.5 | |
+| tdc DICT_NUMERIC+BSHUF+HUF4    |  3.64x |    276.4 |    699.7 | fast-encode tier |
+| tdc DICT_NUMERIC+BSHUF+HUF     |  3.64x |    278.3 |    621.3 | |
+| tdc DICT_NUMERIC+BSHUF+FSE     |  3.63x |    157.7 |    433.4 | |
 | zstd L3                        |  3.45x |    345.6 |   1046.8 | |
 | zstd L9                        |  3.40x |     57.4 |   1111.3 | |
-| tdc RAW+LZ_SPLIT               |  3.18x |      3.0 |    348.3 | best tdc, 26% gap |
+| tdc RAW+LZ_SPLIT               |  3.18x |      3.0 |    348.3 | prior best (no dict) |
 | tdc RAW+LZ_OPT+FSE             |  3.13x |      2.8 |    367.7 | |
 | tdc RAW+LZ_OPT+HUF             |  3.12x |      2.6 |    449.9 | |
 | zstd L1                        |  2.96x |    383.3 |   1026.6 | |
+| tdc DICT_NUMERIC+LZ            |  2.85x |     77.0 |    856.2 | fastest DICT encode |
 | tdc RAW+LZ_STREAMS             |  2.78x |     57.5 |    416.0 | |
-| tdc RAW+LZ_STREAMS L1          |  2.72x |     95.6 |    397.1 | |
-| tdc DELTA1D+LZ_OPT+HUF         |  2.71x |      2.4 |    376.0 | |
-| tdc RAW+LZ_OPT                 |  2.48x |      3.8 |   1149.7 | fastest decode at >2× |
-| tdc RAW+LZ+HUF                 |  2.51x |    107.5 |    467.1 | fast-encode + decent ratio |
 | tdc RAW+LZ                     |  1.95x |    119.8 |   1303.6 | |
-| tdc DELTA1D+LZ                 |  1.71x |     51.9 |    656.5 | model destroys structure |
+| tdc DELTA1D+LZ                 |  1.71x |     51.9 |    656.5 | predictor destroys dict structure |
 
-**zstd L19 (4.28×) wins by 26% on this dataset.** Large window over 8 MiB
-of mildly periodic f64 data is exactly zstd's strength. tdc closes the
-gap at faster levels: RAW+LZ_SPLIT at 3.18× beats zstd L1 (2.96×).
-Better-than-zstd path on this profile is still open — likely needs
-LZ_STREAMS with a wider window or a 2D layout-aware variant on the 11×9
-grid structure.
+**tdc DICT_NUMERIC+BSHUF+LZ+HUF (4.31×) beats zstd L19 (4.28×) at 26× the
+encode speed.** The 26% gap that stood through the prior round is gone:
+when only 0.5% of samples are unique, turning the f64 stream into u32
+indices exposes structure that byte-level predictors and raw-LZ both
+miss. BSHUF on u32 indices concentrates the zero high-bytes into dense
+runs, which HUF then collapses. Pure LZ behind the dict (`+LZ`) still
+beats raw+LZ but loses ~0.3× vs BSHUF+LZ+HUF — the win is structural,
+not entropy-coder-specific.
+
+**DICT_NUMERIC is a sharp tool, not a default.** Separate benches on the
+NASA daily (10 958 samples, higher cardinality) and USGS streamflow
+(non-stationary f64) show DICT_NUMERIC loses by 5-60% there: small
+datasets don't amortize the dictionary, and high-cardinality data makes
+the index residual as expensive as the raw bytes. Selection should be
+cardinality-aware.
 
 ### Real-data headlines
 
 1. **SRTM DEM (i16 raster)**: tdc wins. PRED2D+BSHUF+LZ+HUF at 1.46× beats zstd L19 (1.42×) by 3%; spatial prediction matters even at 32 KiB.
 2. **USGS streamflow (noisy f64)**: zstd L19 (4.50×) wins by 12% over tdc's best (4.02×). Ratio-parity tier: tdc RAW+LZ_STREAMS (4.02×) ≥ zstd L9 (3.99×).
 3. **NASA T2M single-station (periodic f64)**: zstd L19 (3.48×) wins by 10% over tdc RAW+LZ_SPLIT (3.12×).
-4. **NASA T2M regional (8 MiB f64 grid)**: zstd L19 (4.28×) wins by 26% — large window over mildly periodic f64 is zstd's sweet spot. tdc gap is widest here.
-5. **No model helps on real f64 time series**: DELTA1D, DELTA2, FPC all produce residuals with more byte-level entropy than the raw bytes. The win path is better entropy coding (LZ_STREAMS, LZ_SPLIT), not better prediction.
-6. **BSHUF is destructive on periodic f64**: every BSHUF pipeline below 1.6× on NASA daily, ~1.0× on NASA regional. Never apply unconditionally.
-7. **Where tdc wins**: structured/zero-residual signals (ramps, split planes), spatially-predictable rasters (DEM, gradients), 3D scalar fields with neighborhood structure. Where zstd wins: large mildly-periodic f64 grids.
+4. **NASA T2M regional (8 MiB f64 grid)**: tdc wins. DICT_NUMERIC+BSHUF+LZ+HUF at 4.31× beats zstd L19 (4.28×) at 26× the encode speed. Low-cardinality f64 (0.5% unique values) is the profile — 30 years of daily temperature stored at 0.1 °C precision recycles the same ~5 000 values across a million samples.
+5. **Byte-level predictors destroy f64 structure; numeric dictionary reveals it**: DELTA1D/DELTA2/FPC residuals on periodic f64 have *higher* byte entropy than the raw bytes. DICT_NUMERIC flips the frame — work at the f64-value level, not the byte level. On the same NASA regional block DELTA1D+LZ hits 1.71×, RAW+LZ_SPLIT 3.18×, DICT_NUMERIC+BSHUF+LZ+HUF 4.31×.
+6. **BSHUF is value-stream dependent, not globally bad**: BSHUF on raw f64 bytes ≈ 1.00× on periodic f64 (destroys structure). BSHUF on DICT_NUMERIC u32 indices is *beneficial* — the high bytes of a small dictionary's indices are mostly zero, so BSHUF concentrates them into runs that LZ+HUF collapse.
+7. **Where tdc wins**: structured/zero-residual signals (ramps, split planes), spatially-predictable rasters (DEM, gradients), 3D scalar fields with neighborhood structure, **low-cardinality f64 grids (DICT_NUMERIC)**. Where zstd wins: non-stationary or high-cardinality f64 time series.
 
 ### f64 pipeline recommendation
 
 | data profile | best pipeline | ratio | decode MB/s |
 |---|---|---|---|
+| Low-cardinality f64 grid (<5% unique) | DICT_NUMERIC+BSHUF+LZ+HUF | 4.31x | 612 |
 | Non-stationary (USGS-like) | RAW+LZ_STREAMS | 4.02x | 571 |
 | Periodic single-station (NASA-like) | RAW+LZ_SPLIT | 3.12x | 487 |
-| Large grids (regional-like) | RAW+LZ_SPLIT | 3.18x | 348 |
+| Large mildly-periodic grid (regional-like) | RAW+LZ_SPLIT | 3.18x | 348 |
 | Fast-decode priority | RAW+LZ_OPT | 2.40-3.18x | 1150-3170 |
-| Fast-encode + good ratio | RAW+LZ+HUF | 2.51-3.56x | 467-730 |
+| Fast-encode + good ratio | DICT_NUMERIC+BSHUF+LZ (low-card only) | 3.99x | 1161 |
 
 ## Encode-speed footnote
 
