@@ -1331,6 +1331,48 @@ static int run_from_file(const char *path, const char *dtype_s,
             s.entropy[0] = TDC_ENTROPY_LZ_SPLIT;
             rc |= run_case("DICT_NUMERIC+LZ_SPLIT", block_desc, &b, &s);
         }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.entropy[0] = TDC_ENTROPY_LZ_OPT;
+            rc |= run_case("DICT_NUMERIC+LZ_OPT", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.entropy[0] = TDC_ENTROPY_LZ_OPT;
+            s.entropy[1] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("DICT_NUMERIC+LZ_OPT+HUF", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ_OPT;
+            rc |= run_case("DICT_NUMERIC+BSHUF+LZ_OPT", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ_OPT;
+            s.entropy[1] = TDC_ENTROPY_HUFFMAN;
+            rc |= run_case("DICT_NUMERIC+BSHUF+LZ_OPT+HUF", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ_SPLIT;
+            rc |= run_case("DICT_NUMERIC+BSHUF+LZ_SPLIT", block_desc, &b, &s);
+        }
+        {
+            tdc_codec_spec s = {0};
+            s.model      = TDC_MODEL_DICT_NUMERIC_1D;
+            s.xform[0]   = TDC_XFORM_BYTE_SHUFFLE;
+            s.entropy[0] = TDC_ENTROPY_LZ_STREAMS;
+            rc |= run_case("DICT_NUMERIC+BSHUF+LZ_STREAMS", block_desc, &b, &s);
+        }
     }
     /* PRED2D + PLANE2D — only on 2D integer rasters. */
     if (layout == TDC_LAYOUT_RASTER_2D &&
