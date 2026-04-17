@@ -66,13 +66,21 @@ typedef enum {
     TDC_MODEL_PLANE_2D  = 0x0007,  /* per-tile LSQ plane fit; RASTER_2D */
     TDC_MODEL_DELTA2_1D = 0x0008,  /* 2nd-order XOR-delta; VECTOR_1D, float dtypes */
     TDC_MODEL_FPC_1D    = 0x0009,  /* FCM+DFCM dual predictor; VECTOR_1D, float dtypes */
-    TDC_MODEL_DICT_NUMERIC_1D = 0x000A /* value dictionary + u32 indices;
+    TDC_MODEL_DICT_NUMERIC_1D = 0x000A, /* value dictionary + u32 indices;
                                         * VECTOR_1D over i16/u16/i32/u32/f32/
                                         * i64/u64/f64. Wins on low-cardinality
                                         * numeric data (e.g. quantized sensor
                                         * readings) where byte-level predictor
                                         * residuals have higher entropy than
                                         * the raw bytes. */
+    TDC_MODEL_SPARSE_ZERO_1D  = 0x000B /* sparse-zero: positions+values of
+                                        * non-zero entries; VECTOR_1D over the
+                                        * same numeric dtypes as DICT_NUMERIC_1D.
+                                        * Wins on ≥75%-zero int/float vectors
+                                        * (mask-like rasters, pruned
+                                        * coefficients). Zero = all-zero bytes
+                                        * (so +0.0 is zero, -0.0 is not —
+                                        * byte identity, like DICT_NUMERIC_1D). */
 } tdc_model_id;
 
 /* Transforms (representation stage; chained) */

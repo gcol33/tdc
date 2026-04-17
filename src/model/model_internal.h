@@ -32,6 +32,7 @@ extern const tdc_model_vt tdc_model_plane2d_vt;
 extern const tdc_model_vt tdc_model_delta2_1d_vt;
 extern const tdc_model_vt tdc_model_fpc1d_vt;
 extern const tdc_model_vt tdc_model_dict_numeric_1d_vt;
+extern const tdc_model_vt tdc_model_sparse_zero_1d_vt;
 
 #ifdef __cplusplus
 }

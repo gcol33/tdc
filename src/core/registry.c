@@ -118,6 +118,7 @@ const tdc_model_vt *tdc_model_get(tdc_model_id id) {
         case TDC_MODEL_DELTA2_1D: return &tdc_model_delta2_1d_vt;
         case TDC_MODEL_FPC_1D:   return &tdc_model_fpc1d_vt;
         case TDC_MODEL_DICT_NUMERIC_1D: return &tdc_model_dict_numeric_1d_vt;
+        case TDC_MODEL_SPARSE_ZERO_1D:  return &tdc_model_sparse_zero_1d_vt;
         default:
             return (const tdc_model_vt *)plugin_lookup(
                 (uint16_t)id, s_model_slots, s_model_count);
