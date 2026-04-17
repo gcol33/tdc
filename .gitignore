@@ -1,6 +1,7 @@
 build/
 build_release/
 build_prof/
+build_examples/
 *.exe
 *.obj
 *.o
