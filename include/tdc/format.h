@@ -65,7 +65,7 @@ extern "C" {
  *
  * The field order matches natural C alignment so the struct compiles to
  * exactly 64 bytes on every supported target (x86_64, aarch64) without
- * #pragma pack — _reserved1 sits in the natural 4-byte gap before
+ * #pragma pack — schema_size sits in the natural 4-byte gap before
  * global_dim[3] so the int64 array starts at an 8-aligned offset.
  *
  *   offset  size  field
@@ -80,7 +80,8 @@ extern "C" {
  *       33     1  global_layout    (tdc_layout, 0 if heterogeneous)
  *       34     1  global_rank      (0..3, 0 if heterogeneous)
  *       35     1  _reserved0
- *       36     4  _reserved1
+ *       36     4  schema_size      (bytes of serialized schema section
+ *                                   immediately after this header; 0 = none)
  *       40    24  global_dim[3]    (int64; zeros if heterogeneous)
  *       --   ---  total = 64 bytes
  */
@@ -100,7 +101,7 @@ typedef struct {
     uint8_t  global_layout;
     uint8_t  global_rank;
     uint8_t  _reserved0;
-    uint32_t _reserved1;
+    uint32_t schema_size;
     int64_t  global_dim[TDC_MAX_RANK];
 } tdc_container_header;
 

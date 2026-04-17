@@ -44,7 +44,6 @@ tdc_status tdc_container_header_validate(const tdc_container_header *h) {
     if (h->magic   != TDC_CONTAINER_MAGIC)   return TDC_E_CORRUPT;
     if (h->version != TDC_CONTAINER_VERSION) return TDC_E_VERSION;
     if (h->_reserved0 != 0u)                 return TDC_E_CORRUPT;
-    if (h->_reserved1 != 0u)                 return TDC_E_CORRUPT;
 
     /* Heterogeneous containers leave global dtype/layout/rank/dim zeroed
      * because each block carries its own. Homogeneous containers fill

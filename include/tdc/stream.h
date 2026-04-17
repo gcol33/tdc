@@ -113,10 +113,10 @@ typedef struct {
 
     /*
      * Optional column schema.  If non-NULL, serialized and written
-     * immediately after the 64-byte container header.  The container
-     * header's _reserved1 field is repurposed as schema_size (u32).
-     * The pointer is only read during open; does not need to remain
-     * valid after open returns.
+     * immediately after the 64-byte container header.  Its serialized
+     * byte count is recorded in the container header's schema_size
+     * field (0 when no schema is attached).  The pointer is only read
+     * during open; does not need to remain valid after open returns.
      */
     const tdc_schema *schema;
 

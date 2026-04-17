@@ -3,15 +3,15 @@
  *
  * Streaming decoder: schema + row-group index.
  *
- * Accepts both version 1 and version 2 containers.
- * On version 1 containers, schema is NULL and the row-group index is
- * absent; the decoder falls back to sequential-only block reading.
+ * schema_size == 0 means no schema section; the decoder still works but
+ * returns NULL from tdc_stream_decoder_schema() and row-group index
+ * queries degrade to sequential-only reads when index_offset is 0.
  *
  * Container layout:
  *
- *   [64-byte header]                (version == 2, _reserved1 = schema_size)
- *   [schema_size bytes of schema]   (column descriptors)
- *   [block records ...]             (self-describing, same as v1)
+ *   [64-byte header]                (schema_size recorded in header)
+ *   [schema_size bytes of schema]   (column descriptors; absent if 0)
+ *   [block records ...]             (self-describing)
  *   [trailing row-group index]      (at index_offset, if present)
  *
  * Schema wire format:
@@ -399,29 +399,20 @@ tdc_status tdc_stream_decoder_open(const tdc_stream_decoder_config *cfg,
                                      TDC_CONTAINER_HEADER_SIZE);
     if (st != TDC_OK) { v2_free(d, d); return st; }
 
-    /* Validate, but allow version 2 in addition to 1. The standard
-     * validator only accepts TDC_CONTAINER_VERSION (== 1). For version 2
-     * we do our own checks. */
     if (d->header.magic != TDC_CONTAINER_MAGIC) {
         v2_free(d, d);
         return TDC_E_CORRUPT;
     }
-    if (d->header.version != 1 && d->header.version != 2) {
+    if (d->header.version != TDC_CONTAINER_VERSION) {
         v2_free(d, d);
         return TDC_E_VERSION;
     }
 
     uint64_t pos = TDC_CONTAINER_HEADER_SIZE;
 
-    /* ---- Step 2: Parse schema if v2 and schema_size > 0. ---- */
+    /* ---- Step 2: Parse schema section if schema_size > 0. ---- */
 
-    uint32_t schema_size = 0;
-    if (d->header.version == 2) {
-        /* In v2, _reserved1 (u32 at offset 36) is reinterpreted as
-         * schema_size. We already read the full header into the struct;
-         * _reserved1 holds the value. */
-        schema_size = d->header._reserved1;
-    }
+    uint32_t schema_size = d->header.schema_size;
 
     if (schema_size > 0) {
         uint8_t *schema_buf = (uint8_t *)v2_alloc(d, NULL, schema_size);

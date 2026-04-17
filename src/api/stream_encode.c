@@ -101,7 +101,7 @@ static void v2_free(v2_stream_encoder_state *e, void *ptr) {
     if (ptr) e->realloc_fn(e->alloc_user, ptr, 0);
 }
 
-/* Build and write the 64-byte container header (version 2). */
+/* Build and write the 64-byte container header. */
 static tdc_status v2_write_header(v2_stream_encoder_state *e,
                                   uint64_t n_blocks,
                                   uint64_t index_offset,
@@ -109,7 +109,7 @@ static tdc_status v2_write_header(v2_stream_encoder_state *e,
     tdc_container_header hdr;
     memset(&hdr, 0, sizeof(hdr));
     hdr.magic   = TDC_CONTAINER_MAGIC;
-    hdr.version = 2;
+    hdr.version = TDC_CONTAINER_VERSION;
     hdr.flags   = e->flags;
 
     if (!(e->flags & TDC_CONTAINER_FLAG_HETEROGENEOUS)) {
@@ -126,8 +126,7 @@ static tdc_status v2_write_header(v2_stream_encoder_state *e,
     hdr.index_offset = index_offset;
     hdr.index_size   = index_size;
 
-    /* Repurpose _reserved1 as schema_size. */
-    hdr._reserved1   = e->schema_size;
+    hdr.schema_size  = e->schema_size;
 
     return v2_io_write_exact(&e->io, &hdr, TDC_CONTAINER_HEADER_SIZE);
 }

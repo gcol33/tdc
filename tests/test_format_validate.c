@@ -120,11 +120,8 @@ static int test_container_header_rejects(void) {
         h._reserved0 = 1;
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
-    {
-        tdc_container_header h = make_homogeneous_header();
-        h._reserved1 = 1;
-        CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
-    }
+    /* schema_size (formerly _reserved1) is no longer a reserved field —
+     * any value is structurally valid at the header-validate layer. */
 
     /* Heterogeneous flag set but global_dtype non-zero */
     {
