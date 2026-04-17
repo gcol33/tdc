@@ -95,6 +95,8 @@ set(TDC_SOURCES
     src/api/decode_into.c
     src/api/stream_encode.c
     src/api/stream_decode.c
+    src/api/pushpull_encode.c
+    src/api/pushpull_decode.c
 )
 
 add_library(tdc STATIC ${TDC_SOURCES})
@@ -214,6 +216,11 @@ if(TDC_BUILD_TESTS)
     add_executable(test_stream_roundtrip tests/test_stream_roundtrip.c)
     target_link_libraries(test_stream_roundtrip PRIVATE tdc)
     add_test(NAME stream_roundtrip COMMAND test_stream_roundtrip)
+
+    add_executable(test_pushpull_roundtrip tests/test_pushpull_roundtrip.c)
+    target_link_libraries(test_pushpull_roundtrip PRIVATE tdc)
+    add_test(NAME pushpull_roundtrip COMMAND test_pushpull_roundtrip)
+    set_tests_properties(pushpull_roundtrip PROPERTIES TIMEOUT 180)
 
     add_executable(test_schema tests/test_schema.c)
     target_link_libraries(test_schema PRIVATE tdc)
