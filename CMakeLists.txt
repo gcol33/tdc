@@ -246,6 +246,18 @@ if(TDC_BUILD_TESTS)
     target_link_libraries(test_plugin PRIVATE tdc)
     add_test(NAME plugin COMMAND test_plugin)
 
+    add_executable(test_adversarial_inputs tests/test_adversarial_inputs.c)
+    target_link_libraries(test_adversarial_inputs PRIVATE tdc)
+    add_test(NAME adversarial_inputs COMMAND test_adversarial_inputs)
+
+    add_executable(test_entropy_corrupt tests/test_entropy_corrupt.c)
+    target_link_libraries(test_entropy_corrupt PRIVATE tdc)
+    add_test(NAME entropy_corrupt COMMAND test_entropy_corrupt)
+
+    add_executable(test_stress_roundtrip tests/test_stress_roundtrip.c)
+    target_link_libraries(test_stress_roundtrip PRIVATE tdc)
+    add_test(NAME stress_roundtrip COMMAND test_stress_roundtrip)
+
 endif()
 
 # ----- Bench ----------------------------------------------------------------
