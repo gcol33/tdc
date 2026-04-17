@@ -478,6 +478,21 @@ tdc_status huffman_decode(const uint8_t *src, size_t src_size,
         if (lens[s] != 0) bl_count[lens[s]]++;
     }
 
+    /* Kraft inequality: sum over L of count(L) * 2^(MAX_LEN - L) must fit
+     * in a full MAX_LEN-bit code space (2^MAX_LEN). A Kraft-violating
+     * (over-full) length distribution means two distinct canonical codes
+     * would map to the same prefix — the fast[] table fill loop would
+     * write past the 2^FAST_BITS bound. Reject here so decode on corrupt
+     * lens[] cannot smash the stack. Under-full (Kraft < full) is still
+     * accepted: a single-distinct-symbol stream has Kraft = 1/2. */
+    {
+        uint32_t kraft = 0u;
+        for (int L = 1; L <= HUFFMAN_MAX_LEN; ++L) {
+            kraft += (uint32_t)bl_count[L] << (HUFFMAN_MAX_LEN - L);
+        }
+        if (kraft > (1u << HUFFMAN_MAX_LEN)) return TDC_E_CORRUPT;
+    }
+
     uint16_t firstcode[HUFFMAN_MAX_LEN + 2] = {0};
     uint16_t firstsym [HUFFMAN_MAX_LEN + 2] = {0};
     {

@@ -187,6 +187,18 @@ static tdc_status huffman4_decode(const uint8_t *src, size_t src_size,
         if (lens_buf[s] != 0) bl_count[lens_buf[s]]++;
     }
 
+    /* Kraft inequality: reject over-full length distributions before
+     * huf4_build_fast_table would otherwise write past the 2^FAST_BITS
+     * fast[] bound on corrupt lens[]. See huffman.c for the full
+     * explanation. */
+    {
+        uint32_t kraft = 0u;
+        for (int L = 1; L <= HUFFMAN_MAX_LEN; ++L) {
+            kraft += (uint32_t)bl_count[L] << (HUFFMAN_MAX_LEN - L);
+        }
+        if (kraft > (1u << HUFFMAN_MAX_LEN)) return TDC_E_CORRUPT;
+    }
+
     uint16_t firstcode[HUFFMAN_MAX_LEN + 2] = {0};
     uint16_t firstsym [HUFFMAN_MAX_LEN + 2] = {0};
     {
