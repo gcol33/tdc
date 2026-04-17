@@ -38,11 +38,56 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ----- Shared decode pipeline --------------------------------------------- */
+/*
+ * Single source of truth for the block-decode pipeline. Used by
+ * tdc_decode_block, tdc_decode_block_ex, and tdc_decode_block_into. The
+ * three public entry points differ only in where they source the scratch
+ * allocator and in how strict they are about dst->data — the pipeline
+ * itself is defined exactly once in src/api/decode_impl.c.
+ *
+ * scratch_parent supplies realloc_fn/user for internal ping-pong buffers;
+ * its data/size/capacity fields are ignored. dst->data is NOT allocated
+ * here — callers that need allocation must do it before calling.
+ *
+ * timer_tag is a short label (<= 5 chars) used by the stage-timer prints
+ * so the three entry points can be told apart in decode_profile output.
+ */
+tdc_status driver_decode_block_impl(const uint8_t    *src,
+                                    size_t            src_size,
+                                    tdc_block        *dst,
+                                    const tdc_buffer *scratch_parent,
+                                    const char       *timer_tag);
+
+/* ----- Libc-backed realloc shim ------------------------------------------- */
+/*
+ * Decode entry points that do NOT take a caller-supplied allocator
+ * (tdc_decode_block, tdc_decode_block_into) wrap the libc allocator in a
+ * tdc_buffer so the pipeline still allocates via realloc_fn. This is the
+ * only place in tdc that calls realloc/free directly.
+ */
+static inline void *driver_libc_realloc(void *user, void *ptr, size_t new_size) {
+    (void)user;
+    if (new_size == 0) { free(ptr); return NULL; }
+    return realloc(ptr, new_size);
+}
+
+static inline tdc_buffer driver_make_libc_scratch_parent(void) {
+    tdc_buffer b;
+    b.data       = NULL;
+    b.size       = 0;
+    b.capacity   = 0;
+    b.realloc_fn = driver_libc_realloc;
+    b.user       = NULL;
+    return b;
+}
 
 /* ----- Scratch buffer plumbing -------------------------------------------- */
 
@@ -216,6 +261,7 @@ static inline tdc_dtype driver_model_residual_dtype(tdc_model_id mid,
     switch (mid) {
         case TDC_MODEL_DICT_1D:         return TDC_DT_U32;
         case TDC_MODEL_DICT_NUMERIC_1D: return TDC_DT_U32;
+        case TDC_MODEL_SPARSE_ZERO_1D:  return TDC_DT_U32;
         default:                        return in_dtype;
     }
 }

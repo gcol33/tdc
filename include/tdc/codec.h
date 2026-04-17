@@ -352,6 +352,80 @@ tdc_status tdc_decode_block(const uint8_t *src, size_t src_size,
 tdc_status tdc_decode_block_ex(const uint8_t *src, size_t src_size,
                                tdc_block *dst, tdc_buffer *scratch);
 
+/*
+ * Decode into a caller-provided destination buffer; never touches
+ * dst->data's allocation.
+ *
+ * Zero-allocation decode variant. Intended for callers that have already
+ * allocated the destination (e.g. an R vector backed by an SEXP buffer,
+ * a memory-mapped region, an arena slab) and want tdc to write the
+ * reconstructed values directly into it.
+ *
+ * Before calling, the caller must:
+ *   - set dst->data to a buffer of at least n_elems * dtype_size(dtype)
+ *     bytes, where n_elems is the product of the record's dim[], and
+ *   - populate dst->dtype, dst->layout, and dst->shape to EXACTLY match
+ *     the record (fields are validated, not overwritten).
+ *
+ * Use tdc_decode_peek() on the same src to obtain the dtype / layout /
+ * shape / byte count needed for pre-allocation.
+ *
+ * Internal ping-pong scratch (for entropy + transform stages) is still
+ * required and is allocated from the C runtime — "zero-copy" refers to
+ * the destination buffer, not the whole pipeline. Callers that want
+ * full control over all allocations should use tdc_decode_block_ex and
+ * pre-seat dst->data themselves.
+ *
+ * Returns:
+ *   TDC_OK on success;
+ *   TDC_E_INVAL  if dst->data is NULL for a non-empty block, or if
+ *                dst / src is NULL;
+ *   TDC_E_DTYPE / TDC_E_LAYOUT / TDC_E_SHAPE if a pre-populated field
+ *                disagrees with the record header;
+ *   TDC_E_CORRUPT for malformed records;
+ *   other TDC_E_* on decode failure.
+ *
+ * dst->data is written in place. On failure its contents are unspecified
+ * but its pointer is unchanged (never freed).
+ */
+tdc_status tdc_decode_block_into(const uint8_t *src, size_t src_size,
+                                 tdc_block     *dst);
+
+/*
+ * Pre-read a block record header without decoding.
+ *
+ * Reads only the 80-byte block header and returns the fields the caller
+ * needs to pre-allocate a destination buffer for tdc_decode_block_into.
+ *
+ *   src                 Pointer to the start of a tdc_block_record.
+ *   src_size            Size of src in bytes; must be at least
+ *                       TDC_BLOCK_HEADER_SIZE.
+ *   out_meta            Non-NULL. On TDC_OK, out_meta->dtype,
+ *                       out_meta->layout, and out_meta->shape
+ *                       (rank + dim[] + row-major contiguous stride[])
+ *                       are populated. Other fields are zeroed.
+ *   out_bytes_required  May be NULL. If non-NULL, on TDC_OK receives
+ *                       the byte count the caller must allocate for
+ *                       dst->data: n_elems * dtype_size(dtype).
+ *                       Returns TDC_E_UNSUPPORTED for dtypes without a
+ *                       fixed element width (TDC_DT_STRING) — those
+ *                       blocks cannot use tdc_decode_block_into in v0.
+ *
+ * Returns:
+ *   TDC_OK on success;
+ *   TDC_E_INVAL       if src or out_meta is NULL;
+ *   TDC_E_CORRUPT / TDC_E_VERSION if the header is malformed;
+ *   TDC_E_UNSUPPORTED if out_bytes_required is non-NULL and the dtype
+ *                     has no fixed element width.
+ *
+ * This is the companion to tdc_decode_block_into. It does NOT decode
+ * the payload and is safe to call on a partial buffer as long as the
+ * first 80 bytes are present.
+ */
+tdc_status tdc_decode_peek(const uint8_t *src, size_t src_size,
+                           tdc_block *out_meta,
+                           size_t    *out_bytes_required);
+
 #ifdef __cplusplus
 }
 #endif

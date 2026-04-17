@@ -91,6 +91,8 @@ set(TDC_SOURCES
     src/api/encode.c
     src/api/decode.c
     src/api/decode_ex.c
+    src/api/decode_impl.c
+    src/api/decode_into.c
     src/api/stream_encode.c
     src/api/stream_decode.c
 )
@@ -220,6 +222,10 @@ if(TDC_BUILD_TESTS)
     add_executable(test_decode_ex tests/test_decode_ex.c)
     target_link_libraries(test_decode_ex PRIVATE tdc)
     add_test(NAME decode_ex COMMAND test_decode_ex)
+
+    add_executable(test_decode_into tests/test_decode_into.c)
+    target_link_libraries(test_decode_into PRIVATE tdc)
+    add_test(NAME decode_into COMMAND test_decode_into)
 
     add_executable(test_rowgroup_index tests/test_rowgroup_index.c)
     target_link_libraries(test_rowgroup_index PRIVATE tdc)
