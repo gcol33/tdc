@@ -18,6 +18,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(TDC_BUILD_TESTS "Build tdc tests" ON)
 option(TDC_BUILD_BENCH "Build tdc throughput bench" ON)
+option(TDC_BUILD_TOOLS "Build tdc command-line tools (tdc_inspect)" ON)
 option(TDC_HAVE_ZLIB   "Enable TDC_ENTROPY_DEFLATE backend (requires zlib)" OFF)
 
 option(TDC_ENABLE_AVX2 "Enable AVX2 intrinsics (requires AVX2-capable CPU)" ON)
@@ -288,4 +289,11 @@ if(TDC_BUILD_BENCH)
     if(TDC_BUILD_TESTS)
         add_test(NAME bench_smoke COMMAND bench_throughput --smoke)
     endif()
+endif()
+
+# ----- Tools ----------------------------------------------------------------
+
+if(TDC_BUILD_TOOLS)
+    add_executable(tdc_inspect tools/tdc_inspect.c)
+    target_link_libraries(tdc_inspect PRIVATE tdc)
 endif()
