@@ -1775,7 +1775,8 @@ static tdc_status lzs_decode_fused(
              r3 = LZS_REP_INIT_3;
 
     size_t dp = 0, lp = 0;
-    size_t safe_end = (dst_size >= 15) ? dst_size - 15 : 0;
+    size_t safe_end = (dst_size >= TDC_WILDCOPY_SLACK)
+                          ? dst_size - TDC_WILDCOPY_SLACK : 0;
 
     /* --- Upfront symbol-range validation (items 4.2) ---
      * Move the 3 per-sequence symbol-range checks out of the hot loop.
@@ -1906,10 +1907,10 @@ static tdc_status lzs_decode_fused(
 
 /* Shared output reconstruction — used by both v1 and v2 decoders.
  *
- * Match copy uses wildcopy (16-byte memcpy chunks) which may overwrite
- * up to 15 bytes past the match end. To make this safe, we use the fast
- * path only while dp + ml + 15 <= dst_size; the last few sequences fall
- * back to byte-by-byte copy. */
+ * Match copy uses wildcopy (up to TDC_WILDCOPY_SLACK bytes overshoot:
+ * 31 on AVX2 builds for wildcopy32, 15 otherwise for wildcopy16). The
+ * fast path only runs while dp + ml + TDC_WILDCOPY_SLACK <= dst_size;
+ * the last few sequences fall back to byte-by-byte copy. */
 #define LZS_PREFETCH_DIST 8u
 static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
                                     const uint8_t *lit_raw, uint32_t total_lit,
@@ -1919,8 +1920,9 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
                                     const uint32_t *match_offs,
                                     uint32_t n_seqs) {
     size_t dp = 0, lp = 0;
-    /* Fast path: wildcopy-safe region (15 bytes of slack). */
-    size_t safe_end = (dst_size >= 15) ? dst_size - 15 : 0;
+    /* Fast path: wildcopy-safe region. */
+    size_t safe_end = (dst_size >= TDC_WILDCOPY_SLACK)
+                          ? dst_size - TDC_WILDCOPY_SLACK : 0;
 
     /* Upfront validation: sum lit_lens and match_lens, check against totals.
      * If this passes, every per-sequence buffer-bounds check in the hot loop

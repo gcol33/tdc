@@ -106,7 +106,18 @@ static inline void tdc_wildcopy32(uint8_t *dst, const uint8_t *src,
 /* Full match copy dispatcher.  Handles all offsets and lengths.
  * op points to the current output position; off is the back-reference
  * distance (op - match); mlen is the number of bytes to copy.
- * Caller must ensure op + mlen + 15 <= buffer end (wildcopy slack). */
+ *
+ * Caller must reserve TDC_WILDCOPY_SLACK bytes past op + mlen: the
+ * AVX2-enabled off >= 32 path dispatches to wildcopy32 which may
+ * overshoot by up to 31 bytes; the off >= 16 path overshoots by up
+ * to 15. Callers that conservatively use the maximum (31) are safe
+ * regardless of which internal path fires. */
+#if TDC_HAVE_AVX2
+#  define TDC_WILDCOPY_SLACK 31
+#else
+#  define TDC_WILDCOPY_SLACK 15
+#endif
+
 static inline void tdc_match_copy(uint8_t *op, uint32_t off, uint32_t mlen) {
     const uint8_t *match = op - off;
 

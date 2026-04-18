@@ -797,12 +797,13 @@ static inline void lz_decode_fast(
         uint32_t off;
         sp = lz_offset_read(sp, &off);
 
-        /* Bail to safe path if this sequence would exceed bounds. The +15
-         * margin accounts for the unconditional 16-byte wildcopy below.
-         * Long matches (now possible since the varint extension lifted the
+        /* Bail to safe path if this sequence would exceed bounds. The
+         * TDC_WILDCOPY_SLACK margin covers the worst-case overshoot of
+         * tdc_match_copy (31 bytes on AVX2 builds, 15 otherwise). Long
+         * matches (now possible since the varint extension lifted the
          * old 130-byte cap) frequently trip this and finish in the safe
          * tail — that path uses memcpy and handles overlap correctly. */
-        if (LZ_UNLIKELY(dp + lit_len + mlen + 15 > uncompressed_size)) {
+        if (LZ_UNLIKELY(dp + lit_len + mlen + TDC_WILDCOPY_SLACK > uncompressed_size)) {
             sp = sp_save; /* rewind — safe path will re-parse */
             break;
         }
