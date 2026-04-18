@@ -16,10 +16,11 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-option(TDC_BUILD_TESTS "Build tdc tests" ON)
-option(TDC_BUILD_BENCH "Build tdc throughput bench" ON)
-option(TDC_BUILD_TOOLS "Build tdc command-line tools (tdc_inspect)" ON)
-option(TDC_HAVE_ZLIB   "Enable TDC_ENTROPY_DEFLATE backend (requires zlib)" OFF)
+option(TDC_BUILD_TESTS    "Build tdc tests" ON)
+option(TDC_BUILD_BENCH    "Build tdc throughput bench" ON)
+option(TDC_BUILD_TOOLS    "Build tdc command-line tools (tdc_inspect)" ON)
+option(TDC_BUILD_EXAMPLES "Build tdc examples (plugin demo)" OFF)
+option(TDC_HAVE_ZLIB      "Enable TDC_ENTROPY_DEFLATE backend (requires zlib)" OFF)
 
 option(TDC_ENABLE_AVX2 "Enable AVX2 intrinsics (requires AVX2-capable CPU)" ON)
 
@@ -296,4 +297,11 @@ endif()
 if(TDC_BUILD_TOOLS)
     add_executable(tdc_inspect tools/tdc_inspect.c)
     target_link_libraries(tdc_inspect PRIVATE tdc)
+endif()
+
+# ----- Examples -------------------------------------------------------------
+
+if(TDC_BUILD_EXAMPLES)
+    add_executable(tdc_example_plugin examples/plugin/xor_entropy.c)
+    target_link_libraries(tdc_example_plugin PRIVATE tdc)
 endif()
