@@ -20,3 +20,6 @@ bsm.log
 # Tool caches
 bench/__pycache__/
 .claude/
+
+# MkDocs build artifact
+site/

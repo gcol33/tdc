@@ -1,0 +1,92 @@
+site_name: tdc
+site_description: Typed, dimensional compression library in C
+site_url: https://gcol33.github.io/tdc/
+repo_url: https://github.com/gcol33/tdc
+repo_name: gcol33/tdc
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path:
+        - docs
+        - .
+      check_paths: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quickstart: quickstart.md
+      - Integration: integration.md
+  - Format:
+      - On-disk format: format/on-disk.md
+  - Backends:
+      - Models: backends/models.md
+      - Transforms: backends/transforms.md
+      - Entropy: backends/entropy.md
+  - Theory:
+      - Predictor math: theory/predictors.md
+      - LZ inner loop: theory/lz-inner-loop.md
+  - Performance:
+      - Tuning: performance/tuning.md
+  - Extending:
+      - Custom backends: extending/custom-backends.md
+  - Reference:
+      - Troubleshooting: reference/troubleshooting.md
+      - Migration from vectra: reference/migration-vtr.md

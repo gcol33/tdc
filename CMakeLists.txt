@@ -345,4 +345,53 @@ endif()
 if(TDC_BUILD_EXAMPLES)
     add_executable(tdc_example_plugin examples/plugin/xor_entropy.c)
     target_link_libraries(tdc_example_plugin PRIVATE tdc)
+
+    # docs/examples: runnable C examples embedded into the MkDocs vignettes
+    # via the pymdownx.snippets extension. Built under the same warning flags
+    # as the library so doc examples can't silently drift from reality.
+    set(TDC_DOC_EXAMPLES
+        quickstart_roundtrip
+        quickstart_codec_compare
+        quickstart_vector1d
+        quickstart_raster2d
+        quickstart_stack2d
+        quickstart_volume3d
+        quickstart_error
+        models_raw
+        models_delta1d
+        models_pred2d_kinds
+        models_plane2d
+        models_pred3d
+        models_edge_cases
+        format_hexdump
+        format_peek_header
+        xforms_roundtrip
+        xforms_chain_compare
+        xforms_quantize_tune
+        xforms_edge_cases
+        xforms_order_matters
+        entropy_roundtrip_none
+        entropy_roundtrip_lz
+        entropy_roundtrip_huffman
+        entropy_corrupt_lz
+        entropy_truncated_lz
+        entropy_bench_incompressible
+        entropy_bench_repetitive
+        entropy_bench_mixed
+        entropy_which_wins
+        integration_arena
+        integration_error
+        integration_consumer
+        troubleshooting_statuses
+        theory_residual_printer
+        theory_lz_histogram
+        migration_one_column
+        tuning_pipeline_compare
+        tuning_knob_walk
+    )
+    foreach(ex IN LISTS TDC_DOC_EXAMPLES)
+        add_executable(${ex} docs/examples/${ex}.c)
+        target_link_libraries(${ex} PRIVATE tdc)
+        target_include_directories(${ex} PRIVATE docs/examples)
+    endforeach()
 endif()
