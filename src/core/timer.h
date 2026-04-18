@@ -11,6 +11,13 @@
 #ifndef TDC_CORE_TIMER_H
 #define TDC_CORE_TIMER_H
 
+/* clock_gettime / CLOCK_MONOTONIC are POSIX.1b. Under strict -std=c11
+ * glibc hides them unless _POSIX_C_SOURCE is set. Must be defined before
+ * any system header in this TU. */
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#  define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdlib.h>
 
 #if defined(_WIN32)
