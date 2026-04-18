@@ -1,0 +1,1957 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed, dimensional compression library in C">
+      
+      
+      
+        <link rel="canonical" href="https://gcol33.github.io/tdc/reference/troubleshooting/">
+      
+      
+        <link rel="prev" href="../../extending/custom-backends/">
+      
+      
+        <link rel="next" href="../migration-vtr/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Troubleshooting - tdc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#troubleshooting" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdc" class="md-header__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Troubleshooting
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../format/on-disk/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Format
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../backends/models/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Backends
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../theory/predictors/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Theory
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance/tuning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../extending/custom-backends/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdc" class="md-nav__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Format
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/on-disk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On-disk format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/transforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/entropy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/predictors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Predictor math
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/lz-inner-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../extending/custom-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status-code-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status code reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status code reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdc_ok-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_OK = 0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_inval-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_INVAL = 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_nomem-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_NOMEM = 2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_unsupported-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_UNSUPPORTED = 3
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_dtype-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_DTYPE = 4
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_layout-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_LAYOUT = 5
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_shape-6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_SHAPE = 6
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_buf_too_small-7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_BUF_TOO_SMALL = 7
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_corrupt-8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_CORRUPT = 8
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_version-9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_VERSION = 9
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_io-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_IO = 10
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-failure-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common failure patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common failure patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pattern-1-layout-mismatch-on-encode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern 1: layout mismatch on encode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-2-wrong-destination-buffer-size-on-decode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern 2: wrong destination buffer size on decode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#debug-build-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debug build tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-a-bug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reporting a bug
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../migration-vtr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status-code-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status code reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status code reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tdc_ok-0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_OK = 0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_inval-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_INVAL = 1
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_nomem-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_NOMEM = 2
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_unsupported-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_UNSUPPORTED = 3
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_dtype-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_DTYPE = 4
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_layout-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_LAYOUT = 5
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_shape-6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_SHAPE = 6
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_buf_too_small-7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_BUF_TOO_SMALL = 7
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_corrupt-8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_CORRUPT = 8
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_version-9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_VERSION = 9
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tdc_e_io-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TDC_E_IO = 10
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-failure-patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common failure patterns
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common failure patterns">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pattern-1-layout-mismatch-on-encode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern 1: layout mismatch on encode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pattern-2-wrong-destination-buffer-size-on-decode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern 2: wrong destination buffer size on decode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#debug-build-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debug build tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reporting-a-bug" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reporting a bug
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h1>
+<p>Every tdc entry point returns a <code>tdc_status</code>. Eleven codes cover the surface (<code>TDC_OK</code> plus ten errors), and a single lookup in <code>tdc_strerror</code> maps each to a one-line string. This page walks through each code in turn, then traces two realistic failure patterns from the symptom the caller sees down to the line of C that fixes them.</p>
+<p>The code used for every row in the status-code table lives at <a href="../../examples/troubleshooting_statuses.c"><code>docs/examples/troubleshooting_statuses.c</code></a>. Running that program on tdc 0.2.0-dev prints:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>OK: raw encode             -&gt; status=0 (ok)
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>INVAL: no realloc_fn       -&gt; status=1 (invalid argument)
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>LAYOUT: 2D to DELTA_1D     -&gt; status=5 (layout not accepted by stage)
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>DTYPE: I32 to DELTA2_1D    -&gt; status=4 (dtype not accepted by stage)
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>SHAPE: negative dim        -&gt; status=6 (shape rank or dims invalid)
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>UNSUPPORTED: bad model id  -&gt; status=3 (unsupported model/transform/entropy id)
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>CORRUPT: short peek        -&gt; status=8 (on-disk header or payload failed validation)
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>VERSION: future version    -&gt; status=9 (container or block version not understood)
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>INVAL: NULL dst-&gt;data      -&gt; status=1 (invalid argument)
+</span></code></pre></div>
+<p>Each entry below pins one status to a concrete return site inside <code>src/</code>, names the caller-visible symptom, gives the most common cause, and states the shortest fix. The codes are stable: future 0.x minor bumps keep the numbering intact.</p>
+<h2 id="status-code-reference">Status code reference<a class="headerlink" href="#status-code-reference" title="Permanent link">&para;</a></h2>
+<p>Every code a public entry point can return. The enum lives in <code>include/tdc/types.h</code>; the error strings come from <code>include/tdc/error.h</code> via <code>tdc_strerror</code>. One line per code names the return site; the body says how to unblock it.</p>
+<h3 id="tdc_ok-0"><code>TDC_OK = 0</code><a class="headerlink" href="#tdc_ok-0" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> The call succeeded. Output buffers hold the produced bytes. On a decode, <code>dst-&gt;data</code> holds the reconstructed values and <code>memcmp</code> against the original input is exact. Nothing to fix.</p>
+<p><strong>Cause.</strong> The encoder consumed the block and produced a full record; the round trip through decode reconstructed every element, and the result matched the header's <code>uncompressed_size</code>.</p>
+<p><strong>Fix.</strong> None. Note that <code>TDC_OK == 0</code>, so the common <code>if (st) { ... handle error ... }</code> pattern works without a named constant.</p>
+<h3 id="tdc_e_inval-1"><code>TDC_E_INVAL = 1</code><a class="headerlink" href="#tdc_e_inval-1" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> The call returns 1 immediately and produces no output. Output pointers and sizes stay at their entry values; the caller's buffer has not grown.</p>
+<p><strong>Likely cause.</strong> A required pointer is NULL, a buffer is missing its <code>realloc_fn</code>, or a sanity invariant failed. The two most common shapes are a <code>tdc_buffer</code> with a zero <code>realloc_fn</code> handed to <code>tdc_encode_block</code>, and a <code>tdc_decode_block_into</code> call where <code>dst-&gt;data</code> is NULL for a non-empty record. Both return <code>TDC_E_INVAL</code> before the pipeline runs (<code>src/api/decode_impl.c</code> line 100).</p>
+<p><strong>Fix.</strong> Install the allocator before passing the buffer.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">tdc_buffer</span><span class="w"> </span><span class="n">enc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">enc</span><span class="p">.</span><span class="n">realloc_fn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">my_realloc</span><span class="p">;</span><span class="w">        </span><span class="cm">/* never leave this NULL */</span>
+</span></code></pre></div>
+<p>For <code>tdc_decode_block_into</code>, peek first, then allocate:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">meta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">need</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">tdc_decode_peek</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">src_size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">meta</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">need</span><span class="p">);</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">meta</span><span class="p">;</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">dst</span><span class="p">.</span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">my_realloc</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">need</span><span class="p">);</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">tdc_decode_block_into</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">src_size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">dst</span><span class="p">);</span>
+</span></code></pre></div>
+<h3 id="tdc_e_nomem-2"><code>TDC_E_NOMEM = 2</code><a class="headerlink" href="#tdc_e_nomem-2" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> The call returns 2 partway through the pipeline. The library has already freed its internal scratch through the same allocator, and no partial output reaches the caller.</p>
+<p><strong>Likely cause.</strong> The caller's <code>realloc_fn</code> returned NULL under memory pressure, or an arena allocator hit its capacity. Sites that can report this include <code>src/format/schema.c</code> (column descriptor arrays) and <code>src/api/decode_varlen.c</code> (offsets + byte-heap allocation for decoded strings).</p>
+<p><strong>Fix.</strong> Size the arena for the block's worst case before calling, or fall back to libc <code>realloc</code> for that call. A back-of-the-envelope upper bound is <code>2 * n_elems * dtype_size + 80</code> for the output record, plus <code>3 * n_elems * dtype_size</code> of scratch for the ping-pong buffers on decode.</p>
+<h3 id="tdc_e_unsupported-3"><code>TDC_E_UNSUPPORTED = 3</code><a class="headerlink" href="#tdc_e_unsupported-3" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> The encode or decode returns 3 before any data moves. On encode this usually means a <code>model</code>, <code>xform</code>, or <code>entropy</code> id in the <code>tdc_codec_spec</code> has no registered backend.</p>
+<p><strong>Likely cause.</strong> The id falls in the user-reserved range (<code>0xFF00..0xFFFF</code>) with no corresponding <code>case</code> in <code>src/core/registry.c</code>, or it is a v0 enum value whose backend the build left out (e.g. <code>TDC_ENTROPY_DEFLATE</code> without <code>-DTDC_HAVE_ZLIB=ON</code>). The decode-side site sits at <code>src/api/decode_impl.c</code> line 104: <code>if (!model_vt) return TDC_E_UNSUPPORTED;</code>.</p>
+<p><strong>Fix.</strong> Either switch to a shipped id (the core range <code>0x0001..0x00FF</code>), or rebuild with the optional backend enabled:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>cmake<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DTDC_HAVE_ZLIB<span class="o">=</span>ON
+</span></code></pre></div>
+<h3 id="tdc_e_dtype-4"><code>TDC_E_DTYPE = 4</code><a class="headerlink" href="#tdc_e_dtype-4" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> Encode returns 4 before any residual leaves the model, or decode returns 4 when the pre-populated <code>dst-&gt;dtype</code> disagrees with the record header.</p>
+<p><strong>Likely cause.</strong> The spec picked a model or transform that does not accept the input dtype. <code>DELTA2_1D</code> and <code>FPC_1D</code> are float-only; <code>SPARSE_ZERO_1D</code> accepts numeric dtypes but not I8/U8; <code>ZIGZAG</code> only accepts signed integers. Each stage checks its <code>accepted_dtypes</code> bitmask and returns <code>TDC_E_DTYPE</code> on miss.</p>
+<p><strong>Fix.</strong> Match the model to the dtype. Signed integer vectors route through <code>DELTA_1D</code>; float vectors want <code>DELTA2_1D</code> or <code>FPC_1D</code> instead. The full acceptance table lives in <a href="../../backends/models/">Models</a> and <a href="../../backends/transforms/">Transforms</a>.</p>
+<h3 id="tdc_e_layout-5"><code>TDC_E_LAYOUT = 5</code><a class="headerlink" href="#tdc_e_layout-5" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> Encode returns 5 before any residual leaves the model. Decode returns 5 when the pre-populated <code>dst-&gt;layout</code> disagrees with the record header (<code>src/api/decode_impl.c</code> line 90).</p>
+<p><strong>Likely cause.</strong> The spec's model targets a layout the block does not carry. Every model carries an accepted-layouts bitmask; <code>DELTA_1D</code> takes <code>VECTOR_1D</code> only, <code>PRED_2D</code> takes <code>RASTER_2D</code> only, <code>PRED_3D</code> takes <code>VOLUME_3D</code> only. A 2D raster handed to <code>DELTA_1D</code> hits <code>src/model/delta1d.c</code> line 718.</p>
+<p><strong>Fix.</strong> Set <code>src-&gt;layout</code> to one the model accepts, or pick a model that accepts the layout the block already has. The quickstart walks the four layouts end to end.</p>
+<h3 id="tdc_e_shape-6"><code>TDC_E_SHAPE = 6</code><a class="headerlink" href="#tdc_e_shape-6" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> The call returns 6 during validation. On encode, the block never reaches the model. On decode, the destination's shape did not match the header's <code>dim[]</code>.</p>
+<p><strong>Likely cause.</strong> A negative dimension, a rank that does not match the layout (e.g. <code>VECTOR_1D</code> with <code>rank = 2</code>), or <code>dst-&gt;shape.dim[i]</code> on decode that differs from the record's stored dim. The encode gate lives in <code>tdc_block_validate</code> (<code>src/core/block.c</code> lines 75-82). On the decode side, <code>src/api/decode_impl.c</code> lines 91-93 compare each <code>dst-&gt;shape.dim[i]</code> against the record and reject the first disagreement.</p>
+<p><strong>Fix.</strong> Fill the shape from the record on decode instead of hand-setting it:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">meta</span><span class="p">;</span><span class="w">           </span><span class="cm">/* meta came from tdc_decode_peek */</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">dst</span><span class="p">.</span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">my_alloc</span><span class="p">(</span><span class="n">need</span><span class="p">);</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">tdc_decode_block_into</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">src_size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">dst</span><span class="p">);</span>
+</span></code></pre></div>
+<p>On encode, call <code>tdc_block_validate(&amp;src)</code> as a debug-build assertion before <code>tdc_encode_block</code>. A negative dim usually means an off-by-one in the caller's size math, not a tdc bug.</p>
+<h3 id="tdc_e_buf_too_small-7"><code>TDC_E_BUF_TOO_SMALL = 7</code><a class="headerlink" href="#tdc_e_buf_too_small-7" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> A parser returned 7. The destination buffer was not large enough to hold the parsed data.</p>
+<p><strong>Likely cause.</strong> The only return site in v0 is <code>tdc_stats_parse</code> (<code>src/format/stats.c</code> line 292), reached via the stream-decoder row-group stats path. It fires when the serialized stats section is shorter than <code>n_cols * TDC_STATS_ENTRY_SIZE</code>. The one-shot <code>tdc_encode_block</code> and <code>tdc_decode_block</code> entry points never return this code in v0.</p>
+<p><strong>Fix.</strong> Size the destination buffer from the header before the parse:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">size_t</span><span class="w"> </span><span class="n">required</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="p">)</span><span class="n">n_cols</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">TDC_STATS_ENTRY_SIZE</span><span class="p">;</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">buf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">my_alloc</span><span class="p">(</span><span class="n">required</span><span class="p">);</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">tdc_stats_parse</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">required</span><span class="p">,</span><span class="w"> </span><span class="n">n_cols</span><span class="p">,</span><span class="w"> </span><span class="n">out</span><span class="p">);</span>
+</span></code></pre></div>
+<p>If the error surfaces from a streaming read, the upstream index is likely truncated. Re-read the container from the beginning and confirm <code>index_size</code> matches the trailing-index entry count.</p>
+<h3 id="tdc_e_corrupt-8"><code>TDC_E_CORRUPT = 8</code><a class="headerlink" href="#tdc_e_corrupt-8" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> Decode returns 8 before any residual bytes are produced. The record's header failed structural validation.</p>
+<p><strong>Likely cause.</strong> The 80-byte header's magic does not match <code>TDC_BLOCK_MAGIC</code> (<code>BLKB</code>), the advertised section sizes do not fit in <code>src_size</code>, or <code>validity_size</code> disagrees with the flag bit. The container-header analog is <code>src/format/header.c</code> line 44: <code>if (h-&gt;magic != TDC_CONTAINER_MAGIC) return TDC_E_CORRUPT;</code>. Block-record cases are scattered through <code>src/api/decode_impl.c</code> lines 57-85.</p>
+<p><strong>Fix.</strong> Re-read the bytes from the source. If the corruption is reproducible, run the block through <code>tdc_inspect</code> (<code>tools/tdc_inspect.c</code>) to locate the first invalid field. The most common real-world trigger is a truncated download; checksum the bytes before retrying.</p>
+<h3 id="tdc_e_version-9"><code>TDC_E_VERSION = 9</code><a class="headerlink" href="#tdc_e_version-9" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> Decode returns 9 with the container or block record held out of reach. The header's magic was correct but the version was not one the linked library understands.</p>
+<p><strong>Likely cause.</strong> The record was produced by a future tdc that bumped <code>TDC_BLOCK_VERSION</code> or <code>TDC_CONTAINER_VERSION</code>. Current v0 values are <code>TDC_CONTAINER_VERSION = 1</code> and <code>TDC_BLOCK_VERSION = 2</code>. The two return sites are <code>src/format/header.c</code> line 45 (containers) and <code>src/format/block_record.c</code> line 96 (per-block).</p>
+<p><strong>Fix.</strong> Upgrade tdc to a library version that supports the record's version, or have the producer write a version this reader understands. There is no in-place migration; v0 does not read future versions.</p>
+<h3 id="tdc_e_io-10"><code>TDC_E_IO = 10</code><a class="headerlink" href="#tdc_e_io-10" title="Permanent link">&para;</a></h3>
+<p><strong>Symptom.</strong> A streaming read or write returned 10. The underlying file or socket failed.</p>
+<p><strong>Likely cause.</strong> The stream decoder's read hook returned a short count or a hard error. The two call sites are <code>src/api/stream_decode.c</code> lines 94 and 109, wrapping the caller's <code>read_fn</code> callback. One-shot <code>tdc_encode_block</code> / <code>tdc_decode_block</code> never touch I/O and never return this code.</p>
+<p><strong>Fix.</strong> Check the underlying descriptor, confirm the file length matches the container's advertised <code>index_offset + index_size</code>, and retry. If the read hook is buffered, flush it before the next call.</p>
+<h2 id="common-failure-patterns">Common failure patterns<a class="headerlink" href="#common-failure-patterns" title="Permanent link">&para;</a></h2>
+<p>Two concrete miswirings, from symptom to fix. Both are trivial to reproduce, both are common in first-week tdc integrations, and both are fully explained by the status the library returns.</p>
+<h3 id="pattern-1-layout-mismatch-on-encode">Pattern 1: layout mismatch on encode<a class="headerlink" href="#pattern-1-layout-mismatch-on-encode" title="Permanent link">&para;</a></h3>
+<p>A consumer pipelines 2D sensor frames through an encoder written initially for 1D timeseries. The first frame trips the following trace:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>status = 5 (layout not accepted by stage)
+</span></code></pre></div>
+<p>That is <code>TDC_E_LAYOUT</code>, returned by <code>delta1d_encode</code> (<code>src/model/delta1d.c</code> line 718) the moment it sees a <code>tdc_block</code> whose <code>layout</code> is <code>TDC_LAYOUT_RASTER_2D</code> instead of <code>TDC_LAYOUT_VECTOR_1D</code>. The encoder never allocates, never writes a partial record, and leaves the output buffer pointer unchanged.</p>
+<p>Two things went wrong at the call site. The <code>tdc_codec_spec</code> still carries <code>spec.model = TDC_MODEL_DELTA_1D</code>, copied from the 1D path. The block construction switched to <code>TDC_LAYOUT_RASTER_2D</code> when the shape grew to rank 2, but the spec did not. The library's dispatcher branches on layout, never on rank, so this mismatch is detected before any residuals are computed.</p>
+<p>Fix. Pick a model whose <code>accepted_layouts</code> bitmask covers <code>RASTER_2D</code>:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">tdc_codec_spec</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">spec</span><span class="p">.</span><span class="n">model</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_MODEL_PRED_2D</span><span class="p">;</span><span class="w">         </span><span class="cm">/* accepts RASTER_2D */</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">spec</span><span class="p">.</span><span class="n">xform</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_XFORM_ZIGZAG</span><span class="p">;</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">spec</span><span class="p">.</span><span class="n">xform</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w">    </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_XFORM_BYTE_SHUFFLE</span><span class="p">;</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">spec</span><span class="p">.</span><span class="n">entropy</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_ENTROPY_LZ</span><span class="p">;</span>
+</span></code></pre></div>
+<p>A 64x64 <code>int32</code> frame that initially returned <code>TDC_E_LAYOUT</code> at 16 KiB of untouched input now round-trips through a 1.2 KiB record in <a href="../../examples/integration_error.c"><code>integration_error.c</code></a>. Between the two calls the only change is the model id; the block struct, the allocator, and the output buffer are identical.</p>
+<p>A small library-design note about this failure mode: <code>tdc_block_validate</code> does not check the spec. It only checks whether the block is structurally coherent on its own (rank vs layout, dtype id in range, <code>offsets</code> NULL-ness). The mismatch between a valid block and a model that does not accept its layout is caught by the model dispatcher, not by block validation, because only the dispatcher knows which layouts each backend accepts. Running <code>tdc_block_validate</code> on every source block in debug builds is still defensible; it catches the off-by-one on <code>rank</code> that otherwise waits until the model itself fails with <code>TDC_E_SHAPE</code>.</p>
+<h3 id="pattern-2-wrong-destination-buffer-size-on-decode">Pattern 2: wrong destination buffer size on decode<a class="headerlink" href="#pattern-2-wrong-destination-buffer-size-on-decode" title="Permanent link">&para;</a></h3>
+<p>A consumer hand-rolls its decode path to avoid a spurious malloc. The destination dtype is hardcoded to <code>TDC_DT_F32</code>, which matched the producer when the pipeline was written. A later change migrated the producer to <code>TDC_DT_F16</code>. The first decode after the migration now prints:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>status = 4 (dtype not accepted by stage)
+</span></code></pre></div>
+<p>That is <code>TDC_E_DTYPE</code>, returned at <code>src/api/decode_impl.c</code> line 89 when <code>dst-&gt;dtype != hdr.dtype</code>. No bytes have been written into <code>dst-&gt;data</code>; the caller's buffer is untouched. A step before that check, <code>tdc_decode_peek</code> would have reported the record's dtype as <code>TDC_DT_F16</code> and its required byte count as <code>n_elems * 2</code> rather than <code>n_elems * 4</code>.</p>
+<p>The fix has two parts. Source the dtype from the record, not from caller assumptions:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">meta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="kt">size_t</span><span class="w"> </span><span class="n">need</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">tdc_status</span><span class="w"> </span><span class="n">st</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_decode_peek</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">src_size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">meta</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">need</span><span class="p">);</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">st</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">TDC_OK</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">st</span><span class="p">;</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">meta</span><span class="p">;</span><span class="w">                </span><span class="cm">/* dtype, layout, shape copied from the record */</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="n">dst</span><span class="p">.</span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">my_alloc</span><span class="p">(</span><span class="n">need</span><span class="p">);</span><span class="w">           </span><span class="cm">/* sized from the peek */</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="n">st</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_decode_block_into</span><span class="p">(</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="n">src_size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">dst</span><span class="p">);</span>
+</span></code></pre></div>
+<p>The pre-populated fields are validated against the header, not overwritten. A caller that continues to pre-fill <code>dtype</code> manually can still do so, as long as it matches the record; the peek-then-copy idiom shown above sidesteps the problem entirely by filling the fields from the record in one step.</p>
+<p>If the caller cannot use <code>tdc_decode_peek</code> (for example, they are reading a memory-mapped region and want one less helper call), the defensive move is to treat any of <code>TDC_E_DTYPE</code>, <code>TDC_E_LAYOUT</code>, or <code>TDC_E_SHAPE</code> on return as "destination pre-population is wrong; peek, reallocate if needed, and retry." The three-code fallback covers every pre-population bug without the caller needing to inspect the header by hand.</p>
+<p>Both patterns share the same shape. The library detects the mismatch early, returns a code that names the stage it failed in, and leaves every caller-owned buffer in the state it had on entry. A call that returns <code>TDC_E_LAYOUT</code>, <code>TDC_E_DTYPE</code>, or <code>TDC_E_SHAPE</code> is trivially retryable: fix the parameter named by the code, call again.</p>
+<h2 id="debug-build-tips">Debug build tips<a class="headerlink" href="#debug-build-tips" title="Permanent link">&para;</a></h2>
+<p>A debug build of tdc is just the default CMake target with <code>-DCMAKE_BUILD_TYPE=Debug</code>. On MSVC this adds <code>/Zi</code> and <code>/Od</code>; on gcc or clang it adds <code>-g</code> and <code>-O0</code>. None of the warning flags change. The library runs with the same compile-time invariants either way, so a failure reproduced in debug is a failure in release.</p>
+<p>Two non-default flags help when investigating a status code:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>cmake<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Debug<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">    </span>-DCMAKE_C_FLAGS<span class="o">=</span><span class="s2">&quot;-fsanitize=address,undefined -fno-omit-frame-pointer&quot;</span>
+</span></code></pre></div>
+<p>AddressSanitizer catches out-of-bounds writes in caller-owned destinations (the most common way a user-supplied <code>realloc_fn</code> corrupts tdc's ping-pong buffers). UndefinedBehaviorSanitizer flags integer overflow in the shape product before it reaches <code>TDC_E_SHAPE</code>. Both are compatible with MSVC (AddressSanitizer ships with Visual Studio 17+).</p>
+<p>To dump a block record without decoding, run <code>tdc_inspect</code> on the raw bytes. The tool prints every field of the 80-byte header, the side-metadata section, and the payload size. It reads only the header, so a record that returns <code>TDC_E_CORRUPT</code> during decode still prints cleanly if the corruption is in the payload:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>build/Debug/tdc_inspect.exe<span class="w"> </span>path/to/block.bin
+</span></code></pre></div>
+<p>Three other cheap instrumentation steps help in the field. Log the return of every <code>tdc_encode_block</code> and <code>tdc_decode_block</code> with <code>tdc_strerror(st)</code> so logs carry the human-readable code next to the numeric one. Hash the source bytes before handing them to tdc and again after a decode round-trip; a <code>memcmp</code> mismatch reduces the search space to one stage. Capture the <code>tdc_codec_spec</code> alongside the first byte of each block: when reproducing a <code>TDC_E_CORRUPT</code> or <code>TDC_E_VERSION</code>, the spec plus the first 80 bytes are enough to reconstruct the failing call without the full container.</p>
+<h2 id="reporting-a-bug">Reporting a bug<a class="headerlink" href="#reporting-a-bug" title="Permanent link">&para;</a></h2>
+<p>A bug report against tdc is easiest to triage when it carries the five items below. Any one missing turns a five-minute fix into an hour of guessing.</p>
+<p><strong>tdc version.</strong> Either the release tag (<code>0.1.0</code>), the commit hash from <code>src/core/version.c</code>, or the output of <code>git describe --tags</code> from the build tree.</p>
+<p><strong>The <code>tdc_codec_spec</code>.</strong> Include the model id, the transform chain (all four slots), the entropy chain (all four slots), and the values of any params pointers (<code>tdc_pred2d_params::kind</code>, <code>tdc_quantize_params::scale</code>, etc.). A one-line <code>printf</code> at the top of the failing encode is enough.</p>
+<p><strong>Input shape and dtype.</strong> <code>dtype</code>, <code>layout</code>, <code>shape.rank</code>, and <code>shape.dim[]</code>. Include the byte count (<code>n_elems * dtype_size</code>) so the report is self-contained.</p>
+<p><strong>The status code and its <code>tdc_strerror</code> string.</strong> The numeric code alone is ambiguous across patch bumps; the string is stable.</p>
+<p><strong>A minimal repro.</strong> Ideally a single <code>.c</code> file under 80 lines that reproduces the failure with <code>cc -I include repro.c libtdc.a -o repro</code>. The examples under <code>docs/examples/</code> are a good template. If the input is a real file, attach or link the first 4 KiB as <code>xxd</code> output so the bytes survive copy/paste.</p>
+<p>Open the issue at <a href="https://github.com/gcol33/tdc/issues">github.com/gcol33/tdc/issues</a>. The maintainer reads every new issue; a clean report with the five items above usually gets a reproduction within a day.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

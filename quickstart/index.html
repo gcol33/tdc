@@ -1,0 +1,1772 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed, dimensional compression library in C">
+      
+      
+      
+        <link rel="canonical" href="https://gcol33.github.io/tdc/quickstart/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../integration/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Quickstart - tdc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#quickstart" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="tdc" class="md-header__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Quickstart
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../format/on-disk/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Format
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../backends/models/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Backends
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../theory/predictors/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Theory
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../performance/tuning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../extending/custom-backends/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/troubleshooting/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="tdc" class="md-nav__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-block-abstraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The block abstraction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-encodedecode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal encode/decode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-a-codec-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a codec spec
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layout-taste-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layout taste tests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Layout taste tests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vector_1d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VECTOR_1D
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#raster_2d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RASTER_2D
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stack_2d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        STACK_2D
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volume_3d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VOLUME_3D
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-read-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to read next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Format
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../format/on-disk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On-disk format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/transforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/entropy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../theory/predictors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Predictor math
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../theory/lz-inner-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../extending/custom-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/migration-vtr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-block-abstraction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The block abstraction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-encodedecode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal encode/decode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-a-codec-spec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing a codec spec
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layout-taste-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Layout taste tests
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Layout taste tests">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vector_1d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VECTOR_1D
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#raster_2d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RASTER_2D
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stack_2d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        STACK_2D
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volume_3d" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VOLUME_3D
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#error-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error handling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-read-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to read next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="quickstart">Quickstart<a class="headerlink" href="#quickstart" title="Permanent link">&para;</a></h1>
+<p>tdc is a typed, dimensional compression library. The public API is C11. This walkthrough starts from a raw buffer, builds a <code>tdc_block</code>, runs one round trip, then widens the aperture to show every layout and every decision point the caller has to make. Every code snippet on this page maps to a working program under <code>docs/examples/</code> that compiles against the public library and runs end to end; the byte counts printed below come from running those programs on the author's machine at tdc 0.2.0-dev.</p>
+<p>Four orthogonal stages make up the library. A <strong>model</strong> reads a typed block and emits residuals plus side metadata. A <strong>transform chain</strong> rewrites those residuals into a flat byte stream friendlier to entropy coding (zigzag, byte shuffle, optional quantization). An <strong>entropy coder</strong> compresses the resulting bytes. A <strong>block record</strong> glues the three outputs together as a self-describing unit that survives being copied, concatenated, or extracted with <code>dd</code>. Each stage exposes one enum id and one optional params struct. Every layer stays in its lane: a transform sees only bytes and dtypes, a model sees only the input block, an entropy coder sees only a flat byte buffer. That separation is what lets a single pipeline encode a sensor timeseries, a satellite tile, a frame stack, and a voxel grid without special cases.</p>
+<p>Where does compression come from, given this split? Almost always from the model. A well-chosen model turns correlated data into small, near-uniform residuals; the transform and entropy stages then carry those residuals to disk at near-information-theoretic cost. When the caller picks the wrong model (running <code>PRED_2D</code> on a 1D ramp, say), the transforms and entropy have nothing to exploit and the ratio collapses to roughly 1.0×. This vignette makes that tradeoff concrete by running the same block through several specs and watching the byte counts move.</p>
+<p>This vignette covers the public API only. Everything we call lives under <code>include/tdc/</code>; the internal <code>src/</code> tree never appears here. The single umbrella header <code>tdc.h</code> pulls in every public sub-header; a caller embedding tdc into a consumer project only needs that one include.</p>
+<h2 id="the-block-abstraction">The block abstraction<a class="headerlink" href="#the-block-abstraction" title="Permanent link">&para;</a></h2>
+<p>The <code>tdc_block</code> struct is the universal carrier for input and output data. It describes a pointer, a dtype, a semantic layout, and a shape; nothing else. No compression policy fields, no scratch pointers, no codec hints. A caller constructs one, hands it to <code>tdc_encode_block</code>, and receives the same struct type back from the decoder with the <code>data</code> pointer filled in.</p>
+<p>The interplay of three fields is what makes a block dimensional rather than merely N-D:</p>
+<ul>
+<li><code>dtype</code> is a numeric type id (<code>TDC_DT_I8</code> through <code>TDC_DT_F64</code>, plus <code>TDC_DT_F16</code> and <code>TDC_DT_STRING</code>). It tells tdc how wide each element is and whether the residual path can use signed-integer arithmetic.</li>
+<li><code>shape.rank</code> and <code>shape.dim[]</code> give the structural rank in memory. A 4×4 matrix has rank 2; an 8×64×64 frame stack has rank 3.</li>
+<li><code>layout</code> tells the dispatcher <em>how</em> to traverse the block. A <code>RASTER_2D</code> is rank 2 and the model walks it as a single raster. A <code>STACK_2D</code> is rank 3 but the model walks each first-axis slice as a raster. A <code>VOLUME_3D</code> is also rank 3, and the model walks it with true 3D neighborhoods.</li>
+</ul>
+<p>The critical rule, baked into <code>src/core/registry.c</code> and stated once in <code>types.h</code>, is that model dispatch branches on <code>layout</code>, never on <code>rank</code> alone. A frame stack (<code>STACK_2D</code>) and a voxel grid (<code>VOLUME_3D</code>) are structurally identical in memory; they differ in the neighborhood the model is allowed to consult. The caller owns this choice. tdc never tries to infer it.</p>
+<p>Here is the block for a tiny 1D integer column:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kt">int64_t</span><span class="w"> </span><span class="n">data</span><span class="p">[</span><span class="mi">256</span><span class="p">];</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="cm">/* fill data ... */</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">src</span><span class="p">.</span><span class="n">data</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">data</span><span class="p">;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">src</span><span class="p">.</span><span class="n">dtype</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_DT_I64</span><span class="p">;</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">src</span><span class="p">.</span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_LAYOUT_VECTOR_1D</span><span class="p">;</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">.</span><span class="n">rank</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">.</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">256</span><span class="p">;</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">tdc_shape_set_contiguous</span><span class="p">(</span><span class="o">&amp;</span><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">);</span>
+</span></code></pre></div>
+<p><code>tdc_shape_set_contiguous</code> fills <code>stride[]</code> assuming row-major contiguous memory. A caller with a pre-strided buffer can set <code>stride[]</code> directly and skip the helper. The block takes no ownership of <code>data</code>: the pointer must stay valid across the encode or decode call, and tdc never frees it on return.</p>
+<p>Two fields on the block are left NULL in this example. The <code>validity</code> pointer optionally points at a packed NA bitmap (1 bit per element, LSB-first). The v0 decoder treats it as pass-through bytes, so setting it on encode preserves the mask on decode without interpreting it. The <code>offsets</code> pointer is required when <code>dtype == TDC_DT_STRING</code> (variable-width strings, where <code>offsets[i+1] - offsets[i]</code> gives the byte length of string <code>i</code>) and must be NULL for every other dtype. <code>tdc_block_validate</code> enforces the NULL-ness rule; a caller that sets <code>offsets</code> on an <code>I64</code> block gets <code>TDC_E_DTYPE</code> back immediately. Strings are out of scope for this quickstart; the dict1d and varlen decode paths are covered in their own backend walkthroughs.</p>
+<p>One last rule about the shape struct: <code>rank</code> caps at <code>TDC_MAX_RANK = 3</code>. Everything tdc encodes in v0 is rank 1, 2, or 3. Higher-dimensional inputs are the consumer's responsibility to tile into one of the four layouts. Staying within that grid is what keeps the model dispatch table finite and the per-backend benchmarks tractable.</p>
+<h2 id="minimal-encodedecode">Minimal encode/decode<a class="headerlink" href="#minimal-encodedecode" title="Permanent link">&para;</a></h2>
+<p>The one-shot path is two functions: <code>tdc_encode_block</code> for the round trip in, <code>tdc_decode_block_into</code> (paired with <code>tdc_decode_peek</code>) for the round trip out. The full example lives at <a href="../examples/quickstart_roundtrip.c"><code>docs/examples/quickstart_roundtrip.c</code></a>. Running it:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>input  : 2048 bytes (256 x i64)
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>encoded: 2128 bytes (block record, incl. 80-byte header)
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>decoded: 2048 bytes, memcmp == source: yes
+</span></code></pre></div>
+<p>The first surprise is that the encoded block is 80 bytes bigger than the raw input. We picked <code>tdc_codec_spec_raw()</code>, which is identity model plus passthrough entropy. The output here is <em>not</em> compressed; it is the input wrapped in a block record header. Every block, even a raw one, carries its own 80-byte header describing dtype, layout, shape, and section sizes, because that record is the one and only unit tdc writes to disk. We will compress in the next section.</p>
+<p>Encoding starts with a spec and a growable output buffer. The buffer never allocates on its own; it calls through a function pointer the caller installed:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">qs_realloc</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">user</span><span class="p">;</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">ptr</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">realloc</span><span class="p">(</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">);</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">}</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">tdc_codec_spec</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_codec_spec_raw</span><span class="p">();</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">tdc_buffer</span><span class="w"> </span><span class="n">enc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">enc</span><span class="p">.</span><span class="n">realloc_fn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs_realloc</span><span class="p">;</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">tdc_status</span><span class="w"> </span><span class="n">st</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_encode_block</span><span class="p">(</span><span class="o">&amp;</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">spec</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">enc</span><span class="p">);</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="cm">/* st is TDC_OK; enc.data / enc.size hold the block record */</span>
+</span></code></pre></div>
+<p>The <code>(user, ptr, n)</code> convention is the same one the library uses internally. Three cases cover every call: a NULL pointer with nonzero size allocates, a non-NULL pointer with zero size frees, and a non-NULL pointer with a new size grows (possibly moving the buffer). Vectra, the primary consumer, plugs its own arena allocator here; stdlib <code>realloc</code>/<code>free</code> also works for tools and tests.</p>
+<p>Decoding is symmetric. The caller first peeks the record to discover dtype, layout, shape, and the destination byte count, then allocates the output buffer and calls the zero-copy decode:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">meta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kt">size_t</span><span class="w"> </span><span class="n">need</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">tdc_decode_peek</span><span class="p">(</span><span class="n">enc</span><span class="p">.</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">meta</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">need</span><span class="p">);</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">dst_data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs_realloc</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">need</span><span class="p">);</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">meta</span><span class="p">;</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">dst</span><span class="p">.</span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst_data</span><span class="p">;</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">tdc_decode_block_into</span><span class="p">(</span><span class="n">enc</span><span class="p">.</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">dst</span><span class="p">);</span>
+</span></code></pre></div>
+<p>Peek reads only the 80-byte header, so the caller can size the output buffer before committing any scratch memory. <code>tdc_decode_block_into</code> then writes directly into <code>dst-&gt;data</code> without touching the pointer. It never reallocates, and it never frees. The caller owns every byte of <code>dst-&gt;data</code> before and after the call. That invariant is what makes tdc safe to embed in R (writing into an SEXP buffer) or behind mmap (writing into a mapped file region).</p>
+<p>Internal scratch memory for entropy and transform stages still allocates during decode. By default it flows through libc <code>realloc</code>; callers who want every byte under their allocator can use <code>tdc_decode_block_ex</code> instead, which takes a <code>tdc_buffer</code> whose <code>realloc_fn</code> handles both the output and the scratch. On return (success or failure), every internal allocation has been freed via the same function pointer. No buffer leaks are possible without the caller's own allocator leaking them first.</p>
+<p>The full round trip prints identical byte counts in and out, and <code>memcmp</code> against the original confirms the reconstruction is exact. On any failure the return status names the cause, the destination pointer is unchanged, and the caller can either retry with a different spec or propagate the error upstream. tdc never aborts, never logs, and never retains state between calls.</p>
+<h2 id="choosing-a-codec-spec">Choosing a codec spec<a class="headerlink" href="#choosing-a-codec-spec" title="Permanent link">&para;</a></h2>
+<p>A <code>tdc_codec_spec</code> is a POD bundle: one model id, up to four transforms, up to four entropy coders, plus optional pointers to per-stage params. Both the transform chain and the entropy chain run left to right on encode and right to left on decode, and a zero entry terminates each chain. That is the whole mental model.</p>
+<p>The interesting question is what to put in the chain for a given block. <a href="../examples/quickstart_codec_compare.c"><code>docs/examples/quickstart_codec_compare.c</code></a> encodes the same 4,096-element <code>i32</code> near-linear ramp three ways:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>input: 16384 bytes (4096 x i32)
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  RAW                               16464 bytes
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  DELTA_1D + LZ                       111 bytes
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  DELTA + ZIGZAG + BSHUF + LZ         118 bytes
+</span></code></pre></div>
+<p><code>RAW</code> is the passthrough spec we just saw. It is 80 bytes over the raw size because of the block record header. Switching the model to <code>TDC_MODEL_DELTA_1D</code> replaces each element with <code>x[i] - x[i-1]</code>, which for this input is a near-constant stream of threes. Running <code>TDC_ENTROPY_LZ</code> across that residual stream collapses it to 111 bytes — a 148× ratio, almost entirely from the model.</p>
+<p>Adding <code>TDC_XFORM_ZIGZAG</code> and <code>TDC_XFORM_BYTE_SHUFFLE</code> makes the output slightly larger here (111 → 118 bytes). The two transforms are designed for residual streams whose low-order bytes still carry noise after the model pass; on a deterministic ramp they introduce a small fixed overhead with nothing to exploit. We leave them in the example on purpose: they are the right default for residuals that <em>do</em> have per-byte structure (float deltas after DELTA2_1D, 16-bit sensor traces with jitter), and the measurement shows the gate at which the tradeoff flips.</p>
+<p>The minimum decision the caller makes is the model. Picking <code>TDC_MODEL_RAW</code> means "the transforms and the entropy coder carry the whole load." Picking <code>TDC_MODEL_DELTA_1D</code> on a monotone integer column means "the entropy coder only has to do whatever the model didn't." Every subsequent choice is a refinement. The one-per-backend codec walkthroughs linked at the end of this page cover the accepted dtypes, accepted layouts, and the benchmarked tradeoff curves for each id.</p>
+<p>Two details make the spec smaller in practice than the header suggests. First, params pointers are optional: most model ids accept NULL and use reasonable defaults (<code>PRED_2D</code> defaults to <code>TDC_PRED2D_AUTO</code>, which samples the block and picks the best kind; <code>ENTROPY_LZ</code> defaults to its documented level). A caller that just wants "compress this sensibly" can set the model id, leave everything else zero, and the chain-terminator convention does the rest. Second, the encoder has a whole-pipeline fast path: when the model emits an all-zero residual (the tri-affine <code>VOLUME_3D</code> example below hits this), the block record sets <code>TDC_BLOCK_FLAG_ZERO_RESIDUAL</code> and stores zero transform and entropy bytes. The decoder sees the flag and reconstructs a zero-filled residual of the declared size before handing control to the model's inverse. No transform or entropy code runs at all on that path.</p>
+<h2 id="layout-taste-tests">Layout taste tests<a class="headerlink" href="#layout-taste-tests" title="Permanent link">&para;</a></h2>
+<p>Each layout has a dedicated vignette; here we run one end-to-end example per layout so the four-way split feels concrete.</p>
+<h3 id="vector_1d">VECTOR_1D<a class="headerlink" href="#vector_1d" title="Permanent link">&para;</a></h3>
+<p><a href="../examples/quickstart_vector1d.c"><code>docs/examples/quickstart_vector1d.c</code></a> encodes 1,024 monotonically increasing Unix timestamps (1-second cadence with small jitter) using <code>DELTA_1D</code> plus <code>ZIGZAG</code>, <code>BYTE_SHUFFLE</code>, and <code>LZ</code>. The timestamps themselves are 8 bytes each; the deltas are all in the 1-to-5-second range and fit easily in one byte.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>VECTOR_1D  raw=8192 encoded=124 ratio=66.06x
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>           memcmp == source: yes
+</span></code></pre></div>
+<p>This is the shape <code>VECTOR_1D</code> was built for: a single column of numeric values with strong along-axis correlation. <code>DELTA_1D</code> converts the column into small residuals, <code>ZIGZAG</code> maps signed deltas into unsigned byte-friendly integers (negative deltas would otherwise look like 0xFFFF… noise), <code>BYTE_SHUFFLE</code> groups the top seven bytes of every 8-byte element together (they are all zero here, post-zigzag) and puts the one interesting byte lane contiguously, and <code>LZ</code> eats the long runs of zeros. The full walkthrough of these stacking choices lives in <a href="../backends/models/">models / delta1d</a>.</p>
+<h3 id="raster_2d">RASTER_2D<a class="headerlink" href="#raster_2d" title="Permanent link">&para;</a></h3>
+<p><a href="../examples/quickstart_raster2d.c"><code>docs/examples/quickstart_raster2d.c</code></a> encodes a 128×128 <code>uint8</code> image whose value at <code>(x, y)</code> is the low byte of <code>x + y</code>. The sum-of-coordinates function is linear in both axes, so <code>TDC_PRED2D_PAETH</code> predicts each pixel exactly from its three causal neighbors. The residual is zero everywhere except the top row and the left column.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>RASTER_2D  raw=16384 encoded=100 ratio=163.84x
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>           memcmp == source: yes
+</span></code></pre></div>
+<p>The model id here is <code>TDC_MODEL_PRED_2D</code> and the parameters go through a <code>tdc_pred2d_params</code> struct. Only one field is non-trivial: <code>kind</code>, which picks among <code>LEFT</code>, <code>UP</code>, <code>AVERAGE</code>, <code>PAETH</code>, or <code>AUTO</code>. <code>AUTO</code> samples the block and picks the kind with the smallest residual sum. On this input any kind would hit near-zero, but <code>PAETH</code> is the right default for most natural rasters because it reduces to <code>LEFT</code> or <code>UP</code> on the gradient axes automatically. The backend walkthrough at <a href="../backends/models/">models / pred2d</a> shows how each kind responds to real-world image inputs.</p>
+<p>A separate <code>PLANE_2D</code> model (<code>TDC_MODEL_PLANE_2D</code>) fits a least-squares plane per tile and stores the three plane coefficients as side metadata. It is the right pick for smooth topographic rasters like DEM tiles, where a single local plane explains 32×32 pixels at a time. Float rasters have their own fused model. <code>TDC_MODEL_QUANTIZE_PRED_2D</code> quantizes to a narrow integer target and runs the predictor on the integer raster in one step. Running <code>PRED_2D</code> first and <code>XFORM_QUANTIZE</code> afterward would be wrong for floats: the predictor emits a float residual, and the subsequent quantization of that residual produces garbage values the decoder cannot reverse.</p>
+<h3 id="stack_2d">STACK_2D<a class="headerlink" href="#stack_2d" title="Permanent link">&para;</a></h3>
+<p><a href="../examples/quickstart_stack2d.c"><code>docs/examples/quickstart_stack2d.c</code></a> encodes 8 frames of a 64×64 <code>uint8</code> raster, each frame a translated version of the same linear pattern. The model is <code>TDC_MODEL_STACK_2D</code> with <code>inter_slice = 1</code>, which tells the encoder to subtract the previous slice before running the in-plane predictor.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>STACK_2D   raw=32768 encoded=120 ratio=273.07x
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>           memcmp == source: yes
+</span></code></pre></div>
+<p>A frame stack is rank 3 in memory but <code>STACK_2D</code> in semantics: tdc walks the first axis as "which frame", and inside each frame it runs the same 2D predictor it would run on a standalone raster. The <code>inter_slice</code> flag is the one knob that distinguishes <code>STACK_2D</code> from "a batch of independent <code>RASTER_2D</code> blocks". When frames are nearly identical (this example, medical imaging, video), subtracting the previous slice first collapses most of the signal into the first frame's residual and leaves essentially nothing for the others. Setting <code>inter_slice = 0</code> falls back to per-frame prediction; on independent frames that would be the right pick.</p>
+<h3 id="volume_3d">VOLUME_3D<a class="headerlink" href="#volume_3d" title="Permanent link">&para;</a></h3>
+<p><a href="../examples/quickstart_volume3d.c"><code>docs/examples/quickstart_volume3d.c</code></a> encodes a 12×16×20 <code>int32</code> voxel grid holding a tri-affine field <code>f(x, y, z) = 3x + 5y + 7z + 17</code>. The model is <code>TDC_MODEL_PRED_3D</code> with kind <code>GRAD3D</code>: a trilinear predictor exact on any function linear in all three axes.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>VOLUME_3D  raw=15360 encoded=127 ratio=120.94x
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>           memcmp == source: yes
+</span></code></pre></div>
+<p>The <code>GRAD3D</code> kind evaluates <code>pred = a + b + c - ab - ac - bc + abc</code> where the letters name the seven causal neighbors (left, up, front, and the four diagonal seeds). On a tri-affine field every interior voxel matches exactly; the encoder picks up the zero-residual flag and stores only the seed voxels on the three boundary faces. <code>TDC_PRED3D_AUTO</code> on arbitrary volumes samples the prefix and chooses among <code>LEFT</code>, <code>UP</code>, <code>FRONT</code>, <code>AVG3</code>, <code>GRAD3D</code>, or <code>PAETH3D</code>. The deep walkthrough at <a href="../backends/models/">models / pred3d</a> covers the variant tradeoffs and why <code>PAETH3D</code> is the safer default on natural volumes with sharp edges.</p>
+<h2 id="error-handling">Error handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h2>
+<p>Every tdc entry point returns a <code>tdc_status</code>, and <code>tdc_strerror</code> turns it into a one-line string suitable for logging. Status codes are contiguous small integers (<code>TDC_OK = 0</code>, <code>TDC_E_INVAL = 1</code>, up through <code>TDC_E_IO = 10</code>), so a single switch statement in caller code covers the full surface. The full list lives in <code>types.h</code>.</p>
+<p>Here is a deliberately wrong call: we hand a 2D raster block to <code>DELTA_1D</code>, which only accepts <code>VECTOR_1D</code>. See <a href="../examples/quickstart_error.c"><code>docs/examples/quickstart_error.c</code></a>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>status = 5 (layout not accepted by stage)
+</span></code></pre></div>
+<p>The encoder checked the block against the model's <code>accepted_layouts</code> bitmask and returned <code>TDC_E_LAYOUT</code> without touching the output buffer. The same pattern catches dtype mismatches (<code>TDC_E_DTYPE</code>), shape errors (<code>TDC_E_SHAPE</code>), buffer-too-small (<code>TDC_E_BUF_TOO_SMALL</code>), and decode-time corruption (<code>TDC_E_CORRUPT</code>). None of the errors leave partial output: the buffer pointer is unchanged, the caller is free to retry with a different spec, and there is nothing to clean up beyond the allocator calls the caller owns. Mapping a status code to an action belongs to the caller; tdc never prints, never <code>abort</code>s, and never retains state across return.</p>
+<h2 id="what-to-read-next">What to read next<a class="headerlink" href="#what-to-read-next" title="Permanent link">&para;</a></h2>
+<p>Three next stops, ordered by what most callers reach for first:</p>
+<ul>
+<li>The backend pages: <a href="../backends/models/">Models</a>, <a href="../backends/transforms/">Transforms</a>, and <a href="../backends/entropy/">Entropy</a>. One worked example per id, with accepted dtypes, accepted layouts, benchmark numbers on real inputs, edge cases (empty, single element, degenerate runs), integration notes, and one explicit "when NOT to reach for this backend" section per page.</li>
+<li>The <a href="../format/on-disk/">format spec</a> annotates every field of the 80-byte block record against a hex dump captured from this quickstart.</li>
+<li><a href="../extending/custom-backends/">Custom backends</a>: adding a new id to the static registry.</li>
+</ul>
+<p>Callers planning to vendor tdc into an R package or a CMake subproject will want the <a href="../integration/">integration guide</a>, which covers the allocator passing pattern, Makevars-vs-CMake options, and the ABI promises across 0.x minor bumps.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

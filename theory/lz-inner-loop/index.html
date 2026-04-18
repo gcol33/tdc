@@ -1,0 +1,2533 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed, dimensional compression library in C">
+      
+      
+      
+        <link rel="canonical" href="https://gcol33.github.io/tdc/theory/lz-inner-loop/">
+      
+      
+        <link rel="prev" href="../predictors/">
+      
+      
+        <link rel="next" href="../../performance/tuning/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>LZ inner loop - tdc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#lz-inner-loop" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdc" class="md-header__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              LZ inner loop
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../format/on-disk/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Format
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../backends/models/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Backends
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../predictors/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Theory
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance/tuning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../extending/custom-backends/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/troubleshooting/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdc" class="md-nav__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Format
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/on-disk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On-disk format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/transforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/entropy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../predictors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Predictor math
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem statement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#math" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Math
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hash-table-and-matcher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hash table and matcher
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Hash table and matcher">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#no-robin-hood-hashing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No Robin Hood hashing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wildcopy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wildcopy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fast-and-safe-decode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fast and safe decode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fast and safe decode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#no-batched-parse-then-copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No batched parse-then-copy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correctness-argument" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correctness argument
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complexity-and-hot-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complexity and hot path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interactions-between-the-knobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interactions between the knobs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deviations-from-textbook-lz77" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deviations from textbook LZ77
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dead-ends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dead ends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example-abcabcabcabc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example: abcabcabcabc...
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../extending/custom-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration-vtr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#problem-statement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem statement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#math" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Math
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hash-table-and-matcher" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hash table and matcher
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Hash table and matcher">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#no-robin-hood-hashing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No Robin Hood hashing
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wildcopy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wildcopy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fast-and-safe-decode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fast and safe decode
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fast and safe decode">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#no-batched-parse-then-copy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No batched parse-then-copy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#correctness-argument" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correctness argument
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complexity-and-hot-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complexity and hot path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interactions-between-the-knobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Interactions between the knobs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deviations-from-textbook-lz77" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deviations from textbook LZ77
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dead-ends" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dead ends
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example-abcabcabcabc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example: abcabcabcabc...
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="lz-inner-loop">LZ inner loop<a class="headerlink" href="#lz-inner-loop" title="Permanent link">&para;</a></h1>
+<p>This page documents the native LZ77 stage, <code>TDC_ENTROPY_LZ</code>, at the level the
+encoder and decoder are actually implemented. The enum id, the vtable, and
+the <code>encode_bound / encode / decode</code> triple are described in the backends
+entropy page and in <code>include/tdc/entropy.h</code>. What follows is the machinery
+inside those three function pointers: the matcher, the wildcopy, the fast
+and safe decode loops, the on-disk token layout, and the benchmarked dead
+ends that shaped all of the above. The inner loops came verbatim from
+vectra's <code>vtr_codec.c</code> and have been measured to the last percent against
+their alternatives. Nothing in this vignette is theoretical.</p>
+<p><code>TDC_ENTROPY_LZ</code> sees a flat byte stream by the time it runs. A model has
+already turned a typed block into residuals; a transform chain has turned
+those residuals into the exact bytes we now compress. The matcher does not
+know the dtype, the layout, or the predictor that produced its input, and
+it does not need to. Every number quoted below was measured on that byte
+stream, typically 1 MiB of DEM residuals, 1 MiB of <code>i32</code>-ramp residuals,
+or 1 MiB of LCG noise, depending on the point being made.</p>
+<h2 id="problem-statement">Problem statement<a class="headerlink" href="#problem-statement" title="Permanent link">&para;</a></h2>
+<p>LZ77 is the oldest trick in the dictionary-compression book. A parser walks
+the input left to right; at each position it asks whether the next few
+bytes have appeared earlier within a bounded window, and if yes, emits a
+back-reference (an (offset, length) pair) instead of the literal bytes.
+The decoder replays the sequence of literal runs and matches to rebuild
+the input. Everything expensive lives in the parser; the decoder is a
+straight-line walk.</p>
+<p>tdc's LZ stage exploits two facts the rest of the pipeline leaves behind.
+First, residuals from a good model cluster around zero and share low
+bytes, which means even short matches occur often; the matcher pays off
+on inputs where the entropy-only ratio would be roughly 1.0. Second, after
+a byte-shuffle transform the top byte of every element is packed into one
+contiguous run; a 1 MiB <code>f32</code> raster becomes a 262 KiB run of high-order
+bytes that the matcher collapses to a few long offsets, with the remaining
+lanes contributing shorter matches as the exponent and mantissa planes
+share less structure.</p>
+<p>We reach for LZ when the caller wants a fast, self-describing entropy pass
+and is willing to tolerate a ratio a few percent short of what FSE or a
+split-stream coder would land. Everything below describes what that
+greedy, separated-stream LZ does. The backends page compares it to the
+alternatives; this page explains the machinery.</p>
+<p>What ratio can LZ achieve on tdc's typical residuals? The histogram
+example at the end of the page measures the extremes. A 1 MiB all-zero
+input compresses to 99 bytes (ratio 10592×) through one literal byte
+followed by a single match of 1048575 bytes at offset 1; a 1 MiB
+<code>abcabcabc...</code> input compresses to 101 bytes (ratio 10382×) through one
+literal run of 3 bytes followed by a single match of 1048573 bytes at
+offset 3; a 1 MiB LCG-noise input grows from 1048576 to 1048668 bytes
+(ratio 0.999×) because no match of <code>LZ_MIN_MATCH</code> bytes is ever found
+and the parser falls back to a literal-only stream. These three points
+bracket what the hot path is up against.</p>
+<h2 id="math">Math<a class="headerlink" href="#math" title="Permanent link">&para;</a></h2>
+<p>The greedy parse is a sequence of decisions. At position <code>sp</code> in the
+input, the matcher either emits <code>sp</code> as a literal and advances one byte,
+or emits a triple <code>(lit_len, match_len, match_off)</code> describing a back-
+reference and advances by <code>match_len</code>. <code>match_off</code> is the distance back
+to the earlier occurrence, <code>match_len</code> is how many bytes extend a match.
+The constraints are simple: <code>match_len &gt;= LZ_MIN_MATCH = 3</code>, <code>match_off &gt;=
+1</code>, <code>match_off &lt;= LZ_MAX_OFFSET = 2^22</code> (4 MiB window). With two extra
+tricks layered on top (lazy matching, repcode probing) we land in the
+ratio range produced by the zstd greedy parser at level 1–3 on the same
+inputs. Pseudocode for the matcher core:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>for sp = 0, len(src) - 1:
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    h = hash(src[sp..sp+4])       // Fibonacci multiplicative hash
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    cand = htab[h]
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    htab[h] = sp
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    if cand valid and src[cand..cand+3] == src[sp..sp+3]:
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        length = extend(src, sp, cand)
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        if length &gt;= LZ_MIN_MATCH:
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>            emit_match(lit_run, length, sp - cand)
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>            sp += length
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>            continue
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    lit_run.append(src[sp])
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    sp += step                    // step &gt;= 1; accelerates on misses
+</span></code></pre></div>
+<p>The hash function is Knuth's 4-byte multiplicative Fibonacci hash:</p>
+<div class="arithmatex">\[
+h(b_0 b_1 b_2 b_3) = \left\lfloor \frac{(b_0 + 256 b_1 + 65536 b_2 + 16777216 b_3) \cdot \varphi'}{2^{32 - B}} \right\rfloor
+\]</div>
+<p>where <code>B = LZ_HASH_BITS = 18</code> and <code>φ' = 2654435761</code> is the 32-bit
+rounded value of the reciprocal of the golden ratio scaled to 2^32. The
+Fibonacci constant distributes any 32-bit input uniformly into <code>2^B</code>
+buckets with no observed bias, which is the only property the matcher
+needs. A hash collision does not break correctness because the one-byte
+and four-byte equality checks gate the candidate before the extension
+loop.</p>
+<p>Extension past the 4-byte prefix is an 8-byte-at-a-time memcmp with
+trailing-zeros count on mismatch:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>while len + 8 &lt;= max_len:
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    load a = src[pos + len..], b = src[cand + len..]
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    if a != b:
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>        len += ctz(a ^ b) &gt;&gt; 3       // bytes from the first differing byte
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>        break
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    len += 8
+</span></code></pre></div>
+<p><code>__builtin_ctzll</code> on gcc/clang and <code>_BitScanForward64</code> on MSVC return the
+position of the first set bit in <code>a XOR b</code>, divided by 8 to turn bit
+position into byte position. The scalar tail handles the last 0–7 bytes
+of input. Read <code>src/entropy/mf_hashchain.c::mf_extend</code> for the production
+version; the fast path in <code>src/entropy/lz.c::lz_parse_fast</code> carries an
+inlined copy so the single-probe hot path avoids the vtable.</p>
+<p>The on-disk token layout packs a variable-length sequence descriptor per
+match, then writes all literal bytes contiguously after the descriptor
+table:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>[ u32 n_seq        ]
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>[ u32 literals_sz  ]
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>[ seq_hdr_0        ]      packed per sequence: tag byte + extensions + offset
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>[ seq_hdr_1        ]
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>...
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>[ seq_hdr_{N-1}    ]
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>[ literal_bytes    ]      literals_sz bytes, concatenated
+</span></code></pre></div>
+<p>The per-sequence tag byte is <code>[LLLLMMMM]</code>: high nibble is the literal-run
+length (0–14, or 15 meaning extended), low nibble is <code>match_len - 3</code> (0–14,
+or 15 meaning extended). Extensions use chained-255 for literal length
+(each extra byte adds 255 until a byte <code>&lt; 255</code> terminates) and LEB128 for
+match length (7 data bits + 1 continuation bit per byte). Match offsets
+are encoded as a 2-byte <code>uint16</code> base with a LEB128 extension when the
+raw offset exceeds 65535. The common-case cost is 3 bytes per sequence:
+1 tag + 2 offset.</p>
+<p>Why a split encoding for the two lengths. A 4 MiB run of identical bytes
+(PLANE_2D on a flat interior, RAW on zero residuals) produces one match
+spanning the whole run. Chained-255 would cost <code>4 * 2^20 / 255 ≈ 16 KiB</code>
+just to name that one match length; LEB128 names the same length in 4
+bytes. Literal runs never reach that regime because trailing literals
+after the last match are written to the literal buffer directly (no
+sequence header), so per-sequence <code>lit_len</code> is bounded by real literal
+density between matches. Chained-255 on literal lengths saves a branch in
+the hot decoder and doesn't cost us on any measured input.</p>
+<h2 id="hash-table-and-matcher">Hash table and matcher<a class="headerlink" href="#hash-table-and-matcher" title="Permanent link">&para;</a></h2>
+<p>The matcher uses a direct-addressed hash table: no linear probing, no
+open addressing, no rehashing. Layout:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>htab[1 &lt;&lt; 18]          // one u32 per bucket; holds the most recent
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>                       // position that hashed to this bucket, or 0xFFFFFFFF
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>                       // when empty
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>chain_prev[src_size]   // allocated only when chain_depth &gt; 0;
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>                       // chain_prev[pos] = previous position sharing the
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>                       // same bucket; 0xFFFFFFFF terminates the chain
+</span></code></pre></div>
+<p>The 2^18 bucket count is fixed at 1 MiB of table memory (262144 buckets ×
+4 bytes) regardless of input size, which fits comfortably in L2 on every
+current server CPU and avoids the L3-miss penalty deeper tables pay on
+real workloads. Collisions are frequent by design: a 1 MiB input fills
+every bucket in expectation. The matcher handles collisions either by
+overwriting the bucket (<code>chain_depth == 0</code>, flat hash) or by threading the
+displaced position into a singly-linked chain via <code>chain_prev[]</code>
+(<code>chain_depth &gt; 0</code>).</p>
+<p>The flat-hash branch lives in <code>lz_parse_fast</code> and is the hottest code
+path in the library. It probes exactly one candidate per position, uses
+an accelerating step that grows the skip distance after consecutive misses
+(capped at 8, reset to 1 on every hit), and inserts every fourth position
+within a match into the table so future references can still find them.
+On noisy inputs where matches are sparse, the accelerating step skips
+roughly <code>sp += 1, 2, 3, ..., 8, 8, 8</code> after each miss, cutting the
+per-byte hash cost by 3–5× against a step-1 probe.</p>
+<p>The chain branch (<code>tdc_lz_parse_greedy</code> with <code>chain_depth &gt; 0</code>) walks up
+to <code>chain_depth + 1</code> candidates per position, quick-rejecting each by a
+one-byte comparison at the current best length before the 8-byte
+extension. The chain insert cost is one conditional load and two stores;
+the walk itself prefetches the next candidate's position and chain link,
+so the memory system keeps up on runs where every lookup descends
+several links.</p>
+<p>Hash table sizing deliberately runs over the conventional "70% load
+factor" target that a dictionary hash set would aim for. The matcher is
+not building a dictionary; it is building a multi-valued index over
+positions, and over-loading the table is the whole point. A bucket that
+holds <code>k</code> positions on a 1 MiB input walks <code>k</code> chain links, not <code>k</code> probe
+slots; the average chain length at <code>chain_depth = 4</code> stays small because
+the matcher uses the most-recent-first convention (the newest position
+for a bucket is at the head) and the rep-code probe catches the periodic
+cases where a few offsets dominate.</p>
+<h3 id="no-robin-hood-hashing">No Robin Hood hashing<a class="headerlink" href="#no-robin-hood-hashing" title="Permanent link">&para;</a></h3>
+<p>The same table design was tried in vectra with Robin Hood displacement on
+the collision chain. The benchmarked regression was 12–29% on encode
+throughput across the standard corpus. The reason is simple enough that
+it is worth spelling out: Robin Hood hashing wins on open-addressed tables
+where the average probe length would otherwise be large, because moving
+existing entries closer to the cache line where a probe starts amortizes
+across many future lookups. tdc's LZ table is not open-addressed. Probe
+length on the flat-hash path is exactly 1; probe length on the chain path
+is bounded by <code>chain_depth + 1</code> (typically 5 or 9). The per-probe work
+Robin Hood adds (reading the displaced entry's home-bucket index,
+comparing it to the current probe distance, swapping entries when the
+invariant breaks) dominates the savings because there is no probe
+distribution to reshape. The measurement is cited in
+<code>vectra/CLAUDE.md</code> and carries forward into <code>CLAUDE.md</code> at the tdc root;
+do not retry.</p>
+<p>The matcher also runs a rep-code probe at each position
+(<code>lz_rep_probe</code> in <code>src/entropy/lz.c</code>). The three most recent match
+offsets are kept in an MRU array <code>rep[3]</code>; each rep slot is tried with a
+3-byte prefix compare and then the same 8-byte extension as the hash
+path. A rep hit wins ties against a hash match of the same length because
+repcode offsets encode with a much shorter tag downstream in
+<code>TDC_ENTROPY_LZ_STREAMS</code>. On periodic signals such as a daily temperature
+series or a seasonally-striped raster, the rep-code probe catches the true
+period on the first match and reuses it for every subsequent sequence,
+bypassing the hash walk entirely.</p>
+<h2 id="wildcopy">Wildcopy<a class="headerlink" href="#wildcopy" title="Permanent link">&para;</a></h2>
+<p>The decoder copies both literal runs and match bodies with a "wildcopy":
+a loop that writes in 16-byte blocks regardless of the requested length,
+rounding the end of every copy up to the next 16-byte boundary. The
+helper <code>tdc_wildcopy16</code> in <code>src/core/simd.h</code> uses one SSE2 <code>_mm_storeu</code>
+per iteration; on AVX2 builds the equivalent <code>tdc_wildcopy32</code> writes
+32 bytes per iteration. <code>tdc_match_copy</code> dispatches on the match offset:
+offsets ≥ 32 go straight to the 32-byte wildcopy; 16 ≤ offset &lt; 32 use
+the 16-byte version; 8 ≤ offset &lt; 16 use repeated 8-byte copies;
+offset &lt; 8 uses a doubling seed-and-fill (copy <code>off</code> bytes, then double
+the filled region until it reaches 16 bytes of valid pattern, then
+standard 16-byte copies from there).</p>
+<p>Wildcopy over-reads by up to 31 bytes past the requested end on AVX2
+builds (15 on SSE2 / NEON). That is safe because the caller reserves
+<code>TDC_WILDCOPY_SLACK</code> bytes of slack past the end of the output buffer
+before invoking the fast path. The slack constant is defined in
+<code>src/core/simd.h</code> alongside the copy helpers. The reader can audit the
+single cross-check that bounds it: in <code>lz_decode_fast</code>, before every copy,</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">dp</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">lit_len</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">mlen</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">TDC_WILDCOPY_SLACK</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">uncompressed_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="n">sp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">sp_save</span><span class="p">;</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>When this bail fires, the fast loop rewinds the sequence pointer to the
+last safe state and hands control to <code>lz_decode_safe</code>, which copies
+exact byte counts through <code>memcpy</code> and handles the overlap-correct
+doubling pattern for small offsets. The cost of the check is a single
+predictable branch per sequence; <code>__builtin_expect</code> annotations mark the
+bail as unlikely, which is the measured behavior on every input that
+compresses at all.</p>
+<p>The small-offset doubling pattern is worth understanding because it
+shows up in both the fast and the safe decode. For <code>offset = 1</code> (a run
+of identical bytes), naively copying <code>mlen</code> bytes from <code>op - 1</code> to <code>op</code>
+would read bytes that haven't been written yet. Instead, the decoder
+seeds <code>off</code> bytes into the output, then repeatedly copies the filled
+region onto itself at twice the offset, doubling the valid pattern until
+it covers <code>mlen</code>. After <span class="arithmatex">\(O(\log(mlen/off))\)</span> iterations each doing a
+single <code>memcpy</code>, the match is done. On PLANE_2D residuals with a flat
+interior this path decodes a 4 MiB zero run at roughly <code>memcpy</code> speed
+instead of byte-at-a-time.</p>
+<h2 id="fast-and-safe-decode">Fast and safe decode<a class="headerlink" href="#fast-and-safe-decode" title="Permanent link">&para;</a></h2>
+<p>The decode entry point <code>lz_decode_core</code> runs the fast path first,
+then the safe path. The split is not about correctness (both paths are
+correct); it is about branch count per byte. The fast path assumes the
+sequence stream and the output buffer both have enough slack that one
+bounds check per sequence is enough to cover the copies the sequence will
+do. That check is:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">dp</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">lit_len</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">mlen</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">TDC_WILDCOPY_SLACK</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">uncompressed_size</span><span class="p">)</span><span class="w"> </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">lp</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">lit_len</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">literals_size</span><span class="p">)</span><span class="w">                                 </span><span class="k">break</span><span class="p">;</span>
+</span></code></pre></div>
+<p>One compare, one predictable branch, per sequence. When either inequality
+might fire (we are near the end of the output, or near the end of the
+literal pool), the fast path bails. The safe path then walks every
+remaining sequence with per-copy clamping, exact <code>memcpy</code> instead of
+wildcopy, and the doubling pattern spelled out in the previous section.</p>
+<p>The phase split is measured, not theorized. Merging the two into a
+single loop forces every <code>memcpy</code> to pay the bounds check that the fast
+path runs once per sequence; on the <code>abc</code> input above the safe-only
+build ran 22% slower. Running only the fast path and trusting the input
+to be well-formed would save the trailing-literal handling and the
+corruption check on small offsets; on an adversarial corrupt input the
+fast path walks off the end of the buffer and segfaults, which is the
+wrong behavior for a library that accepts records from disk.</p>
+<h3 id="no-batched-parse-then-copy">No batched parse-then-copy<a class="headerlink" href="#no-batched-parse-then-copy" title="Permanent link">&para;</a></h3>
+<p>Once the fast path is written as above, the next obvious optimization is
+to split the per-sequence loop into two phases: parse a batch of 4–16
+sequences into a stack-local descriptor array first, then run a tight
+copy loop over the parsed descriptors. The hypothesis is that the parse
+phase touches few bytes per sequence and stays in L1, the copy phase
+touches many bytes per sequence and spills cache, and separating the two
+lets the CPU prefetch the copy destinations while the parse runs.</p>
+<p>Measured in vectra, at every batch size from 4 to 16, the batched
+variant is 6–7% slower than the interleaved loop. The mechanism is
+structural: LZ's parse is just a tag byte plus occasional varint
+extensions plus a 2–6 byte offset. It is cheap enough that the CPU's
+out-of-order scheduler already overlaps the next sequence's parse with
+the current sequence's wildcopy. Forcing a phase split serializes parse
+and copy, loses the overlap, and recovers nothing because the parse
+phase has nothing expensive enough to benefit from a dedicated decode
+pipeline. The decoder as written is already the overlapped form; batching
+opts out of it.</p>
+<p>The note in the source (<code>src/entropy/lz.c</code> above <code>lz_decode_fast</code>) adds a
+condition on revisiting: once a real entropy stage such as FSE or
+Huffman sits in front of LZ, the parse phase becomes expensive enough
+that batching may pay. Until then, the batched variant loses every time.</p>
+<h2 id="correctness-argument">Correctness argument<a class="headerlink" href="#correctness-argument" title="Permanent link">&para;</a></h2>
+<p>Round-trip correctness falls out of two invariants. First, the encoder
+never emits a match whose offset <code>off</code> exceeds the number of bytes
+already written to the output; equivalently, at the point a sequence is
+emitted, <code>off &lt;= sp</code>. Every extension in the matcher is bounded by the
+window size (<code>LZ_MAX_OFFSET = 4 MiB</code>) and by the distance from the
+current position to the candidate's position. The safe decoder checks
+the invariant explicitly (<code>if (dp &lt; off) return TDC_E_CORRUPT;</code>) and
+returns <code>TDC_E_CORRUPT</code> when a malformed record violates it.</p>
+<p>Second, the decoder consumes exactly as many bytes from the literal
+pool as the encoder wrote there. The literal pool is stored contiguously
+after the sequence descriptors; its total length is written in the 8-byte
+LZ header (<code>literals_size</code>), so the decoder can split sequence-header
+bytes from literal-pool bytes without traversing the sequence stream
+first. The split computation in <code>lz_decode_core</code> is a single subtraction:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kt">uint32_t</span><span class="w"> </span><span class="n">seq_hdr_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src_size</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">LZ_HEADER_SIZE</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">literals_size</span><span class="p">;</span>
+</span></code></pre></div>
+<p>Any record where the subtraction underflows, or where <code>literals_size</code>
+exceeds the payload, is rejected with <code>TDC_E_CORRUPT</code> before any byte is
+written to the output.</p>
+<p>Empty inputs round-trip through the literal-only fallback path
+(<code>lz_encode_literal_only</code>). A block shorter than <code>LZ_MIN_MATCH + 1</code> bytes
+cannot have any match (the matcher needs a 4-byte hash key plus the
+next byte), so the parser emits zero sequences and the serializer
+writes an 8-byte header with <code>n_seq = 0</code> followed by the raw bytes.
+The decoder recognizes <code>n_seq == 0</code> and takes the safe path's trailing-
+literal branch, which <code>memcpy</code>s the literal pool directly into the
+output. Empty blocks (0-byte inputs) produce a 0-byte payload after the
+8-byte header.</p>
+<h2 id="complexity-and-hot-path">Complexity and hot path<a class="headerlink" href="#complexity-and-hot-path" title="Permanent link">&para;</a></h2>
+<p>The greedy parser is <span class="arithmatex">\(O(N)\)</span> time for flat hash (one probe per position)
+and <span class="arithmatex">\(O(N \cdot (d+1))\)</span> for <code>chain_depth = d</code>; the chain walk is bounded by
+<code>d + 1</code> candidates per lookup and never exceeds the window size. Memory
+is <span class="arithmatex">\(O(1)\)</span> for flat hash (1 MiB table) and <span class="arithmatex">\(O(N)\)</span> for the chain
+(<code>chain_prev</code> needs one <code>u32</code> per input byte). Worst-case encode time
+on a 1 MiB input with <code>chain_depth = 64</code> and <code>lazy_depth = 2</code> is under
+40 ms on the author's desktop, driven almost entirely by the hash-chain
+probes.</p>
+<p>The decoder is <span class="arithmatex">\(O(N)\)</span> in the output size, not the input size. A 100-byte
+record that decodes to 4 MiB spends almost all of its time inside the
+wildcopy; the parse loop executes once per match, and each match covers
+many output bytes. The hot copy primitive is <code>tdc_wildcopy32</code> on AVX2,
+which puts down 32 bytes per loop iteration at roughly 20 GiB/s on
+current server CPUs. Decode throughput on the <code>abc</code> input above measures
+in the same 8–12 GiB/s range as a straight <code>memcpy</code> of the same length.</p>
+<p>The hottest instruction sequence in encode is <code>lz_parse_fast</code>'s inner
+loop: a hash load, one bucket insert, one candidate equality check, the
+8-byte extension compare, and the miss-path step increment. Every step
+is a single load or a single arithmetic op; there are no branches the
+CPU cannot predict on typical residuals, which is why the flat-hash
+path sustains 300+ MB/s encode on a single core.</p>
+<h2 id="interactions-between-the-knobs">Interactions between the knobs<a class="headerlink" href="#interactions-between-the-knobs" title="Permanent link">&para;</a></h2>
+<p>The matcher exposes <code>LZ_MIN_MATCH</code>, <code>LZ_MAX_MATCH</code>, <code>LZ_MAX_OFFSET</code>, and
+the hash table size through compile-time constants in
+<code>src/entropy/lz.c</code> and <code>src/entropy/lz_internal.h</code>. These interact:</p>
+<ul>
+<li><code>LZ_MIN_MATCH = 3</code> is the smallest match the matcher will emit. A match
+  of length 2 costs 3 bytes to encode (tag + offset), the same as two
+  literal bytes plus overhead. Lowering to 2 costs ratio. Raising to 4 or
+  higher is exposed through the <code>TDC_ENTROPY_LZ_STREAMS</code> <code>min_match</code>
+  parameter; at 4 the matcher fuses more short matches into literals,
+  raising bytes/sequence and decode throughput at the cost of ratio.
+  The on-disk format is unchanged.</li>
+<li><code>LZ_MAX_MATCH = UINT32_MAX</code> is effectively unbounded. An earlier
+  130-byte cap (inherited from vectra's original encoding) chopped
+  PLANE_2D's 4 MiB zero-residual runs into 32k three-byte sequences,
+  totalling roughly 100 KiB of payload where a single match spans the
+  whole run at 4 bytes. Uncapping the match length gave the largest
+  single ratio improvement in tdc's history (roughly 3× on flat
+  residuals).</li>
+<li><code>LZ_MAX_OFFSET = 2^22</code> (4 MiB) is the window size. Offsets up to 65535
+  fit in 2 bytes; larger offsets pay a 1–3 byte LEB128 extension. The
+  4 MiB cap is what the <code>uint16 + LEB128</code> encoding can carry without
+  format churn, and it covers every block tdc currently encodes in a
+  single record.</li>
+<li>The hash table holds <code>2^18</code> buckets (262144 entries, 1 MiB). Doubling
+  it to <code>2^19</code> gives a measurable but small ratio improvement (1–2%) on
+  highly structured inputs and a consistent 5–7% speed loss from the
+  extra L2 pressure. At <code>2^18</code> the table fits in most server CPUs' L2,
+  so the hash load itself is a 3–4-cycle hit instead of a 10–15-cycle
+  miss.</li>
+</ul>
+<h2 id="deviations-from-textbook-lz77">Deviations from textbook LZ77<a class="headerlink" href="#deviations-from-textbook-lz77" title="Permanent link">&para;</a></h2>
+<p>Three deviations from a clean LZ77 implementation are worth naming:</p>
+<ol>
+<li>
+<p><strong>Separated literal stream.</strong> Classical LZ77 writes a <code>(lit, match)</code>
+   alternation where literal bytes are inline between sequence
+   descriptors. tdc follows the zstd convention of writing all sequence
+   headers first, then all literal bytes in a contiguous run. This
+   enables the split decoder (fast / safe) to reason about literal-pool
+   bounds separately from sequence-stream bounds, and it keeps the
+   literal bytes aligned for bulk <code>memcpy</code> inside the wildcopy.</p>
+</li>
+<li>
+<p><strong>Accelerating step on misses.</strong> Classical greedy LZ advances by
+   exactly 1 byte when no match is found. tdc's flat-hash path grows the
+   step linearly after consecutive misses, capped at 8 and reset to 1 on
+   any hit. This is the "step" knob that makes LZ usable on semi-
+   incompressible data; without it a 1 MiB LCG-noise input takes 6× as
+   long to parse with no ratio improvement.</p>
+</li>
+<li>
+<p><strong>Rep-code probe.</strong> Classical LZ77 does not carry state across
+   sequences. tdc's matcher tracks the three most recent match offsets
+   and probes them first at every position. On periodic signals the
+   rep probe beats the hash search on every sequence after the first.
+   The on-disk format does not expose rep-code tags (<code>TDC_ENTROPY_LZ_STREAMS</code>
+   is the backend that does); the rep hits emit ordinary offset bytes
+   that happen to match earlier offsets.</p>
+</li>
+</ol>
+<h2 id="dead-ends">Dead ends<a class="headerlink" href="#dead-ends" title="Permanent link">&para;</a></h2>
+<p>Before leaving the matcher alone, these alternatives were tried. Each row
+records the change, the measurement, and the reason it lost. The notes
+live in <code>CLAUDE.md</code> at the tdc root and in <code>vectra/CLAUDE.md</code> upstream;
+the table here is a quick reference when future work reaches for one of
+them again.</p>
+<table>
+<thead>
+<tr>
+<th>Idea</th>
+<th>What was tried</th>
+<th>Measured delta</th>
+<th>Why it lost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Robin Hood hashing on the collision chain</td>
+<td>Displacement-aware inserts into <code>htab + chain_prev</code>, swap-on-steal</td>
+<td>12–29% slower encode</td>
+<td>No probe distribution to reshape: flat-hash probes exactly 1 entry, chain walks bounded by <code>chain_depth</code>. Per-probe Robin Hood overhead dominates.</td>
+</tr>
+<tr>
+<td>Batched parse-then-copy in the decoder</td>
+<td>Parse 4–16 sequences into a stack descriptor array, then a pure copy loop</td>
+<td>6–7% slower decode at every batch size</td>
+<td>Out-of-order execution already overlaps the next parse with the current wildcopy. Phase split serializes them and recovers nothing because parse is too cheap to benefit from its own pipeline.</td>
+</tr>
+<tr>
+<td>Doubling the hash table to <code>2^19</code> buckets</td>
+<td><code>LZ_HASH_BITS = 19</code>; table grows to 2 MiB</td>
+<td>~1.5% better ratio, 5–7% slower encode</td>
+<td>Table no longer fits in L2 on most CPUs; every probe pays an L3 miss. Not worth it on average; revisit only when L2 grows.</td>
+</tr>
+<tr>
+<td>Lowering <code>LZ_MIN_MATCH</code> to 2</td>
+<td>Accept 2-byte matches from the hash; extend encoding to support them</td>
+<td>3–6% worse ratio</td>
+<td>2-byte match costs 3 bytes to encode (tag + offset), same as two literals plus the tag overhead. The matcher also sees 2-byte coincidences constantly, so the extra sequences flood the stream.</td>
+</tr>
+<tr>
+<td>Chained-255 on match length</td>
+<td>Use the literal-length extension shape for match length too</td>
+<td>Payload for 4 MiB zero-run grows from 4 bytes to ~16 KiB</td>
+<td>The match-length extension needs to encode values into the millions. Chained-255 costs <code>extra / 255 + 1</code> bytes, quadratic in the payload. LEB128 stays logarithmic.</td>
+</tr>
+<tr>
+<td>Move wildcopy slack into per-copy clamping</td>
+<td>Drop the pre-check, clamp inside every literal and match copy</td>
+<td>18–24% slower decode</td>
+<td>The one-compare-per-sequence gate is cheap; two clamps per copy are not. Moreover the clamp variants cannot use 32-byte wildcopy and drop to 16-byte or scalar copies.</td>
+</tr>
+<tr>
+<td>128-bit Fibonacci multiplier (wyhash-style)</td>
+<td>Replace 32-bit multiplier with a 64-bit mix + shift</td>
+<td>~0.4% better ratio, 8–12% slower encode</td>
+<td>The distribution improvement shows up only on highly-contrived inputs; on real residuals 2654435761u already fills buckets uniformly. Slower mul path costs throughput everywhere.</td>
+</tr>
+</tbody>
+</table>
+<p>Each of those was a plausible idea. The table is what remains of the
+benchmark runs that ruled them out.</p>
+<h2 id="worked-example-abcabcabcabc">Worked example: abcabcabcabc...<a class="headerlink" href="#worked-example-abcabcabcabc" title="Permanent link">&para;</a></h2>
+<p>It is worth walking the matcher on a small input by hand. Take the 12-byte
+input <code>abcabcabcabc</code>. <code>LZ_MIN_MATCH = 3</code>, the hash table starts empty, and
+the parser uses the flat-hash fast path.</p>
+<p>At <code>sp = 0</code>: hash the 4 bytes <code>abca</code>, probe the table, empty. Write
+<code>sp = 0</code> into the bucket. No match. Append <code>'a'</code> to the pending
+literal run. Advance <code>sp</code> by 1.</p>
+<p>At <code>sp = 1</code>: hash <code>bcab</code>, probe, empty. Write <code>sp = 1</code>. No match.
+Append <code>'b'</code>. Advance.</p>
+<p>At <code>sp = 2</code>: hash <code>cabc</code>, probe, empty. Write <code>sp = 2</code>. No match.
+Append <code>'c'</code>. Advance.</p>
+<p>At <code>sp = 3</code>: hash <code>abca</code> (same 4 bytes as <code>sp = 0</code>), probe, hits
+bucket, <code>cand = 0</code>. <code>src[0] == src[3] == 'a'</code>. Extend: <code>src[0..8] ==
+src[3..11]</code>, i.e. 9 bytes match. Continue: <code>src[9..12]</code> is 3 more
+<code>abc</code>-shifted bytes, still matching. Full extension length is <code>len = 9</code>.
+Emit the sequence <code>(lit_len = 3, match_len = 9, match_off = 3)</code>. Advance
+<code>sp</code> by 9 to <code>sp = 12</code>, which is the end of input. Done.</p>
+<p>The resulting token stream is one sequence <code>(3, 9, 3)</code> plus a literal run
+of 3 bytes <code>abc</code>. Serialized: 8-byte LZ header (<code>n_seq = 1, literals_size
+= 3</code>), then the packed sequence descriptor, then the literal bytes.</p>
+<p>Computing the sequence bytes: tag byte is <code>[0011 0110]</code> = <code>0x36</code> (lit_len
+<code>3</code> in the high nibble, <code>match_len - 3 = 6</code> in the low nibble). No
+extensions needed for either length. Offset is 3, encoded as <code>uint16(0x0002)</code>
+(i.e. <code>off - 1</code>), which writes <code>02 00</code>. The sequence is 3 bytes total.</p>
+<p>Full payload: <code>[01 00 00 00][03 00 00 00][36][02 00][61 62 63]</code> = 14
+bytes. Input was 12 bytes; LZ's 8-byte header plus 3-byte sequence plus
+3-byte literal pool added 2 bytes of overhead. That is not a win on a
+12-byte input: the literal-only fallback (<code>lz_encode_literal_only</code>)
+would also produce 12 + 8 = 20 bytes, still worse than raw, but the
+matcher's sequence form is honest about what was found.</p>
+<p>Scale this up to a 1 MiB <code>abcabcabc...</code> input: one 3-byte literal run,
+one sequence with <code>match_len = 1048573</code> and <code>match_off = 3</code>. The
+match-length extension needs LEB128 of <code>1048573 - 3 - 15 = 1048555</code> =
+4 bytes. Total cost: 80-byte block header + 8-byte LZ header + 1-byte
+tag + 4-byte LEB128 + 2-byte offset + 3 literal bytes = 98 bytes. The
+measured result is 101 bytes, the extra 3 coming from the entropy-stage
+sizes table and the block record's reserved fields.</p>
+<p>Run the example program <code>docs/examples/theory_lz_histogram.c</code> to see the
+measurement on three inputs (<code>zero</code>, <code>abc</code>, <code>noise</code>). A representative
+run prints:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>zero: raw=1048576 bytes, enc=99 bytes, ratio=10591.68x, 305 MB/s
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>  sequences: 1   literal bytes: 1   match bytes: 1048575
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>  bucket     lit_hist match_hist
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>       0            0          0
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    1- 3            1          0
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    4-15            0          0
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>   16-63            0          0
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>   64-255           0          0
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>  256-1K            0          0
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    &gt;=1K            0          1
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>abc: raw=1048576 bytes, enc=101 bytes, ratio=10381.94x, 297 MB/s
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>  sequences: 1   literal bytes: 3   match bytes: 1048573
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>  bucket     lit_hist match_hist
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>       0            0          0
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>    1- 3            1          0
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>    4-15            0          0
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>   16-63            0          0
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>   64-255           0          0
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>  256-1K            0          0
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>    &gt;=1K            0          1
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>
+</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>noise: raw=1048576 bytes, enc=1048668 bytes, ratio=1.00x, 5 MB/s
+</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>  sequences: 0   literal bytes: 0   match bytes: 0
+</span></code></pre></div>
+<p>The <code>zero</code> input collapses to one sequence: one literal byte, then a
+single match of 1048575 bytes at offset 1. The matcher emits a literal
+for the very first byte (there is no earlier text to reference), hashes
+position 1, finds <code>src[0..4] == src[1..5]</code> (all zeros), extends the
+match to the end of input, and stops. The small-offset doubling pattern
+in <code>tdc_match_copy</code> replays the run at <code>memcpy</code> speed on decode.
+(<code>TDC_BLOCK_FLAG_ZERO_RESIDUAL</code> does not fire here because the RAW model
+carries the residual through as-is rather than producing a zero-length
+residual stream; the flag fires for models like <code>PLANE_2D</code> that detect
+the zero pattern earlier.) The <code>abc</code> input is what the matcher actually
+does on periodic bytes: one sequence, length 1048573, offset 3. The
+<code>noise</code> input is the literal-only fallback: the parser finds no match of
+3 bytes anywhere in the input, emits zero sequences, and the serializer
+writes a literal-only record.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="cm">/* docs/examples/theory_lz_histogram.c</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="cm"> *</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="cm"> * Encodes three synthetic inputs with TDC_ENTROPY_LZ and prints, for each:</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="cm"> *   - raw / encoded byte counts and compression ratio</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="cm"> *   - a literal-length histogram and match-length histogram over the LZ</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="cm"> *     sequence stream carried inside the block record</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="cm"> *   - encode throughput in MB/s</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="cm"> *</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="cm"> * The three inputs exercise the three regimes the greedy parser cares about:</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="cm"> *</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="cm"> *   1. &quot;zero&quot;:    all-zero bytes. After one literal seeding byte, one long</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="cm"> *                 match at offset 1 extends to end-of-input; the literal</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="cm"> *                 histogram collapses to the &quot;1-3&quot; bucket and the match</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="cm"> *                 histogram to the &quot;&gt;=1024&quot; bucket. (TDC_BLOCK_FLAG_ZERO_RESIDUAL</span>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="cm"> *                 would short-circuit this case entirely under a model that</span>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="cm"> *                 detects zero residuals, e.g. PLANE_2D; under RAW the LZ</span>
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="cm"> *                 stage runs as above.)</span>
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="cm"> *   2. &quot;abc&quot;:     the repeating string &quot;abcabcabc...&quot; (classic LZ teaching</span>
+</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="cm"> *                 input). After the first three literals the parser emits</span>
+</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="cm"> *                 one match that extends to end-of-input.</span>
+</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="cm"> *   3. &quot;noise&quot;:   LCG bytes with no exploitable structure. The parser emits</span>
+</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="cm"> *                 no matches at all; the record is the 8-byte LZ header plus</span>
+</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="cm"> *                 every input byte as a trailing literal.</span>
+</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="cm"> *</span>
+</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="cm"> * Build:</span>
+</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a><span class="cm"> *   cc -I include docs/examples/theory_lz_histogram.c build/libtdc.a -lm \</span>
+</span><span id="__span-8-27"><a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a><span class="cm"> *      -o /tmp/lz_hist</span>
+</span><span id="__span-8-28"><a id="__codelineno-8-28" name="__codelineno-8-28" href="#__codelineno-8-28"></a><span class="cm"> */</span>
+</span><span id="__span-8-29"><a id="__codelineno-8-29" name="__codelineno-8-29" href="#__codelineno-8-29"></a>
+</span><span id="__span-8-30"><a id="__codelineno-8-30" name="__codelineno-8-30" href="#__codelineno-8-30"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;quickstart_common.h&quot;</span>
+</span><span id="__span-8-31"><a id="__codelineno-8-31" name="__codelineno-8-31" href="#__codelineno-8-31"></a>
+</span><span id="__span-8-32"><a id="__codelineno-8-32" name="__codelineno-8-32" href="#__codelineno-8-32"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdint.h&gt;</span>
+</span><span id="__span-8-33"><a id="__codelineno-8-33" name="__codelineno-8-33" href="#__codelineno-8-33"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdio.h&gt;</span>
+</span><span id="__span-8-34"><a id="__codelineno-8-34" name="__codelineno-8-34" href="#__codelineno-8-34"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string.h&gt;</span>
+</span><span id="__span-8-35"><a id="__codelineno-8-35" name="__codelineno-8-35" href="#__codelineno-8-35"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;time.h&gt;</span>
+</span><span id="__span-8-36"><a id="__codelineno-8-36" name="__codelineno-8-36" href="#__codelineno-8-36"></a>
+</span><span id="__span-8-37"><a id="__codelineno-8-37" name="__codelineno-8-37" href="#__codelineno-8-37"></a><span class="cm">/* ----- LZ stream decoder (decode-only, for inspection) -------------------- */</span>
+</span><span id="__span-8-38"><a id="__codelineno-8-38" name="__codelineno-8-38" href="#__codelineno-8-38"></a><span class="cm">/*</span>
+</span><span id="__span-8-39"><a id="__codelineno-8-39" name="__codelineno-8-39" href="#__codelineno-8-39"></a><span class="cm"> * Walks the sequence descriptors inside a TDC_ENTROPY_LZ payload and counts</span>
+</span><span id="__span-8-40"><a id="__codelineno-8-40" name="__codelineno-8-40" href="#__codelineno-8-40"></a><span class="cm"> * literal-run and match-length occurrences into caller-provided histograms.</span>
+</span><span id="__span-8-41"><a id="__codelineno-8-41" name="__codelineno-8-41" href="#__codelineno-8-41"></a><span class="cm"> * Matches the on-disk layout documented in src/entropy/lz_internal.h:</span>
+</span><span id="__span-8-42"><a id="__codelineno-8-42" name="__codelineno-8-42" href="#__codelineno-8-42"></a><span class="cm"> *   [u32 n_seq][u32 literals_size][packed sequence headers][literal bytes]</span>
+</span><span id="__span-8-43"><a id="__codelineno-8-43" name="__codelineno-8-43" href="#__codelineno-8-43"></a><span class="cm"> * The packed header per sequence is:</span>
+</span><span id="__span-8-44"><a id="__codelineno-8-44" name="__codelineno-8-44" href="#__codelineno-8-44"></a><span class="cm"> *   1-byte tag   high nibble = lit_len (15 = extended chained-255),</span>
+</span><span id="__span-8-45"><a id="__codelineno-8-45" name="__codelineno-8-45" href="#__codelineno-8-45"></a><span class="cm"> *                low nibble  = match_len - 3 (15 = extended LEB128)</span>
+</span><span id="__span-8-46"><a id="__codelineno-8-46" name="__codelineno-8-46" href="#__codelineno-8-46"></a><span class="cm"> *   [lit ext]    chained-255 varint when lit_len == 15</span>
+</span><span id="__span-8-47"><a id="__codelineno-8-47" name="__codelineno-8-47" href="#__codelineno-8-47"></a><span class="cm"> *   [match ext]  LEB128 when match_len_m3 == 15</span>
+</span><span id="__span-8-48"><a id="__codelineno-8-48" name="__codelineno-8-48" href="#__codelineno-8-48"></a><span class="cm"> *   [offset]     uint16_le base, optional LEB128 extension when base == 0xFFFF</span>
+</span><span id="__span-8-49"><a id="__codelineno-8-49" name="__codelineno-8-49" href="#__codelineno-8-49"></a><span class="cm"> */</span>
+</span><span id="__span-8-50"><a id="__codelineno-8-50" name="__codelineno-8-50" href="#__codelineno-8-50"></a><span class="k">enum</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">LZ_HEADER_SIZE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8u</span><span class="w"> </span><span class="p">};</span>
+</span><span id="__span-8-51"><a id="__codelineno-8-51" name="__codelineno-8-51" href="#__codelineno-8-51"></a>
+</span><span id="__span-8-52"><a id="__codelineno-8-52" name="__codelineno-8-52" href="#__codelineno-8-52"></a><span class="k">static</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="nf">bucket_index</span><span class="p">(</span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">v</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-53"><a id="__codelineno-8-53" name="__codelineno-8-53" href="#__codelineno-8-53"></a><span class="w">    </span><span class="cm">/* Power-of-two buckets: 0, 1-3, 4-15, 16-63, 64-255, 256-1023, &gt;=1024. */</span>
+</span><span id="__span-8-54"><a id="__codelineno-8-54" name="__codelineno-8-54" href="#__codelineno-8-54"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">v</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-55"><a id="__codelineno-8-55" name="__codelineno-8-55" href="#__codelineno-8-55"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">v</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-8-56"><a id="__codelineno-8-56" name="__codelineno-8-56" href="#__codelineno-8-56"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">v</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">15</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+</span><span id="__span-8-57"><a id="__codelineno-8-57" name="__codelineno-8-57" href="#__codelineno-8-57"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">v</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">63</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
+</span><span id="__span-8-58"><a id="__codelineno-8-58" name="__codelineno-8-58" href="#__codelineno-8-58"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">v</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">255</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span>
+</span><span id="__span-8-59"><a id="__codelineno-8-59" name="__codelineno-8-59" href="#__codelineno-8-59"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">v</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">1023</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">5</span><span class="p">;</span>
+</span><span id="__span-8-60"><a id="__codelineno-8-60" name="__codelineno-8-60" href="#__codelineno-8-60"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">6</span><span class="p">;</span>
+</span><span id="__span-8-61"><a id="__codelineno-8-61" name="__codelineno-8-61" href="#__codelineno-8-61"></a><span class="p">}</span>
+</span><span id="__span-8-62"><a id="__codelineno-8-62" name="__codelineno-8-62" href="#__codelineno-8-62"></a>
+</span><span id="__span-8-63"><a id="__codelineno-8-63" name="__codelineno-8-63" href="#__codelineno-8-63"></a><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">BUCKET_LABELS</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-64"><a id="__codelineno-8-64" name="__codelineno-8-64" href="#__codelineno-8-64"></a><span class="w">    </span><span class="s">&quot;     0&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;  1- 3&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;  4-15&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot; 16-63&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot; 64-255&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;256-1K&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;  &gt;=1K&quot;</span>
+</span><span id="__span-8-65"><a id="__codelineno-8-65" name="__codelineno-8-65" href="#__codelineno-8-65"></a><span class="p">};</span>
+</span><span id="__span-8-66"><a id="__codelineno-8-66" name="__codelineno-8-66" href="#__codelineno-8-66"></a>
+</span><span id="__span-8-67"><a id="__codelineno-8-67" name="__codelineno-8-67" href="#__codelineno-8-67"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">histogram_scan</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">payload</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">payload_size</span><span class="p">,</span>
+</span><span id="__span-8-68"><a id="__codelineno-8-68" name="__codelineno-8-68" href="#__codelineno-8-68"></a><span class="w">                           </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">lit_hist</span><span class="p">[</span><span class="mi">7</span><span class="p">],</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">match_hist</span><span class="p">[</span><span class="mi">7</span><span class="p">],</span>
+</span><span id="__span-8-69"><a id="__codelineno-8-69" name="__codelineno-8-69" href="#__codelineno-8-69"></a><span class="w">                           </span><span class="kt">uint32_t</span><span class="w"> </span><span class="o">*</span><span class="n">n_seq_out</span><span class="p">,</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="o">*</span><span class="n">lit_bytes_out</span><span class="p">,</span>
+</span><span id="__span-8-70"><a id="__codelineno-8-70" name="__codelineno-8-70" href="#__codelineno-8-70"></a><span class="w">                           </span><span class="kt">uint32_t</span><span class="w"> </span><span class="o">*</span><span class="n">match_bytes_out</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-71"><a id="__codelineno-8-71" name="__codelineno-8-71" href="#__codelineno-8-71"></a><span class="w">    </span><span class="n">memset</span><span class="p">(</span><span class="n">lit_hist</span><span class="p">,</span><span class="w">   </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">7</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">));</span>
+</span><span id="__span-8-72"><a id="__codelineno-8-72" name="__codelineno-8-72" href="#__codelineno-8-72"></a><span class="w">    </span><span class="n">memset</span><span class="p">(</span><span class="n">match_hist</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">7</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">));</span>
+</span><span id="__span-8-73"><a id="__codelineno-8-73" name="__codelineno-8-73" href="#__codelineno-8-73"></a><span class="w">    </span><span class="o">*</span><span class="n">n_seq_out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-74"><a id="__codelineno-8-74" name="__codelineno-8-74" href="#__codelineno-8-74"></a><span class="w">    </span><span class="o">*</span><span class="n">lit_bytes_out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-75"><a id="__codelineno-8-75" name="__codelineno-8-75" href="#__codelineno-8-75"></a><span class="w">    </span><span class="o">*</span><span class="n">match_bytes_out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-76"><a id="__codelineno-8-76" name="__codelineno-8-76" href="#__codelineno-8-76"></a>
+</span><span id="__span-8-77"><a id="__codelineno-8-77" name="__codelineno-8-77" href="#__codelineno-8-77"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">payload_size</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">LZ_HEADER_SIZE</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-8-78"><a id="__codelineno-8-78" name="__codelineno-8-78" href="#__codelineno-8-78"></a>
+</span><span id="__span-8-79"><a id="__codelineno-8-79" name="__codelineno-8-79" href="#__codelineno-8-79"></a><span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">n_seq</span><span class="p">,</span><span class="w"> </span><span class="n">literals_size</span><span class="p">;</span>
+</span><span id="__span-8-80"><a id="__codelineno-8-80" name="__codelineno-8-80" href="#__codelineno-8-80"></a><span class="w">    </span><span class="n">memcpy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">n_seq</span><span class="p">,</span><span class="w">         </span><span class="n">payload</span><span class="p">,</span><span class="w">     </span><span class="mi">4</span><span class="p">);</span>
+</span><span id="__span-8-81"><a id="__codelineno-8-81" name="__codelineno-8-81" href="#__codelineno-8-81"></a><span class="w">    </span><span class="n">memcpy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">literals_size</span><span class="p">,</span><span class="w"> </span><span class="n">payload</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">);</span>
+</span><span id="__span-8-82"><a id="__codelineno-8-82" name="__codelineno-8-82" href="#__codelineno-8-82"></a><span class="w">    </span><span class="o">*</span><span class="n">n_seq_out</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">n_seq</span><span class="p">;</span>
+</span><span id="__span-8-83"><a id="__codelineno-8-83" name="__codelineno-8-83" href="#__codelineno-8-83"></a>
+</span><span id="__span-8-84"><a id="__codelineno-8-84" name="__codelineno-8-84" href="#__codelineno-8-84"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">payload</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">LZ_HEADER_SIZE</span><span class="p">;</span>
+</span><span id="__span-8-85"><a id="__codelineno-8-85" name="__codelineno-8-85" href="#__codelineno-8-85"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">end</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">payload</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">payload_size</span><span class="p">;</span>
+</span><span id="__span-8-86"><a id="__codelineno-8-86" name="__codelineno-8-86" href="#__codelineno-8-86"></a>
+</span><span id="__span-8-87"><a id="__codelineno-8-87" name="__codelineno-8-87" href="#__codelineno-8-87"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n_seq</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">end</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-88"><a id="__codelineno-8-88" name="__codelineno-8-88" href="#__codelineno-8-88"></a><span class="w">        </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">tag</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="o">++</span><span class="p">;</span>
+</span><span id="__span-8-89"><a id="__codelineno-8-89" name="__codelineno-8-89" href="#__codelineno-8-89"></a><span class="w">        </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">lit_len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tag</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span>
+</span><span id="__span-8-90"><a id="__codelineno-8-90" name="__codelineno-8-90" href="#__codelineno-8-90"></a><span class="w">        </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">match_m3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tag</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="mh">0x0F</span><span class="p">;</span>
+</span><span id="__span-8-91"><a id="__codelineno-8-91" name="__codelineno-8-91" href="#__codelineno-8-91"></a>
+</span><span id="__span-8-92"><a id="__codelineno-8-92" name="__codelineno-8-92" href="#__codelineno-8-92"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">lit_len</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">15</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-93"><a id="__codelineno-8-93" name="__codelineno-8-93" href="#__codelineno-8-93"></a><span class="w">            </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">extra</span><span class="p">;</span>
+</span><span id="__span-8-94"><a id="__codelineno-8-94" name="__codelineno-8-94" href="#__codelineno-8-94"></a><span class="w">            </span><span class="k">do</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">extra</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="o">++</span><span class="p">;</span><span class="w"> </span><span class="n">lit_len</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">extra</span><span class="p">;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">extra</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">255</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">end</span><span class="p">);</span>
+</span><span id="__span-8-95"><a id="__codelineno-8-95" name="__codelineno-8-95" href="#__codelineno-8-95"></a><span class="w">        </span><span class="p">}</span>
+</span><span id="__span-8-96"><a id="__codelineno-8-96" name="__codelineno-8-96" href="#__codelineno-8-96"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">match_m3</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">15</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-97"><a id="__codelineno-8-97" name="__codelineno-8-97" href="#__codelineno-8-97"></a><span class="w">            </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">extra</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">shift</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-98"><a id="__codelineno-8-98" name="__codelineno-8-98" href="#__codelineno-8-98"></a><span class="w">            </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">b</span><span class="p">;</span>
+</span><span id="__span-8-99"><a id="__codelineno-8-99" name="__codelineno-8-99" href="#__codelineno-8-99"></a><span class="w">            </span><span class="k">do</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-100"><a id="__codelineno-8-100" name="__codelineno-8-100" href="#__codelineno-8-100"></a><span class="w">                </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="o">++</span><span class="p">;</span>
+</span><span id="__span-8-101"><a id="__codelineno-8-101" name="__codelineno-8-101" href="#__codelineno-8-101"></a><span class="w">                </span><span class="n">extra</span><span class="w"> </span><span class="o">|=</span><span class="w"> </span><span class="p">((</span><span class="kt">uint32_t</span><span class="p">)(</span><span class="n">b</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="mh">0x7F</span><span class="p">))</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="n">shift</span><span class="p">;</span>
+</span><span id="__span-8-102"><a id="__codelineno-8-102" name="__codelineno-8-102" href="#__codelineno-8-102"></a><span class="w">                </span><span class="n">shift</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">7</span><span class="p">;</span>
+</span><span id="__span-8-103"><a id="__codelineno-8-103" name="__codelineno-8-103" href="#__codelineno-8-103"></a><span class="w">            </span><span class="p">}</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">((</span><span class="n">b</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="mh">0x80</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">end</span><span class="p">);</span>
+</span><span id="__span-8-104"><a id="__codelineno-8-104" name="__codelineno-8-104" href="#__codelineno-8-104"></a><span class="w">            </span><span class="n">match_m3</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">extra</span><span class="p">;</span>
+</span><span id="__span-8-105"><a id="__codelineno-8-105" name="__codelineno-8-105" href="#__codelineno-8-105"></a><span class="w">        </span><span class="p">}</span>
+</span><span id="__span-8-106"><a id="__codelineno-8-106" name="__codelineno-8-106" href="#__codelineno-8-106"></a><span class="w">        </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">match_len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">match_m3</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">3</span><span class="p">;</span>
+</span><span id="__span-8-107"><a id="__codelineno-8-107" name="__codelineno-8-107" href="#__codelineno-8-107"></a>
+</span><span id="__span-8-108"><a id="__codelineno-8-108" name="__codelineno-8-108" href="#__codelineno-8-108"></a><span class="w">        </span><span class="cm">/* Skip the offset field. 2 bytes base, plus LEB128 extension when</span>
+</span><span id="__span-8-109"><a id="__codelineno-8-109" name="__codelineno-8-109" href="#__codelineno-8-109"></a><span class="cm">         * base == 0xFFFF. We do not need the value for the histogram. */</span>
+</span><span id="__span-8-110"><a id="__codelineno-8-110" name="__codelineno-8-110" href="#__codelineno-8-110"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">p</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">end</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-8-111"><a id="__codelineno-8-111" name="__codelineno-8-111" href="#__codelineno-8-111"></a><span class="w">        </span><span class="kt">uint16_t</span><span class="w"> </span><span class="n">off_base</span><span class="p">;</span>
+</span><span id="__span-8-112"><a id="__codelineno-8-112" name="__codelineno-8-112" href="#__codelineno-8-112"></a><span class="w">        </span><span class="n">memcpy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">off_base</span><span class="p">,</span><span class="w"> </span><span class="n">p</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+</span><span id="__span-8-113"><a id="__codelineno-8-113" name="__codelineno-8-113" href="#__codelineno-8-113"></a><span class="w">        </span><span class="n">p</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">2</span><span class="p">;</span>
+</span><span id="__span-8-114"><a id="__codelineno-8-114" name="__codelineno-8-114" href="#__codelineno-8-114"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">off_base</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mh">0xFFFF</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-115"><a id="__codelineno-8-115" name="__codelineno-8-115" href="#__codelineno-8-115"></a><span class="w">            </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">b</span><span class="p">;</span>
+</span><span id="__span-8-116"><a id="__codelineno-8-116" name="__codelineno-8-116" href="#__codelineno-8-116"></a><span class="w">            </span><span class="k">do</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">*</span><span class="n">p</span><span class="o">++</span><span class="p">;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">((</span><span class="n">b</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="mh">0x80</span><span class="p">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">p</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">end</span><span class="p">);</span>
+</span><span id="__span-8-117"><a id="__codelineno-8-117" name="__codelineno-8-117" href="#__codelineno-8-117"></a><span class="w">        </span><span class="p">}</span>
+</span><span id="__span-8-118"><a id="__codelineno-8-118" name="__codelineno-8-118" href="#__codelineno-8-118"></a>
+</span><span id="__span-8-119"><a id="__codelineno-8-119" name="__codelineno-8-119" href="#__codelineno-8-119"></a><span class="w">        </span><span class="n">lit_hist</span><span class="p">[</span><span class="n">bucket_index</span><span class="p">(</span><span class="n">lit_len</span><span class="p">)]</span><span class="o">++</span><span class="p">;</span>
+</span><span id="__span-8-120"><a id="__codelineno-8-120" name="__codelineno-8-120" href="#__codelineno-8-120"></a><span class="w">        </span><span class="n">match_hist</span><span class="p">[</span><span class="n">bucket_index</span><span class="p">(</span><span class="n">match_len</span><span class="p">)]</span><span class="o">++</span><span class="p">;</span>
+</span><span id="__span-8-121"><a id="__codelineno-8-121" name="__codelineno-8-121" href="#__codelineno-8-121"></a><span class="w">        </span><span class="o">*</span><span class="n">lit_bytes_out</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">lit_len</span><span class="p">;</span>
+</span><span id="__span-8-122"><a id="__codelineno-8-122" name="__codelineno-8-122" href="#__codelineno-8-122"></a><span class="w">        </span><span class="o">*</span><span class="n">match_bytes_out</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">match_len</span><span class="p">;</span>
+</span><span id="__span-8-123"><a id="__codelineno-8-123" name="__codelineno-8-123" href="#__codelineno-8-123"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-124"><a id="__codelineno-8-124" name="__codelineno-8-124" href="#__codelineno-8-124"></a><span class="p">}</span>
+</span><span id="__span-8-125"><a id="__codelineno-8-125" name="__codelineno-8-125" href="#__codelineno-8-125"></a>
+</span><span id="__span-8-126"><a id="__codelineno-8-126" name="__codelineno-8-126" href="#__codelineno-8-126"></a><span class="cm">/* ----- Locate the LZ payload inside a tdc block record -------------------- */</span>
+</span><span id="__span-8-127"><a id="__codelineno-8-127" name="__codelineno-8-127" href="#__codelineno-8-127"></a><span class="cm">/*</span>
+</span><span id="__span-8-128"><a id="__codelineno-8-128" name="__codelineno-8-128" href="#__codelineno-8-128"></a><span class="cm"> * The on-disk layout (see tdc/format.h) is:</span>
+</span><span id="__span-8-129"><a id="__codelineno-8-129" name="__codelineno-8-129" href="#__codelineno-8-129"></a><span class="cm"> *</span>
+</span><span id="__span-8-130"><a id="__codelineno-8-130" name="__codelineno-8-130" href="#__codelineno-8-130"></a><span class="cm"> *     0                                                        header  (80)</span>
+</span><span id="__span-8-131"><a id="__codelineno-8-131" name="__codelineno-8-131" href="#__codelineno-8-131"></a><span class="cm"> *     80                                                       side_meta     (N)</span>
+</span><span id="__span-8-132"><a id="__codelineno-8-132" name="__codelineno-8-132" href="#__codelineno-8-132"></a><span class="cm"> *     80 + N                                                   xform_params  (M)</span>
+</span><span id="__span-8-133"><a id="__codelineno-8-133" name="__codelineno-8-133" href="#__codelineno-8-133"></a><span class="cm"> *     80 + N + M                                               entropy payload (P)</span>
+</span><span id="__span-8-134"><a id="__codelineno-8-134" name="__codelineno-8-134" href="#__codelineno-8-134"></a><span class="cm"> *</span>
+</span><span id="__span-8-135"><a id="__codelineno-8-135" name="__codelineno-8-135" href="#__codelineno-8-135"></a><span class="cm"> * The entropy payload itself opens with a per-stage sizes table</span>
+</span><span id="__span-8-136"><a id="__codelineno-8-136" name="__codelineno-8-136" href="#__codelineno-8-136"></a><span class="cm"> * (one u32 per entropy slot recording the bytes FED INTO that stage). For a</span>
+</span><span id="__span-8-137"><a id="__codelineno-8-137" name="__codelineno-8-137" href="#__codelineno-8-137"></a><span class="cm"> * single-stage LZ chain that is 4 bytes. The actual LZ stream follows</span>
+</span><span id="__span-8-138"><a id="__codelineno-8-138" name="__codelineno-8-138" href="#__codelineno-8-138"></a><span class="cm"> * immediately after. Skipping those 4 bytes lands us at n_seq.</span>
+</span><span id="__span-8-139"><a id="__codelineno-8-139" name="__codelineno-8-139" href="#__codelineno-8-139"></a><span class="cm"> */</span>
+</span><span id="__span-8-140"><a id="__codelineno-8-140" name="__codelineno-8-140" href="#__codelineno-8-140"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">find_entropy_payload</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">rec</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">rec_size</span><span class="p">,</span>
+</span><span id="__span-8-141"><a id="__codelineno-8-141" name="__codelineno-8-141" href="#__codelineno-8-141"></a><span class="w">                                  </span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">**</span><span class="n">out_payload</span><span class="p">,</span>
+</span><span id="__span-8-142"><a id="__codelineno-8-142" name="__codelineno-8-142" href="#__codelineno-8-142"></a><span class="w">                                  </span><span class="kt">size_t</span><span class="w"> </span><span class="o">*</span><span class="n">out_payload_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-143"><a id="__codelineno-8-143" name="__codelineno-8-143" href="#__codelineno-8-143"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">rec_size</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">TDC_BLOCK_HEADER_SIZE</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-144"><a id="__codelineno-8-144" name="__codelineno-8-144" href="#__codelineno-8-144"></a><span class="w">        </span><span class="o">*</span><span class="n">out_payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span><span class="w"> </span><span class="o">*</span><span class="n">out_payload_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-8-145"><a id="__codelineno-8-145" name="__codelineno-8-145" href="#__codelineno-8-145"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-146"><a id="__codelineno-8-146" name="__codelineno-8-146" href="#__codelineno-8-146"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_block_record</span><span class="w"> </span><span class="o">*</span><span class="n">hdr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">tdc_block_record</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">rec</span><span class="p">;</span>
+</span><span id="__span-8-147"><a id="__codelineno-8-147" name="__codelineno-8-147" href="#__codelineno-8-147"></a><span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">off</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_BLOCK_HEADER_SIZE</span>
+</span><span id="__span-8-148"><a id="__codelineno-8-148" name="__codelineno-8-148" href="#__codelineno-8-148"></a><span class="w">               </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="p">)</span><span class="n">hdr</span><span class="o">-&gt;</span><span class="n">side_meta_size</span>
+</span><span id="__span-8-149"><a id="__codelineno-8-149" name="__codelineno-8-149" href="#__codelineno-8-149"></a><span class="w">               </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="p">)</span><span class="n">hdr</span><span class="o">-&gt;</span><span class="n">xform_params_size</span><span class="p">;</span>
+</span><span id="__span-8-150"><a id="__codelineno-8-150" name="__codelineno-8-150" href="#__codelineno-8-150"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">off</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="p">)</span><span class="n">hdr</span><span class="o">-&gt;</span><span class="n">payload_size</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">rec_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-151"><a id="__codelineno-8-151" name="__codelineno-8-151" href="#__codelineno-8-151"></a><span class="w">        </span><span class="o">*</span><span class="n">out_payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span><span class="w"> </span><span class="o">*</span><span class="n">out_payload_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-8-152"><a id="__codelineno-8-152" name="__codelineno-8-152" href="#__codelineno-8-152"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-153"><a id="__codelineno-8-153" name="__codelineno-8-153" href="#__codelineno-8-153"></a><span class="w">    </span><span class="cm">/* Count active entropy slots to find the sizes-table prefix length. */</span>
+</span><span id="__span-8-154"><a id="__codelineno-8-154" name="__codelineno-8-154" href="#__codelineno-8-154"></a><span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">entropy_slots</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-155"><a id="__codelineno-8-155" name="__codelineno-8-155" href="#__codelineno-8-155"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">TDC_MAX_ENTROPY</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-156"><a id="__codelineno-8-156" name="__codelineno-8-156" href="#__codelineno-8-156"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">hdr</span><span class="o">-&gt;</span><span class="n">entropy_ids</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">break</span><span class="p">;</span>
+</span><span id="__span-8-157"><a id="__codelineno-8-157" name="__codelineno-8-157" href="#__codelineno-8-157"></a><span class="w">        </span><span class="n">entropy_slots</span><span class="o">++</span><span class="p">;</span>
+</span><span id="__span-8-158"><a id="__codelineno-8-158" name="__codelineno-8-158" href="#__codelineno-8-158"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-159"><a id="__codelineno-8-159" name="__codelineno-8-159" href="#__codelineno-8-159"></a><span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">prefix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">entropy_slots</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">);</span>
+</span><span id="__span-8-160"><a id="__codelineno-8-160" name="__codelineno-8-160" href="#__codelineno-8-160"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">prefix</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="p">)</span><span class="n">hdr</span><span class="o">-&gt;</span><span class="n">payload_size</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-161"><a id="__codelineno-8-161" name="__codelineno-8-161" href="#__codelineno-8-161"></a><span class="w">        </span><span class="o">*</span><span class="n">out_payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span><span class="w"> </span><span class="o">*</span><span class="n">out_payload_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-8-162"><a id="__codelineno-8-162" name="__codelineno-8-162" href="#__codelineno-8-162"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-163"><a id="__codelineno-8-163" name="__codelineno-8-163" href="#__codelineno-8-163"></a><span class="w">    </span><span class="o">*</span><span class="n">out_payload</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">rec</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">off</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">prefix</span><span class="p">;</span>
+</span><span id="__span-8-164"><a id="__codelineno-8-164" name="__codelineno-8-164" href="#__codelineno-8-164"></a><span class="w">    </span><span class="o">*</span><span class="n">out_payload_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="p">)</span><span class="n">hdr</span><span class="o">-&gt;</span><span class="n">payload_size</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">prefix</span><span class="p">;</span>
+</span><span id="__span-8-165"><a id="__codelineno-8-165" name="__codelineno-8-165" href="#__codelineno-8-165"></a><span class="p">}</span>
+</span><span id="__span-8-166"><a id="__codelineno-8-166" name="__codelineno-8-166" href="#__codelineno-8-166"></a>
+</span><span id="__span-8-167"><a id="__codelineno-8-167" name="__codelineno-8-167" href="#__codelineno-8-167"></a><span class="cm">/* ----- Throughput timer --------------------------------------------------- */</span>
+</span><span id="__span-8-168"><a id="__codelineno-8-168" name="__codelineno-8-168" href="#__codelineno-8-168"></a>
+</span><span id="__span-8-169"><a id="__codelineno-8-169" name="__codelineno-8-169" href="#__codelineno-8-169"></a><span class="k">static</span><span class="w"> </span><span class="kt">double</span><span class="w"> </span><span class="nf">ms_since</span><span class="p">(</span><span class="k">struct</span><span class="w"> </span><span class="nc">timespec</span><span class="w"> </span><span class="n">t0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-170"><a id="__codelineno-8-170" name="__codelineno-8-170" href="#__codelineno-8-170"></a><span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="nc">timespec</span><span class="w"> </span><span class="n">t1</span><span class="p">;</span>
+</span><span id="__span-8-171"><a id="__codelineno-8-171" name="__codelineno-8-171" href="#__codelineno-8-171"></a><span class="w">    </span><span class="n">timespec_get</span><span class="p">(</span><span class="o">&amp;</span><span class="n">t1</span><span class="p">,</span><span class="w"> </span><span class="n">TIME_UTC</span><span class="p">);</span>
+</span><span id="__span-8-172"><a id="__codelineno-8-172" name="__codelineno-8-172" href="#__codelineno-8-172"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="kt">double</span><span class="p">)(</span><span class="n">t1</span><span class="p">.</span><span class="n">tv_sec</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t0</span><span class="p">.</span><span class="n">tv_sec</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1000.0</span>
+</span><span id="__span-8-173"><a id="__codelineno-8-173" name="__codelineno-8-173" href="#__codelineno-8-173"></a><span class="w">         </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="kt">double</span><span class="p">)(</span><span class="n">t1</span><span class="p">.</span><span class="n">tv_nsec</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">t0</span><span class="p">.</span><span class="n">tv_nsec</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1.0e6</span><span class="p">;</span>
+</span><span id="__span-8-174"><a id="__codelineno-8-174" name="__codelineno-8-174" href="#__codelineno-8-174"></a><span class="p">}</span>
+</span><span id="__span-8-175"><a id="__codelineno-8-175" name="__codelineno-8-175" href="#__codelineno-8-175"></a>
+</span><span id="__span-8-176"><a id="__codelineno-8-176" name="__codelineno-8-176" href="#__codelineno-8-176"></a><span class="cm">/* ----- Input generators --------------------------------------------------- */</span>
+</span><span id="__span-8-177"><a id="__codelineno-8-177" name="__codelineno-8-177" href="#__codelineno-8-177"></a>
+</span><span id="__span-8-178"><a id="__codelineno-8-178" name="__codelineno-8-178" href="#__codelineno-8-178"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">fill_zero</span><span class="p">(</span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w">   </span><span class="p">{</span><span class="w"> </span><span class="n">memset</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">);</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-8-179"><a id="__codelineno-8-179" name="__codelineno-8-179" href="#__codelineno-8-179"></a>
+</span><span id="__span-8-180"><a id="__codelineno-8-180" name="__codelineno-8-180" href="#__codelineno-8-180"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">fill_abc</span><span class="p">(</span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-181"><a id="__codelineno-8-181" name="__codelineno-8-181" href="#__codelineno-8-181"></a><span class="w">    </span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="n">pat</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="sc">&#39;a&#39;</span><span class="p">,</span><span class="w"> </span><span class="sc">&#39;b&#39;</span><span class="p">,</span><span class="w"> </span><span class="sc">&#39;c&#39;</span><span class="w"> </span><span class="p">};</span>
+</span><span id="__span-8-182"><a id="__codelineno-8-182" name="__codelineno-8-182" href="#__codelineno-8-182"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="n">dst</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">uint8_t</span><span class="p">)</span><span class="n">pat</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">3</span><span class="p">];</span>
+</span><span id="__span-8-183"><a id="__codelineno-8-183" name="__codelineno-8-183" href="#__codelineno-8-183"></a><span class="p">}</span>
+</span><span id="__span-8-184"><a id="__codelineno-8-184" name="__codelineno-8-184" href="#__codelineno-8-184"></a>
+</span><span id="__span-8-185"><a id="__codelineno-8-185" name="__codelineno-8-185" href="#__codelineno-8-185"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">fill_noise</span><span class="p">(</span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-186"><a id="__codelineno-8-186" name="__codelineno-8-186" href="#__codelineno-8-186"></a><span class="w">    </span><span class="cm">/* Minimal LCG — good enough to defeat LZ matching on 4-byte windows. */</span>
+</span><span id="__span-8-187"><a id="__codelineno-8-187" name="__codelineno-8-187" href="#__codelineno-8-187"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x243F6A8885A308D3ull</span><span class="p">;</span>
+</span><span id="__span-8-188"><a id="__codelineno-8-188" name="__codelineno-8-188" href="#__codelineno-8-188"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">n</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-189"><a id="__codelineno-8-189" name="__codelineno-8-189" href="#__codelineno-8-189"></a><span class="w">        </span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">6364136223846793005ull</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1442695040888963407ull</span><span class="p">;</span>
+</span><span id="__span-8-190"><a id="__codelineno-8-190" name="__codelineno-8-190" href="#__codelineno-8-190"></a><span class="w">        </span><span class="n">dst</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">uint8_t</span><span class="p">)(</span><span class="n">s</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="mi">56</span><span class="p">);</span>
+</span><span id="__span-8-191"><a id="__codelineno-8-191" name="__codelineno-8-191" href="#__codelineno-8-191"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-192"><a id="__codelineno-8-192" name="__codelineno-8-192" href="#__codelineno-8-192"></a><span class="p">}</span>
+</span><span id="__span-8-193"><a id="__codelineno-8-193" name="__codelineno-8-193" href="#__codelineno-8-193"></a>
+</span><span id="__span-8-194"><a id="__codelineno-8-194" name="__codelineno-8-194" href="#__codelineno-8-194"></a><span class="cm">/* ----- Per-input driver --------------------------------------------------- */</span>
+</span><span id="__span-8-195"><a id="__codelineno-8-195" name="__codelineno-8-195" href="#__codelineno-8-195"></a>
+</span><span id="__span-8-196"><a id="__codelineno-8-196" name="__codelineno-8-196" href="#__codelineno-8-196"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">label</span><span class="p">,</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-197"><a id="__codelineno-8-197" name="__codelineno-8-197" href="#__codelineno-8-197"></a><span class="w">    </span><span class="n">tdc_block</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-8-198"><a id="__codelineno-8-198" name="__codelineno-8-198" href="#__codelineno-8-198"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">data</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="n">buf</span><span class="p">;</span>
+</span><span id="__span-8-199"><a id="__codelineno-8-199" name="__codelineno-8-199" href="#__codelineno-8-199"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">dtype</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_DT_U8</span><span class="p">;</span>
+</span><span id="__span-8-200"><a id="__codelineno-8-200" name="__codelineno-8-200" href="#__codelineno-8-200"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_LAYOUT_VECTOR_1D</span><span class="p">;</span>
+</span><span id="__span-8-201"><a id="__codelineno-8-201" name="__codelineno-8-201" href="#__codelineno-8-201"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">.</span><span class="n">rank</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-8-202"><a id="__codelineno-8-202" name="__codelineno-8-202" href="#__codelineno-8-202"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">.</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">int64_t</span><span class="p">)</span><span class="n">n</span><span class="p">;</span>
+</span><span id="__span-8-203"><a id="__codelineno-8-203" name="__codelineno-8-203" href="#__codelineno-8-203"></a><span class="w">    </span><span class="n">tdc_shape_set_contiguous</span><span class="p">(</span><span class="o">&amp;</span><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">);</span>
+</span><span id="__span-8-204"><a id="__codelineno-8-204" name="__codelineno-8-204" href="#__codelineno-8-204"></a>
+</span><span id="__span-8-205"><a id="__codelineno-8-205" name="__codelineno-8-205" href="#__codelineno-8-205"></a><span class="w">    </span><span class="n">tdc_codec_spec</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_codec_spec_raw</span><span class="p">();</span>
+</span><span id="__span-8-206"><a id="__codelineno-8-206" name="__codelineno-8-206" href="#__codelineno-8-206"></a><span class="w">    </span><span class="n">spec</span><span class="p">.</span><span class="n">entropy</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_ENTROPY_LZ</span><span class="p">;</span>
+</span><span id="__span-8-207"><a id="__codelineno-8-207" name="__codelineno-8-207" href="#__codelineno-8-207"></a>
+</span><span id="__span-8-208"><a id="__codelineno-8-208" name="__codelineno-8-208" href="#__codelineno-8-208"></a><span class="w">    </span><span class="n">tdc_buffer</span><span class="w"> </span><span class="n">enc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs_buffer</span><span class="p">();</span>
+</span><span id="__span-8-209"><a id="__codelineno-8-209" name="__codelineno-8-209" href="#__codelineno-8-209"></a>
+</span><span id="__span-8-210"><a id="__codelineno-8-210" name="__codelineno-8-210" href="#__codelineno-8-210"></a><span class="w">    </span><span class="k">struct</span><span class="w"> </span><span class="nc">timespec</span><span class="w"> </span><span class="n">t0</span><span class="p">;</span><span class="w"> </span><span class="n">timespec_get</span><span class="p">(</span><span class="o">&amp;</span><span class="n">t0</span><span class="p">,</span><span class="w"> </span><span class="n">TIME_UTC</span><span class="p">);</span>
+</span><span id="__span-8-211"><a id="__codelineno-8-211" name="__codelineno-8-211" href="#__codelineno-8-211"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">qs_check</span><span class="p">(</span><span class="n">tdc_encode_block</span><span class="p">(</span><span class="o">&amp;</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">spec</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">enc</span><span class="p">),</span><span class="w"> </span><span class="s">&quot;encode&quot;</span><span class="p">))</span><span class="w"> </span><span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+</span><span id="__span-8-212"><a id="__codelineno-8-212" name="__codelineno-8-212" href="#__codelineno-8-212"></a><span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">elapsed_ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ms_since</span><span class="p">(</span><span class="n">t0</span><span class="p">);</span>
+</span><span id="__span-8-213"><a id="__codelineno-8-213" name="__codelineno-8-213" href="#__codelineno-8-213"></a><span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">throughput</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">((</span><span class="kt">double</span><span class="p">)</span><span class="n">n</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="mf">1024.0</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1024.0</span><span class="p">))</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">elapsed_ms</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">1000.0</span><span class="p">);</span>
+</span><span id="__span-8-214"><a id="__codelineno-8-214" name="__codelineno-8-214" href="#__codelineno-8-214"></a><span class="w">    </span><span class="kt">double</span><span class="w"> </span><span class="n">ratio</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="n">n</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">;</span>
+</span><span id="__span-8-215"><a id="__codelineno-8-215" name="__codelineno-8-215" href="#__codelineno-8-215"></a>
+</span><span id="__span-8-216"><a id="__codelineno-8-216" name="__codelineno-8-216" href="#__codelineno-8-216"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_block_record</span><span class="w"> </span><span class="o">*</span><span class="n">hdr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">tdc_block_record</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">enc</span><span class="p">.</span><span class="n">data</span><span class="p">;</span>
+</span><span id="__span-8-217"><a id="__codelineno-8-217" name="__codelineno-8-217" href="#__codelineno-8-217"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">zero_residual</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">hdr</span><span class="o">-&gt;</span><span class="n">flags</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">TDC_BLOCK_FLAG_ZERO_RESIDUAL</span><span class="p">)</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-218"><a id="__codelineno-8-218" name="__codelineno-8-218" href="#__codelineno-8-218"></a>
+</span><span id="__span-8-219"><a id="__codelineno-8-219" name="__codelineno-8-219" href="#__codelineno-8-219"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">payload</span><span class="p">;</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">payload_size</span><span class="p">;</span>
+</span><span id="__span-8-220"><a id="__codelineno-8-220" name="__codelineno-8-220" href="#__codelineno-8-220"></a><span class="w">    </span><span class="n">find_entropy_payload</span><span class="p">(</span><span class="n">enc</span><span class="p">.</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">payload</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">payload_size</span><span class="p">);</span>
+</span><span id="__span-8-221"><a id="__codelineno-8-221" name="__codelineno-8-221" href="#__codelineno-8-221"></a>
+</span><span id="__span-8-222"><a id="__codelineno-8-222" name="__codelineno-8-222" href="#__codelineno-8-222"></a><span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">lit_hist</span><span class="p">[</span><span class="mi">7</span><span class="p">],</span><span class="w"> </span><span class="n">match_hist</span><span class="p">[</span><span class="mi">7</span><span class="p">];</span>
+</span><span id="__span-8-223"><a id="__codelineno-8-223" name="__codelineno-8-223" href="#__codelineno-8-223"></a><span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">n_seq</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">lit_bytes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">match_bytes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-224"><a id="__codelineno-8-224" name="__codelineno-8-224" href="#__codelineno-8-224"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">zero_residual</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-225"><a id="__codelineno-8-225" name="__codelineno-8-225" href="#__codelineno-8-225"></a><span class="w">        </span><span class="n">histogram_scan</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span><span class="w"> </span><span class="n">payload_size</span><span class="p">,</span><span class="w"> </span><span class="n">lit_hist</span><span class="p">,</span><span class="w"> </span><span class="n">match_hist</span><span class="p">,</span>
+</span><span id="__span-8-226"><a id="__codelineno-8-226" name="__codelineno-8-226" href="#__codelineno-8-226"></a><span class="w">                       </span><span class="o">&amp;</span><span class="n">n_seq</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">lit_bytes</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">match_bytes</span><span class="p">);</span>
+</span><span id="__span-8-227"><a id="__codelineno-8-227" name="__codelineno-8-227" href="#__codelineno-8-227"></a><span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-228"><a id="__codelineno-8-228" name="__codelineno-8-228" href="#__codelineno-8-228"></a><span class="w">        </span><span class="n">memset</span><span class="p">(</span><span class="n">lit_hist</span><span class="p">,</span><span class="w">   </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">lit_hist</span><span class="p">));</span>
+</span><span id="__span-8-229"><a id="__codelineno-8-229" name="__codelineno-8-229" href="#__codelineno-8-229"></a><span class="w">        </span><span class="n">memset</span><span class="p">(</span><span class="n">match_hist</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">match_hist</span><span class="p">));</span>
+</span><span id="__span-8-230"><a id="__codelineno-8-230" name="__codelineno-8-230" href="#__codelineno-8-230"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-231"><a id="__codelineno-8-231" name="__codelineno-8-231" href="#__codelineno-8-231"></a>
+</span><span id="__span-8-232"><a id="__codelineno-8-232" name="__codelineno-8-232" href="#__codelineno-8-232"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;%s: raw=%zu bytes, enc=%zu bytes, ratio=%.2fx, %.1f MB/s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+</span><span id="__span-8-233"><a id="__codelineno-8-233" name="__codelineno-8-233" href="#__codelineno-8-233"></a><span class="w">           </span><span class="n">label</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">,</span><span class="w"> </span><span class="n">ratio</span><span class="p">,</span><span class="w"> </span><span class="n">throughput</span><span class="p">);</span>
+</span><span id="__span-8-234"><a id="__codelineno-8-234" name="__codelineno-8-234" href="#__codelineno-8-234"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">zero_residual</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-235"><a id="__codelineno-8-235" name="__codelineno-8-235" href="#__codelineno-8-235"></a><span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;  (zero-residual fast path: xform + entropy stages skipped)</span><span class="se">\n\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-8-236"><a id="__codelineno-8-236" name="__codelineno-8-236" href="#__codelineno-8-236"></a><span class="w">        </span><span class="n">qs_buffer_free</span><span class="p">(</span><span class="o">&amp;</span><span class="n">enc</span><span class="p">);</span>
+</span><span id="__span-8-237"><a id="__codelineno-8-237" name="__codelineno-8-237" href="#__codelineno-8-237"></a><span class="w">        </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-8-238"><a id="__codelineno-8-238" name="__codelineno-8-238" href="#__codelineno-8-238"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-239"><a id="__codelineno-8-239" name="__codelineno-8-239" href="#__codelineno-8-239"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;  sequences: %u   literal bytes: %u   match bytes: %u</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+</span><span id="__span-8-240"><a id="__codelineno-8-240" name="__codelineno-8-240" href="#__codelineno-8-240"></a><span class="w">           </span><span class="n">n_seq</span><span class="p">,</span><span class="w"> </span><span class="n">lit_bytes</span><span class="p">,</span><span class="w"> </span><span class="n">match_bytes</span><span class="p">);</span>
+</span><span id="__span-8-241"><a id="__codelineno-8-241" name="__codelineno-8-241" href="#__codelineno-8-241"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;  %-8s %10s %10s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;bucket&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;lit_hist&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;match_hist&quot;</span><span class="p">);</span>
+</span><span id="__span-8-242"><a id="__codelineno-8-242" name="__codelineno-8-242" href="#__codelineno-8-242"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">k</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">k</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">7</span><span class="p">;</span><span class="w"> </span><span class="n">k</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-243"><a id="__codelineno-8-243" name="__codelineno-8-243" href="#__codelineno-8-243"></a><span class="w">        </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;  %-8s %10u %10u</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+</span><span id="__span-8-244"><a id="__codelineno-8-244" name="__codelineno-8-244" href="#__codelineno-8-244"></a><span class="w">               </span><span class="n">BUCKET_LABELS</span><span class="p">[</span><span class="n">k</span><span class="p">],</span><span class="w"> </span><span class="n">lit_hist</span><span class="p">[</span><span class="n">k</span><span class="p">],</span><span class="w"> </span><span class="n">match_hist</span><span class="p">[</span><span class="n">k</span><span class="p">]);</span>
+</span><span id="__span-8-245"><a id="__codelineno-8-245" name="__codelineno-8-245" href="#__codelineno-8-245"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-246"><a id="__codelineno-8-246" name="__codelineno-8-246" href="#__codelineno-8-246"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-8-247"><a id="__codelineno-8-247" name="__codelineno-8-247" href="#__codelineno-8-247"></a>
+</span><span id="__span-8-248"><a id="__codelineno-8-248" name="__codelineno-8-248" href="#__codelineno-8-248"></a><span class="w">    </span><span class="n">qs_buffer_free</span><span class="p">(</span><span class="o">&amp;</span><span class="n">enc</span><span class="p">);</span>
+</span><span id="__span-8-249"><a id="__codelineno-8-249" name="__codelineno-8-249" href="#__codelineno-8-249"></a><span class="p">}</span>
+</span><span id="__span-8-250"><a id="__codelineno-8-250" name="__codelineno-8-250" href="#__codelineno-8-250"></a>
+</span><span id="__span-8-251"><a id="__codelineno-8-251" name="__codelineno-8-251" href="#__codelineno-8-251"></a><span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-252"><a id="__codelineno-8-252" name="__codelineno-8-252" href="#__codelineno-8-252"></a><span class="w">    </span><span class="k">enum</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">N</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1u</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="mi">20</span><span class="w"> </span><span class="p">};</span><span class="w">   </span><span class="cm">/* 1 MiB per input */</span>
+</span><span id="__span-8-253"><a id="__codelineno-8-253" name="__codelineno-8-253" href="#__codelineno-8-253"></a><span class="w">    </span><span class="k">static</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">buf</span><span class="p">[</span><span class="n">N</span><span class="p">];</span>
+</span><span id="__span-8-254"><a id="__codelineno-8-254" name="__codelineno-8-254" href="#__codelineno-8-254"></a>
+</span><span id="__span-8-255"><a id="__codelineno-8-255" name="__codelineno-8-255" href="#__codelineno-8-255"></a><span class="w">    </span><span class="n">fill_zero</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span><span class="w">   </span><span class="n">run</span><span class="p">(</span><span class="s">&quot;zero&quot;</span><span class="p">,</span><span class="w">  </span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span>
+</span><span id="__span-8-256"><a id="__codelineno-8-256" name="__codelineno-8-256" href="#__codelineno-8-256"></a><span class="w">    </span><span class="n">fill_abc</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w">  </span><span class="n">N</span><span class="p">);</span><span class="w">   </span><span class="n">run</span><span class="p">(</span><span class="s">&quot;abc&quot;</span><span class="p">,</span><span class="w">   </span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span>
+</span><span id="__span-8-257"><a id="__codelineno-8-257" name="__codelineno-8-257" href="#__codelineno-8-257"></a><span class="w">    </span><span class="n">fill_noise</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span><span class="w">  </span><span class="n">run</span><span class="p">(</span><span class="s">&quot;noise&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span>
+</span><span id="__span-8-258"><a id="__codelineno-8-258" name="__codelineno-8-258" href="#__codelineno-8-258"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-8-259"><a id="__codelineno-8-259" name="__codelineno-8-259" href="#__codelineno-8-259"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>The histogram example is the most direct way to watch what the matcher
+does. On model-shaped residuals (try it with <code>DELTA_1D + ZIGZAG +
+BYTE_SHUFFLE + LZ</code> on an <code>i32</code> ramp) the histogram settles into a few
+long matches and a moderate number of short ones, which is the regime
+the decoder is optimized for. On pathological inputs it collapses to the
+edges above. The encoded size landed within 1.5% of those theoretical
+minima on every real residual tested during tdc's 0.1.0 bake.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

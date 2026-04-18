@@ -1,0 +1,1955 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed, dimensional compression library in C">
+      
+      
+      
+        <link rel="canonical" href="https://gcol33.github.io/tdc/backends/entropy/">
+      
+      
+        <link rel="prev" href="../transforms/">
+      
+      
+        <link rel="next" href="../../theory/predictors/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Entropy - tdc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#entropy" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdc" class="md-header__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Entropy
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../format/on-disk/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Format
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../models/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Backends
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../theory/predictors/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Theory
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance/tuning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../extending/custom-backends/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/troubleshooting/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdc" class="md-nav__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Format
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/on-disk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On-disk format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#introduction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Introduction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-when-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use / when NOT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge cases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inner-loop-hot-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inner loop / hot path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multiple-variants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple variants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/predictors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Predictor math
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/lz-inner-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../extending/custom-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration-vtr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#introduction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Introduction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-when-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use / when NOT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worked-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge cases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inner-loop-hot-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inner loop / hot path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multiple-variants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple variants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#failure-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="entropy">Entropy<a class="headerlink" href="#entropy" title="Permanent link">&para;</a></h1>
+<h2 id="introduction">Introduction<a class="headerlink" href="#introduction" title="Permanent link">&para;</a></h2>
+<p>Entropy coders run last in the tdc pipeline. By the time a stream reaches this stage, the model has turned a typed block into residuals and the transform chain has rewritten those residuals into entropy-friendly bytes. The entropy stage takes a flat <code>uint8_t *</code> buffer, compresses it, and writes the result into the block record's payload section. Decode mirrors encode. The block record's <code>uncompressed_size</code> field drives the output size, so the caller sizes the output buffer up front and the hot path skips every length check.</p>
+<p>Public surface is small. <code>include/tdc/entropy.h</code> declares <code>tdc_entropy_vt</code> with three function pointers: <code>encode_bound</code>, <code>encode</code>, and <code>decode</code>. Backend ids live in <code>include/tdc/codec.h</code> under <code>tdc_entropy_id</code>. A caller wires a backend into a <code>tdc_codec_spec</code> by writing the id into <code>spec.entropy[0]</code>. Chaining two entropy stages is legal (the first chain-terminator, id <code>0x0000</code>, ends the chain), and every backend honours the <code>realloc_fn</code> allocator convention the rest of the library uses. There is no global state; backends are a switch in <code>src/core/registry.c</code> mapping id to vtable, and every byte of context comes from the block record.</p>
+<p>Nine ids ship in v0. <code>TDC_ENTROPY_NONE</code> is memcpy passthrough. <code>TDC_ENTROPY_LZ</code> is the native LZ77 matcher documented in <a href="../../theory/lz-inner-loop/">the LZ inner loop</a>. <code>TDC_ENTROPY_LZ_OPT</code> reuses the same on-disk format but replaces the greedy parser with dynamic programming. <code>TDC_ENTROPY_LZ_STREAMS</code> and <code>TDC_ENTROPY_LZ_SPLIT</code> split the LZ byte stream across sub-coders for extra ratio. <code>TDC_ENTROPY_HUFFMAN</code> is a canonical static Huffman with max code length 15; <code>TDC_ENTROPY_HUFFMAN4</code> interleaves four Huffman bitstreams for decode ILP. <code>TDC_ENTROPY_FSE</code> is a tabled-ANS coder. <code>TDC_ENTROPY_LANE</code> splits BYTE_SHUFFLE output across byte lanes and picks a sub-coder per lane. <code>TDC_ENTROPY_DEFLATE</code> is zlib-deflate, link-time optional behind the <code>TDC_HAVE_ZLIB</code> compile flag.</p>
+<p>Every number on this page comes from a real run of a real example in <code>docs/examples/</code>. The source input generators are deterministic: an LCG seed for the noise cases, a byte-index formula for the patterns, a gradient-plus-jitter raster for the mixed workload. Re-running the examples on another machine reproduces the ratios exactly and the throughput numbers within a few percent.</p>
+<h2 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
+<p>An entropy coder maps a byte stream to a shorter byte stream using statistical regularity alone. It does not know the dtype that produced the bytes, does not know the model or transform chain upstream, and does not look at the block shape. This is what "dimension-agnostic and dtype-agnostic" means in the library: the coder sees a pointer, a length, and maybe a per-stage params struct, and returns a new byte buffer of known uncompressed size.</p>
+<p>Two flavours cover v0. The first is dictionary coding: walk the input, look back for earlier matches of the current bytes, emit a literal run or a back-reference (offset, length) pair. LZ77 is the classical form; <code>TDC_ENTROPY_LZ</code>, <code>TDC_ENTROPY_LZ_OPT</code>, <code>TDC_ENTROPY_LZ_STREAMS</code>, and <code>TDC_ENTROPY_LZ_SPLIT</code> are all parser variants over the same matcher. <code>TDC_ENTROPY_DEFLATE</code> is the GNU/zlib dictionary+Huffman hybrid. Dictionary coders pay off on inputs with exact byte-level repetition; they are blind to byte-distribution skew that has no repeated sequences.</p>
+<p>The second flavour is symbol coding: read a histogram of the input bytes, build an optimal code that assigns short codewords to common bytes and long codewords to rare bytes, emit the coded bitstream. <code>TDC_ENTROPY_HUFFMAN</code> and <code>TDC_ENTROPY_HUFFMAN4</code> are canonical static Huffman coders; <code>TDC_ENTROPY_FSE</code> is the tabled-ANS (Finite State Entropy) variant that reaches fractional-bit precision. Symbol coders win on byte distributions that skew hard but carry no repetition, and they always pay a small overhead for the code table the encoder stores in the payload.</p>
+<p>The boundary between the two is fuzzy on real workloads. A DEM raster through <code>PRED_2D</code> followed by <code>ZIGZAG + BYTE_SHUFFLE</code> produces a byte stream whose top lanes are almost all zero (high ratio with LZ) and whose low lanes are high-entropy noise (flat distribution, low Huffman gain, best handled by NONE). The right answer is often "both": <code>TDC_ENTROPY_LANE</code> dispatches a sub-coder per byte lane, exactly to split the two regimes. <code>TDC_ENTROPY_LZ_SPLIT</code> addresses the same problem differently, parsing with LZ and then Huffman-coding the literal pool and the sequence descriptors as two distinct sub-streams.</p>
+<p>Every backend honours the same vtable contract. <code>encode_bound(src_size)</code> returns an upper bound on the worst-case output size for any <code>src_size</code>-byte input; the caller uses it to grow <code>dst</code> once through <code>realloc_fn</code>. <code>encode(src, src_size, params, dst)</code> writes the compressed bytes into <code>dst-&gt;data</code> and sets <code>dst-&gt;size</code>. <code>decode(src, src_size, dst, dst_size)</code> writes exactly <code>dst_size</code> bytes into <code>dst</code> (taken from the block record's <code>uncompressed_size</code>) and returns <code>TDC_OK</code> on success or <code>TDC_E_CORRUPT</code> on a malformed stream. No backend retains memory across calls; every backend frees its scratch before return.</p>
+<h2 id="when-to-use-when-not">When to use / when NOT<a class="headerlink" href="#when-to-use-when-not" title="Permanent link">&para;</a></h2>
+<p><code>TDC_ENTROPY_NONE</code> belongs in the chain when the upstream stages have already compressed all the way down, or when the caller knows the input will not compress. Its cost is a single memcpy each way; its "ratio" is always 1.0 minus a few bytes of overhead. Pick it when the block is an encrypted payload, a random nonce, a hash digest, or when the caller has already run a different compressor and is re-wrapping bytes into a tdc record. It pays no ratio tax and no code-table cost.</p>
+<p><code>TDC_ENTROPY_LZ</code> is the right default on residual streams. Almost every pipeline that ends in entropy coding ends here, because its ratio is good on any repetitive input and its decode throughput is close to memcpy speed on inputs that compress at all. We reach for LZ when the upstream produces a residual whose byte-level repetition is the signal: a zero-filled run from a well-predicted region, a shuffled high lane that collapses to one long match, a periodic signal whose period lies within the 4 MiB window. LZ is the wrong pick when the input has no repetition to match but carries a strongly skewed byte distribution; LZ's parser reports zero sequences and falls back to a literal-only stream, leaving the ratio at ~1.0 while Huffman or FSE could reach 3x.</p>
+<p><code>TDC_ENTROPY_LZ_OPT</code> trades encode time for a 0.1 to 2 percent ratio improvement by replacing the greedy parser with a dynamic-programming "optimal" parser. It shares the on-disk format with <code>TDC_ENTROPY_LZ</code>, which means a pipeline can switch encoders without touching the decoder. Use it when readers will open the archive many times and shaving a percent off the payload matters; avoid it on write-heavy pipelines because the encoder burns 3 to 5x the budget of plain LZ.</p>
+<p><code>TDC_ENTROPY_LZ_STREAMS</code> and <code>TDC_ENTROPY_LZ_SPLIT</code> rework what the parser writes to disk. STREAMS splits the parse into four separated streams (literal bytes, literal lengths, match lengths, match offsets) and picks a sub-coder per stream; SPLIT keeps two streams (literal bytes and sequence descriptors) and Huffman-codes both independently. Both win 15 to 40 percent of the payload on structured residuals where LZ sees its ratio bottleneck in the tag-byte overhead rather than in the matches. Skip them on small blocks (under a few KiB) where the per-stream code tables cost more than the ratio gain.</p>
+<p><code>TDC_ENTROPY_HUFFMAN</code> is the right pick on byte streams with a concentrated distribution and no repetition. A sparse-zero-style output after a model that converts a mostly-zero vector into index+value pairs, a dictionary-indexed stream, or the residual of a predictor that leaves a heavy-tailed but non-repetitive distribution all fit this bucket. The variant <code>TDC_ENTROPY_HUFFMAN4</code> keeps the same compressed size (it shares the tree) and decodes 2 to 3x faster by interleaving four bitstreams that a modern out-of-order CPU decodes in parallel. Pick HUFFMAN4 when decode throughput matters and the input runs longer than 256 bytes (below that it falls back to single-stream HUFFMAN automatically).</p>
+<p><code>TDC_ENTROPY_FSE</code> is a tabled-ANS coder with fractional-bit precision, at ratio parity with a perfect Huffman on distributions whose minimum Shannon probability is not a power of two. On short, highly-skewed streams it beats Huffman by a fraction of a percent; on long streams the difference usually vanishes. It is the right pick when the caller cares about the last fraction of a percent of ratio; Huffman's decoder is substantially faster on typical hardware.</p>
+<p><code>TDC_ENTROPY_LANE</code> is the right pick after a BYTE_SHUFFLE transform. Each byte lane carries a different distribution (high lanes peak because exponent/sign bytes repeat, low lanes stay flat because mantissa noise runs close to uniform); LANE lets each lane pick its own sub-coder. The params struct <code>tdc_lane_entropy_params</code> needs <code>n_lanes</code> to match the upstream BYTE_SHUFFLE's element size, and passing NULL fails with <code>TDC_E_INVAL</code>. This is the only backend in the core set that requires non-trivial params.</p>
+<p><code>TDC_ENTROPY_DEFLATE</code> wraps zlib's deflate algorithm in a tdc vtable. It reaches higher ratios than LZ on most structured inputs at half the encode throughput, and it sits behind a link-time flag so vectra vendor builds do not inherit a zlib dependency they did not ask for. Reach for it when the archive gets written once and read many times, the caller already has zlib linked, and a 10-20 percent ratio win over LZ is worth the extra dependency. Skip it when tdc rides along inside a library with a minimal dependency set or when encode throughput is the constraint.</p>
+<h2 id="worked-example">Worked example<a class="headerlink" href="#worked-example" title="Permanent link">&para;</a></h2>
+<p>A complete round trip through <code>TDC_ENTROPY_LZ</code> lives in <a href="../../examples/entropy_roundtrip_lz.c"><code>entropy_roundtrip_lz.c</code></a>. The example encodes three 1 MiB byte streams (all-zero, repeating "abc", LCG noise) and decodes each back. The input is a <code>VECTOR_1D</code> of <code>TDC_DT_U8</code>; the model is <code>RAW</code> so the entropy stage sees the raw input bytes.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="cm">/* docs/examples/entropy_roundtrip_lz.c</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="cm"> *</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="cm"> * TDC_ENTROPY_LZ round-trip on three shapes the LZ matcher sees in the</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="cm"> * wild: a zero run (hits offset-1 doubling in the decoder), a periodic</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="cm"> * byte run (one match spans almost the whole input), and LCG noise</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="cm"> * (parser emits zero sequences, literal-only fallback).</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="cm"> *</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="cm"> * Build: part of TDC_DOC_EXAMPLES in the top-level CMakeLists.txt.</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="cm"> */</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;quickstart_common.h&quot;</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;stdint.h&gt;</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string.h&gt;</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">label</span><span class="p">,</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="n">tdc_block</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">data</span><span class="p">;</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">dtype</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_DT_U8</span><span class="p">;</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_LAYOUT_VECTOR_1D</span><span class="p">;</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">.</span><span class="n">rank</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">    </span><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">.</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">int64_t</span><span class="p">)</span><span class="n">n</span><span class="p">;</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="n">tdc_shape_set_contiguous</span><span class="p">(</span><span class="o">&amp;</span><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">);</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">    </span><span class="n">tdc_codec_spec</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_codec_spec_raw</span><span class="p">();</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="n">spec</span><span class="p">.</span><span class="n">entropy</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_ENTROPY_LZ</span><span class="p">;</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="n">tdc_buffer</span><span class="w"> </span><span class="n">enc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs_buffer</span><span class="p">();</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">qs_check</span><span class="p">(</span><span class="n">tdc_encode_block</span><span class="p">(</span><span class="o">&amp;</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">spec</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">enc</span><span class="p">),</span><span class="w"> </span><span class="n">label</span><span class="p">))</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">    </span><span class="n">tdc_block</span><span class="w"> </span><span class="n">meta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">    </span><span class="kt">size_t</span><span class="w"> </span><span class="n">need</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">qs_check</span><span class="p">(</span><span class="n">tdc_decode_peek</span><span class="p">(</span><span class="n">enc</span><span class="p">.</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">meta</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">need</span><span class="p">),</span><span class="w"> </span><span class="n">label</span><span class="p">))</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">    </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">dst_data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">qs_realloc</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">need</span><span class="p">);</span>
+</span><span id="__span-0-35"><a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">    </span><span class="n">tdc_block</span><span class="w"> </span><span class="n">dst</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">meta</span><span class="p">;</span>
+</span><span id="__span-0-36"><a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">    </span><span class="n">dst</span><span class="p">.</span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dst_data</span><span class="p">;</span>
+</span><span id="__span-0-37"><a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">qs_check</span><span class="p">(</span><span class="n">tdc_decode_block_into</span><span class="p">(</span><span class="n">enc</span><span class="p">.</span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">dst</span><span class="p">),</span><span class="w"> </span><span class="n">label</span><span class="p">))</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+</span><span id="__span-0-38"><a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>
+</span><span id="__span-0-39"><a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">ok</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">memcmp</span><span class="p">(</span><span class="n">dst_data</span><span class="p">,</span><span class="w"> </span><span class="n">data</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-0-40"><a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;%-10s raw=%7zu enc=%7zu ratio=%9.2fx  roundtrip %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span>
+</span><span id="__span-0-41"><a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">           </span><span class="n">label</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="n">n</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="kt">double</span><span class="p">)</span><span class="n">enc</span><span class="p">.</span><span class="n">size</span><span class="p">,</span>
+</span><span id="__span-0-42"><a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="w">           </span><span class="n">ok</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s">&quot;ok&quot;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s">&quot;MISMATCH&quot;</span><span class="p">);</span>
+</span><span id="__span-0-43"><a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>
+</span><span id="__span-0-44"><a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="w">    </span><span class="n">qs_realloc</span><span class="p">(</span><span class="nb">NULL</span><span class="p">,</span><span class="w"> </span><span class="n">dst_data</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+</span><span id="__span-0-45"><a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="w">    </span><span class="n">qs_buffer_free</span><span class="p">(</span><span class="o">&amp;</span><span class="n">enc</span><span class="p">);</span>
+</span><span id="__span-0-46"><a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="p">}</span>
+</span><span id="__span-0-47"><a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>
+</span><span id="__span-0-48"><a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-49"><a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="w">    </span><span class="k">enum</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">N</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1u</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="mi">20</span><span class="w"> </span><span class="p">};</span><span class="w">   </span><span class="cm">/* 1 MiB per input */</span>
+</span><span id="__span-0-50"><a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="w">    </span><span class="k">static</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="n">buf</span><span class="p">[</span><span class="n">N</span><span class="p">];</span>
+</span><span id="__span-0-51"><a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>
+</span><span id="__span-0-52"><a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a><span class="w">    </span><span class="n">memset</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span>
+</span><span id="__span-0-53"><a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="w">    </span><span class="n">run</span><span class="p">(</span><span class="s">&quot;zero&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span>
+</span><span id="__span-0-54"><a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a>
+</span><span id="__span-0-55"><a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">N</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="n">buf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;abc&quot;</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">3</span><span class="p">];</span>
+</span><span id="__span-0-56"><a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="w">    </span><span class="n">run</span><span class="p">(</span><span class="s">&quot;abc&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span>
+</span><span id="__span-0-57"><a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a>
+</span><span id="__span-0-58"><a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a><span class="w">    </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x243F6A8885A308D3ull</span><span class="p">;</span>
+</span><span id="__span-0-59"><a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">N</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-60"><a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a><span class="w">        </span><span class="n">s</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">6364136223846793005ull</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1442695040888963407ull</span><span class="p">;</span>
+</span><span id="__span-0-61"><a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a><span class="w">        </span><span class="n">buf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">uint8_t</span><span class="p">)(</span><span class="n">s</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="mi">56</span><span class="p">);</span>
+</span><span id="__span-0-62"><a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-0-63"><a id="__codelineno-0-63" name="__codelineno-0-63" href="#__codelineno-0-63"></a><span class="w">    </span><span class="n">run</span><span class="p">(</span><span class="s">&quot;noise&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">N</span><span class="p">);</span>
+</span><span id="__span-0-64"><a id="__codelineno-0-64" name="__codelineno-0-64" href="#__codelineno-0-64"></a>
+</span><span id="__span-0-65"><a id="__codelineno-0-65" name="__codelineno-0-65" href="#__codelineno-0-65"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-0-66"><a id="__codelineno-0-66" name="__codelineno-0-66" href="#__codelineno-0-66"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>Running the example prints:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>zero       raw=1048576 enc=     99 ratio= 10591.68x  roundtrip ok
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>abc        raw=1048576 enc=    101 ratio= 10381.94x  roundtrip ok
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>noise      raw=1048576 enc=1048668 ratio=     1.00x  roundtrip ok
+</span></code></pre></div>
+<p>The all-zero and "abc" runs collapse to ~100 bytes each; the structure is a single LZ sequence spanning nearly the whole input. The noise case is the literal-only fallback: the parser finds no match of the minimum 3 bytes anywhere, writes <code>n_seq = 0</code>, and the decoder walks back through the literal pool in one memcpy. The 92-byte growth on noise is the block record header (80 bytes), the per-stage sizes table (4 bytes), and the LZ header (8 bytes).</p>
+<p><a href="../../examples/entropy_roundtrip_none.c"><code>entropy_roundtrip_none.c</code></a> and <a href="../../examples/entropy_roundtrip_huffman.c"><code>entropy_roundtrip_huffman.c</code></a> exercise the other two core backends. The NONE example confirms the passthrough contract: a 1024-byte input encodes to 1104 bytes, the delta being the 80-byte block record header. The HUFFMAN example runs four backends on a 65536-byte skewed stream (70% zeros, 15% ones, 15% random):</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>  NONE     enc= 65616  ratio= 1.00x  roundtrip ok
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  LZ       enc= 37254  ratio= 1.76x  roundtrip ok
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  HUFFMAN  enc= 20971  ratio= 3.13x  roundtrip ok
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  FSE      enc= 20329  ratio= 3.22x  roundtrip ok
+</span></code></pre></div>
+<p>LZ catches the long zero runs inside the distribution and lands at 1.76x, but it leaves the byte-distribution signal on the table. Huffman and FSE ignore positional structure and capture the skew directly, landing at 3.1x and 3.2x. The boundary between the two is the crux of "when to use what"; every real workload benefits from testing both on a representative block before committing.</p>
+<h2 id="parameter-tuning">Parameter tuning<a class="headerlink" href="#parameter-tuning" title="Permanent link">&para;</a></h2>
+<p>Most backends take <code>NULL</code> for their params. Three backends expose real knobs.</p>
+<p><code>TDC_ENTROPY_LZ</code> and <code>TDC_ENTROPY_LZ_OPT</code> accept a <code>tdc_entropy_level</code> struct with a single <code>int level</code> field. Level 0 is the default; the LZ greedy parser ignores the level (its single-pass matcher has nothing to tune), but <code>LZ_OPT</code>'s level controls how deep the parser's search runs. Higher levels trade encode time for ratio on structured inputs; a level sweep of <code>{0, 1, 3, 6}</code> on the DEM benchmark below covers the sensitivity range. Decode ignores the level entirely because the on-disk format stays fixed.</p>
+<p><code>TDC_ENTROPY_LZ_STREAMS</code> takes <code>tdc_lz_streams_params</code> with three fields: <code>level</code>, <code>min_match</code>, and a reserved u32. The <code>min_match</code> knob raises the smallest match length the parser will emit from the baseline 3 up to 4-8 bytes. Raising it fuses short matches back into literal runs, raising bytes-per-sequence and decode throughput at the cost of a few percent ratio. On DEM residuals a <code>min_match = 5</code> setting drops decode-path sequence count by 30-40 percent at 1-2 percent worse ratio. The on-disk format does not change; only the parser shifts.</p>
+<p><code>TDC_ENTROPY_LANE</code> takes <code>tdc_lane_entropy_params</code> with <code>n_lanes</code> and <code>lane_entropy[8]</code>. <code>n_lanes</code> must match the element size of the upstream BYTE_SHUFFLE (2 for i16, 4 for i32/f32, 8 for i64/f64). Each <code>lane_entropy[i]</code> is either <code>TDC_ENTROPY_NONE</code> (letting LANE pick a coder per lane from a heuristic) or an explicit id (HUFFMAN, FSE, NONE) forcing that lane's sub-coder. On a float raster after BYTE_SHUFFLE, setting the exponent-byte lane to HUFFMAN and the mantissa lanes to NONE typically beats a single-coder choice by 5-10 percent of the payload, because mantissa noise is incompressible and paying for a Huffman tree on it is overhead. The auto path samples each lane's Shannon entropy on a 4 KiB prefix before picking a sub-coder.</p>
+<p><code>TDC_ENTROPY_DEFLATE</code> takes a <code>tdc_entropy_level</code> with <code>level</code> in the zlib range of 0-9. Level 6 is the zlib default; level 9 adds 15-20 percent encode time for 1-3 percent better ratio; level 1 runs 2-3x faster at 5-10 percent worse ratio. Decode is level-independent.</p>
+<p>None of the other core backends (NONE, LZ greedy, HUFFMAN, HUFFMAN4, FSE, LZ_SPLIT) expose tunable params. Passing a non-NULL <code>entropy_params[i]</code> is safe for those backends; they ignore it.</p>
+<h2 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h2>
+<p>Every number in the table below came from running an example in <code>docs/examples/</code> on the author's Windows 11 workstation (MSVC 2022, Release config, AVX2). Each row reports the median of five runs; encode and decode throughput divide raw bytes by wall time. The raw byte count and ratio come directly from the example's output.</p>
+<table>
+<thead>
+<tr>
+<th>Workload (raw)</th>
+<th>Backend</th>
+<th style="text-align: right;">Encoded</th>
+<th style="text-align: right;">Ratio</th>
+<th style="text-align: right;">Encode</th>
+<th style="text-align: right;">Decode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 MiB LCG noise</td>
+<td>NONE</td>
+<td style="text-align: right;">1,048,656</td>
+<td style="text-align: right;">1.00x</td>
+<td style="text-align: right;">1,866 MB/s</td>
+<td style="text-align: right;">3,681 MB/s</td>
+</tr>
+<tr>
+<td>1 MiB LCG noise</td>
+<td>LZ</td>
+<td style="text-align: right;">1,048,668</td>
+<td style="text-align: right;">1.00x</td>
+<td style="text-align: right;">15 MB/s</td>
+<td style="text-align: right;">3,687 MB/s</td>
+</tr>
+<tr>
+<td>1 MiB LCG noise</td>
+<td>HUFFMAN</td>
+<td style="text-align: right;">1,048,926</td>
+<td style="text-align: right;">1.00x</td>
+<td style="text-align: right;">643 MB/s</td>
+<td style="text-align: right;">528 MB/s</td>
+</tr>
+<tr>
+<td>1 MiB LCG noise</td>
+<td>FSE</td>
+<td style="text-align: right;">1,058,994</td>
+<td style="text-align: right;">0.99x</td>
+<td style="text-align: right;">187 MB/s</td>
+<td style="text-align: right;">372 MB/s</td>
+</tr>
+<tr>
+<td>1 MiB 32-byte pattern</td>
+<td>NONE</td>
+<td style="text-align: right;">1,048,656</td>
+<td style="text-align: right;">1.00x</td>
+<td style="text-align: right;">2,027 MB/s</td>
+<td style="text-align: right;">3,521 MB/s</td>
+</tr>
+<tr>
+<td>1 MiB 32-byte pattern</td>
+<td>LZ</td>
+<td style="text-align: right;">131</td>
+<td style="text-align: right;">8004x</td>
+<td style="text-align: right;">557 MB/s</td>
+<td style="text-align: right;">3,827 MB/s</td>
+</tr>
+<tr>
+<td>1 MiB 32-byte pattern</td>
+<td>HUFFMAN</td>
+<td style="text-align: right;">655,486</td>
+<td style="text-align: right;">1.60x</td>
+<td style="text-align: right;">767 MB/s</td>
+<td style="text-align: right;">905 MB/s</td>
+</tr>
+<tr>
+<td>1 MiB 32-byte pattern</td>
+<td>FSE</td>
+<td style="text-align: right;">655,524</td>
+<td style="text-align: right;">1.60x</td>
+<td style="text-align: right;">213 MB/s</td>
+<td style="text-align: right;">402 MB/s</td>
+</tr>
+<tr>
+<td>512x512 i16 DEM mix</td>
+<td>NONE</td>
+<td style="text-align: right;">524,369</td>
+<td style="text-align: right;">1.00x</td>
+<td style="text-align: right;">1,075 MB/s</td>
+<td style="text-align: right;">519 MB/s</td>
+</tr>
+<tr>
+<td>512x512 i16 DEM mix</td>
+<td>LZ</td>
+<td style="text-align: right;">232,867</td>
+<td style="text-align: right;">2.25x</td>
+<td style="text-align: right;">92 MB/s</td>
+<td style="text-align: right;">398 MB/s</td>
+</tr>
+<tr>
+<td>512x512 i16 DEM mix</td>
+<td>HUFFMAN</td>
+<td style="text-align: right;">183,641</td>
+<td style="text-align: right;">2.85x</td>
+<td style="text-align: right;">445 MB/s</td>
+<td style="text-align: right;">316 MB/s</td>
+</tr>
+<tr>
+<td>512x512 i16 DEM mix</td>
+<td>FSE</td>
+<td style="text-align: right;">187,623</td>
+<td style="text-align: right;">2.79x</td>
+<td style="text-align: right;">174 MB/s</td>
+<td style="text-align: right;">218 MB/s</td>
+</tr>
+</tbody>
+</table>
+<p>The mixed-input row is a 512x512 <code>i16</code> raster of four planar quadrants plus small jitter, piped through <code>PRED_2D / PAETH -&gt; ZIGZAG -&gt; BYTE_SHUFFLE</code> before reaching the entropy stage. This is the shape a real pipeline presents to entropy: short-magnitude signed residuals, byte-shuffled so the high lanes are mostly zero. Source is <a href="../../examples/entropy_bench_mixed.c"><code>entropy_bench_mixed.c</code></a>.</p>
+<p>Reading the table row by row: the incompressible case is the floor. NONE is the only backend that compresses nothing while passing the input through at memory bandwidth; LZ grows the output by 92 bytes and runs encode at 15 MB/s because every position probes, misses, and advances in the accelerating-step miss loop; HUFFMAN barely grows the output (the distribution is nearly uniform) but pays a code-table cost; FSE pays even more for the state-machine tables. The practical takeaway is that feeding an already-random stream into any of LZ/HUF/FSE costs time and adds bytes.</p>
+<p>The repetitive case hits the ceiling LZ targets. A 32-byte cycle compresses 8004x through LZ; the matcher emits one sequence and the rest of the record is the 8-byte LZ header plus a 3-byte sequence plus a literal seed. HUFFMAN and FSE both sit at 1.60x on the same input because the byte distribution has only 32 unique values and each one appears equally often; their tree captures the 5-bit alphabet but no more. LZ's decode matches memcpy throughput (3,827 MB/s) because the small-offset doubling pattern in the match copy replays the 32-byte run at SIMD speed.</p>
+<p>The mixed case is where real workloads live. LZ captures some ratio (the zero lanes collapse into long matches) but leaves the low lanes' byte-distribution signal untouched. Huffman captures the distribution and lands at 2.85x, beating LZ by 22 percent of the payload. FSE matches Huffman within a few percent on this input because the distribution is close to a power-of-two geometric. This is the archetypal case for <code>TDC_ENTROPY_LANE</code> or <code>TDC_ENTROPY_LZ_SPLIT</code>, which pick up both the zero runs (LZ-style) and the byte distribution (Huffman-style) in one pass; see the "which backend wins" harness below for the full table.</p>
+<p>A nine-backend comparison on a smaller 256x256 i16 raster (same pipeline up to entropy) lives in <a href="../../examples/entropy_which_wins.c"><code>entropy_which_wins.c</code></a>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>  NONE            enc= 131153  ratio=    1.00x  enc=   635 MB/s  dec=   487 MB/s
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  LZ              enc=  65534  ratio=    2.00x  enc=   110 MB/s  dec=   643 MB/s
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  LZ_OPT          enc=  65438  ratio=    2.00x  enc=    21 MB/s  dec=   654 MB/s
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  LZ_STREAMS      enc=  47796  ratio=    2.74x  enc=    79 MB/s  dec=   297 MB/s
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  LZ_SPLIT        enc=  48068  ratio=    2.73x  enc=    21 MB/s  dec=   289 MB/s
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  HUFFMAN         enc=  62431  ratio=    2.10x  enc=   510 MB/s  dec=   325 MB/s
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  HUFFMAN4        enc=  62443  ratio=    2.10x  enc=   532 MB/s  dec=   396 MB/s
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  FSE             enc=  62518  ratio=    2.10x  enc=   165 MB/s  dec=   247 MB/s
+</span></code></pre></div>
+<p>LZ_STREAMS and LZ_SPLIT are the payload winners here (2.74x vs LZ's 2.00x) because both capture the sequence-descriptor regularity and the literal byte distribution in one go. LZ_OPT spends 5x the encode budget of LZ for a 0.15 percent ratio win, which is the typical optimal-parser signature on greedy-friendly inputs. HUFFMAN4 matches HUFFMAN's ratio to within 12 bytes and decodes 20 percent faster. The "right" pick depends on the pipeline: write-once archives go to LZ_STREAMS; read-heavy pipelines go to LZ + HUFFMAN4 chain; the read-mostly + maximum ratio combination is LZ_SPLIT.</p>
+<h2 id="edge-cases">Edge cases<a class="headerlink" href="#edge-cases" title="Permanent link">&para;</a></h2>
+<p><a href="../../examples/entropy_roundtrip_none.c"><code>entropy_roundtrip_none.c</code></a> exercises the empty and short-input corners through NONE. An empty input (n = 0) encodes to 84 bytes: 80 bytes of block record header plus a 4-byte per-stage sizes table. Decode returns <code>TDC_OK</code> with zero bytes written. A single-byte input encodes to 85 bytes, and the same round trip succeeds. Every backend in the core set handles empty input without crashing and without allocating a payload.</p>
+<p>The repeating-input edge case hits LZ's large-match path. On a constant-byte input, the matcher emits a single sequence of length <code>N - 1</code> at offset 1; the small-offset doubling pattern in <code>tdc_match_copy</code> replays the run at memcpy speed during decode. The <code>TDC_BLOCK_FLAG_ZERO_RESIDUAL</code> flag does not fire under a RAW model because RAW copies the input through unchanged rather than producing a zero residual. On a 1 MiB zero input, the encoded record is 99 bytes: 80-byte block header, 4-byte sizes table, 8-byte LZ header, one sequence descriptor (tag + LEB128 match extension + 2-byte offset), and one literal byte. The flag would fire under a model that can predict the input exactly (PLANE_2D on a plane, PRED_3D/GRAD3D on a tri-affine volume); in those cases the entropy stage is never called and the payload_size lands at zero.</p>
+<p>Incompressible inputs are the opposite corner. <code>entropy_bench_incompressible.c</code> runs 1 MiB of LCG noise through NONE / LZ / HUFFMAN / FSE. LZ's greedy parser sees no matches, falls through to the literal-only encoder, and writes an 8-byte header plus every input byte; net overhead is 12 bytes (header + empty-sequence bookkeeping). HUFFMAN detects a near-uniform distribution and writes a compact code table, then bitpacks the input; FSE does the same with a larger state-table overhead. None of the four actually compresses the stream; the point of running the bench is to confirm the overhead and the throughput floor.</p>
+<p><a href="../../examples/entropy_corrupt_lz.c"><code>entropy_corrupt_lz.c</code></a> and <a href="../../examples/entropy_truncated_lz.c"><code>entropy_truncated_lz.c</code></a> cover corrupted and truncated inputs. The corrupt example flips one byte at five positions inside the record and reports the status code:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>  flip @header magic byte 0 -&gt; TDC_E_CORRUPT
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  flip @n_seq byte 0       -&gt; TDC_OK
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  flip @literals_size[0]   -&gt; TDC_E_CORRUPT
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  flip @first tag byte     -&gt; TDC_E_CORRUPT
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  flip @offset LSB         -&gt; TDC_E_CORRUPT
+</span></code></pre></div>
+<p>Four of the five flips return <code>TDC_E_CORRUPT</code>. The one that slips through is <code>n_seq</code> LSB on an input where the existing sequences already cover the output: the decoder's inner loop terminates on <code>dp &gt;= uncompressed_size</code> before reading sequences that do not exist. This is the documented behaviour of a bounded-output decoder and is defensible: the decoder delivers bytes identical to the input regardless of how large <code>n_seq</code> was flipped to, because the stream encodes what the first valid sequence says. Every other single-byte flip lands in a field whose corruption the bounds checks notice.</p>
+<p>The truncation example feeds <code>tdc_decode_block_into</code> a shortened buffer at four offsets: half of the header, the full header (no payload), the record minus 4 bytes, and the record minus 1 byte. All four return <code>TDC_E_CORRUPT</code>. The header case is rejected by <code>tdc_decode_peek</code> against the block-record magic; the payload truncation cases are rejected by the LZ stream decoder when a sequence walks past the end of the literal pool or an offset walks past the start of the output. None of them hit an out-of-bounds read on the input buffer.</p>
+<p>The degenerate "wrong backend" case matters: feeding <code>TDC_ENTROPY_LANE</code> a spec with no <code>entropy_params[0]</code> (the struct that carries <code>n_lanes</code> and the per-lane sub-coder selection) returns <code>TDC_E_INVAL</code> at encode time. The output buffer is untouched; the caller either supplies the params or picks a different backend. This is the only core entropy backend that requires non-NULL params; HUFFMAN, FSE, LZ, and friends accept NULL.</p>
+<h2 id="integration-notes">Integration notes<a class="headerlink" href="#integration-notes" title="Permanent link">&para;</a></h2>
+<p>Pick an entropy backend after the model and transform chain are fixed. The model determines the residual's statistical shape: a delta model leaves small-magnitude signed values; a predictor leaves structured zero-heavy residuals; a dictionary model leaves index bytes that look uniform but with a small alphabet. The transform chain then rewrites those statistics: ZIGZAG flattens the high bytes of negatives into zeros; BYTE_SHUFFLE groups same-significance bytes into runs. The entropy stage sees the result.</p>
+<p>Canonical pairings on real workloads:</p>
+<ul>
+<li>Model producing repetitive residuals (DELTA on timestamps, PRED on smooth rasters, PLANE on planar regions) + <code>ZIGZAG + BYTE_SHUFFLE</code> + <code>TDC_ENTROPY_LZ</code>. Ratio is driven by the long zero runs the shuffle produces; LZ captures them directly. This is the default for almost every integer pipeline in the quickstart and the shape vectra's numeric columns take most often.</li>
+<li>Model producing a heavy-tailed distribution (SPARSE_ZERO with non-zero positions, DICT_NUMERIC with index bytes) + no transform + <code>TDC_ENTROPY_HUFFMAN</code>. Huffman is optimal when there are no sequential repeats to catch; the transform chain would just shuffle an already-skewed distribution.</li>
+<li>Float raster + fused <code>TDC_MODEL_QUANTIZE_PRED_2D</code> + <code>ZIGZAG + BYTE_SHUFFLE</code> + <code>TDC_ENTROPY_LZ_STREAMS</code>. The quantization-plus-predictor fuses produce a signed integer residual with the right shape for a split-stream parser; STREAMS picks up the per-stream distributions and lands 15-25 percent ahead of plain LZ.</li>
+<li>Small-alphabet float stream (quantized sensor readings) + BYTE_SHUFFLE at the natural element width + <code>TDC_ENTROPY_LANE</code> with <code>n_lanes</code> matching the element size.</li>
+</ul>
+<p>Chaining two entropy stages is legal and supported. <code>entropy[0] = TDC_ENTROPY_LZ</code> followed by <code>entropy[1] = TDC_ENTROPY_HUFFMAN</code> runs LZ first, hands its output to Huffman, and writes a single combined payload. The decoder reverses the chain. This pair was the classical zstd level-0 shape, and it still pays off on some workloads, though <code>TDC_ENTROPY_LZ_SPLIT</code> usually beats it because the split parser sees both streams jointly. Do not chain LZ_SPLIT or LZ_STREAMS with a second entropy stage; both already serialize their output as a pre-packed multi-stream payload, and tacking Huffman on top re-codes a code table.</p>
+<p>Allocation works the same as the rest of the library. The encoder grows <code>out-&gt;data</code> via the caller's <code>realloc_fn</code> up to the backend's <code>encode_bound(src_size)</code>; the decoder never resizes the caller's destination. Scratch memory (hash tables, sequence arrays, code-table builders) is allocated through <code>realloc_fn</code> too when the caller uses <code>tdc_decode_block_ex</code>; falling back to libc <code>realloc</code> happens only when the caller uses the simpler <code>tdc_decode_block_into</code>. Vectra plugs its per-row-group arena here; standalone tests use plain <code>realloc</code>.</p>
+<p>Threading works per block. A <code>tdc_codec_spec</code> is POD and safe to share across threads. Each thread owns its own <code>tdc_buffer</code> with its own <code>realloc_fn</code>. The backends keep no hidden global state and no thread-local caches; scratch is strictly on the heap. The only subtle point is that two threads encoding with <code>TDC_ENTROPY_LZ_OPT</code> will allocate separate 4 MiB hash tables, so the total RSS scales with thread count. Arena allocators handle this naturally.</p>
+<p>Endianness is little-endian, always. Every backend writes little-endian u16, u32, and u64 fields directly. A big-endian port would require either byte-swapping in each backend's encode/decode or a format version bump; neither is on the v0 roadmap because the supported targets (x86_64, aarch64) are both little-endian.</p>
+<h2 id="inner-loop-hot-path">Inner loop / hot path<a class="headerlink" href="#inner-loop-hot-path" title="Permanent link">&para;</a></h2>
+<p><code>TDC_ENTROPY_LZ</code>'s inner loop is the hottest code in the library; <a href="../../theory/lz-inner-loop/">the LZ inner loop theory page</a> walks the matcher, the wildcopy, and the fast/safe decode split in full. The short version from the backend point of view: the parser maintains an 18-bit direct-addressed hash table with Knuth multiplicative Fibonacci hashing (<code>h = (x * 2654435761u) &gt;&gt; 14</code> for the 4-byte input key), probes one candidate per position on the flat-hash path, and extends any match 8 bytes at a time with <code>__builtin_ctzll</code> on mismatch. The decoder's hot primitive is <code>tdc_wildcopy32</code>, which writes 32 bytes per loop iteration on AVX2 builds and sits inside a single bounds check per sequence.</p>
+<p>The hash function matters because it is the only fingerprint used to propose match candidates, and it runs once per input byte on the hot path. Knuth's Fibonacci multiplier (<code>0x9E3779B1</code>, the 32-bit rounded inverse of the golden ratio) distributes any 32-bit integer into 2^18 buckets with no measurable bias on real residual streams. A hash collision does not break correctness because the 4-byte equality check gates the candidate before the 8-byte extension starts. A different hash used elsewhere in the vectra ecosystem is FNV-1a; FNV shows up in vectra's <code>JoinHT</code>, in <code>VecHashTable</code>, and in the <code>.vtri</code> index tables, but not in the LZ matcher. Naming the hash correctly matters because the two structures have different failure modes: FNV-1a plus 70 percent load targets dictionary lookup with bounded probe length; Knuth Fibonacci with deliberate over-loading targets a position index where collisions are the point.</p>
+<p>The matcher's miss path uses an accelerating step: <code>sp += 1, 1, 2, 3, ..., 8, 8</code> after consecutive misses, reset to 1 on the first hit. On a literal-heavy prefix (the LCG-noise input above) this skips roughly 60 to 80 percent of the input rather than probing every byte, which is what keeps the encode throughput on incompressible data from collapsing to a few MB/s. The accelerating step is the reason "LZ on noise is slow" not "LZ on noise hangs"; the 15 MB/s encode throughput in the benchmark table is the step loop running most of the way through.</p>
+<p>Wildcopy is the decoder's fast primitive. A match copy of length <code>mlen</code> at offset <code>off</code> writes <code>ceil(mlen / 32)</code> blocks of 32 bytes through <code>_mm256_storeu_si256</code>, overcopying up to 31 bytes past the nominal end. The slack is allocated by the caller (<code>TDC_WILDCOPY_SLACK</code> bytes past the declared output size); the bounds check before each copy (<code>dp + lit_len + mlen + TDC_WILDCOPY_SLACK &gt; uncompressed_size</code>) bails to the safe path when a copy would walk off the end. Small offsets (<code>off &lt; 16</code>) go through a doubling seed-and-fill: write <code>off</code> bytes at the destination, then copy the filled region onto itself at twice the offset, until the filled region covers <code>mlen</code>. For <code>off = 1</code> on a zero run this decodes at memcpy speed.</p>
+<p>Two measured dead ends shape the LZ hot path and deserve naming in the backends page because they are benchmarked, not theorized.</p>
+<p>The first is Robin Hood hashing. The obvious improvement to the matcher's collision handling is to displace entries so that newer positions sit closer to their home bucket, which would shorten the average chain walk. Measured in vectra on the standard corpus, the Robin Hood variant was 12-29 percent slower on encode throughput. The reason is structural: LZ's hash table is direct-addressed with at most one probe per position on the flat-hash path and at most <code>chain_depth + 1</code> probes on the chain path. There is no probe distribution to reshape; Robin Hood's per-insert swap cost dominates the zero savings. Note that this is not a statement about Robin Hood in general; the same algorithm beats FNV-1a + linear probing on vectra's <code>JoinHT</code> dictionary hash on a different workload. The LZ matcher's structure is not that structure, and "Robin Hood helps dictionary lookups" does not cross over.</p>
+<p>The second is batched parse-then-copy on the decoder. The idea is to split the per-sequence loop into two phases: parse several sequences into a stack-local descriptor array first, then walk the array in a tight copy loop. The hypothesis is that the parse stays in L1 while the copy spills cache, and separating the phases lets the CPU prefetch the copy destinations while the parse runs. Measured in vectra at every batch size from 4 to 16, the batched variant was 6-7 percent slower. The reason is that LZ's parse is already cheap enough that the out-of-order scheduler overlaps it with the previous sequence's wildcopy; forcing a phase split serializes them and recovers nothing. A note in the source flags this: batching may pay if a real entropy stage (FSE or Huffman) sits in front of LZ, because the parse becomes expensive enough to benefit from a dedicated pipeline. Until then, the decoder as written is already the overlapped form.</p>
+<p><code>TDC_ENTROPY_HUFFMAN</code>'s hot path is simpler. Encode reads a 256-entry byte histogram, builds a canonical code with the package-merge algorithm capped at code length 15 (which fits in a u16 lookup on decode), emits the code-length table followed by the bitpacked payload. Decode uses a 2^15-entry lookup table so every symbol is one load, one length-read, one bitstream advance. <code>TDC_ENTROPY_HUFFMAN4</code> runs that tree over four interleaved bitstreams, so the decoder fetches four symbols per loop iteration and feeds the out-of-order core's multiple load ports simultaneously. The decode measurement in the benchmark table above (HUFFMAN4 at 396 MB/s vs HUFFMAN at 325 MB/s on the same input) is the ILP win.</p>
+<p><code>TDC_ENTROPY_FSE</code> replaces the canonical Huffman tree with a tabled-ANS state machine; encode builds a 4096-entry transition table, decode reads one state transition per symbol. The tables cost the encoder around 1 KiB of overhead per block, which is why FSE slightly underperforms Huffman on ratios when the distribution is already a power-of-two geometric. On long, highly-skewed streams FSE catches up to Huffman's ratio and beats it by a fraction of a percent.</p>
+<h2 id="multiple-variants">Multiple variants<a class="headerlink" href="#multiple-variants" title="Permanent link">&para;</a></h2>
+<p>The LZ family is four variants: greedy (<code>LZ</code>), optimal-parser (<code>LZ_OPT</code>), separated-stream (<code>LZ_STREAMS</code>), and split-stream (<code>LZ_SPLIT</code>). Their on-disk formats differ. LZ and LZ_OPT share the single-stream format and decoder; a STREAMS or SPLIT record is not readable by the LZ decoder and vice versa. The same pipeline can switch between LZ and LZ_OPT at encode time without touching the decoder, which is useful for adaptive write paths that profile a sample before committing.</p>
+<p>The Huffman family is two variants: single-stream <code>HUFFMAN</code> and four-stream interleaved <code>HUFFMAN4</code>. They share the code-table on disk (the decoder reads the same canonical code for both), but the bitstream layout differs: HUFFMAN writes one bitstream packed LSB-first, while HUFFMAN4 writes four bitstreams with independent cursors. The tree and the per-byte ratio are identical; the throughput differs because HUFFMAN4 issues four loads per iteration against the core's multiple load ports. HUFFMAN4 falls back to single-stream HUFFMAN on inputs shorter than 256 bytes, where the per-stream framing overhead would dominate the payload.</p>
+<p>Each variant has its own worked example in <code>docs/examples/</code>. <a href="../../examples/entropy_which_wins.c"><code>entropy_which_wins.c</code></a> runs all nine core backends on one input and tabulates the full cost surface; a caller picking a backend for a new workload should port that harness to their own block and read the row that optimizes for their encode/decode/ratio constraint. The harness is ~150 lines of C and shows the full pattern: build a spec, time encode and decode as medians over five runs, compute ratio.</p>
+<p><code>LZ_STREAMS</code> differs from <code>LZ_SPLIT</code> in the slice axis. STREAMS splits the parser output into four streams (literal bytes, literal lengths as u32, match lengths as u32, match offsets as u32) and picks NONE/HUFFMAN/FSE per stream based on a Shannon-entropy sample. SPLIT uses the same optimal parser as LZ_OPT and separates the output into two streams: literal bytes and sequence descriptors. Both Huffman-code the sub-streams. On a typical post-transform residual SPLIT beats STREAMS by 1-2 percent of the payload because it preserves the ordering correlation that the parser creates, at the cost of ~3x the encode time because it shares LZ_OPT's parser.</p>
+<p>The <code>HUFFMAN</code> vs <code>HUFFMAN4</code> vs <code>FSE</code> triple is the "which symbol coder" axis. HUFFMAN4 matches HUFFMAN on ratio and is strictly faster on decode for inputs over 256 bytes. FSE costs more table overhead than Huffman but reaches fractional-bit code lengths, which beats Huffman by a fraction of a percent on distributions whose symbol probabilities are not powers of two. On the DEM mixed workload Huffman lands at 2.85x and FSE at 2.79x; the Huffman lead comes from the code-table cost being smaller than FSE's transition table on a 524 KiB input. On longer inputs or more skewed distributions the ranking flips.</p>
+<p>The <code>NONE</code> backend is the chain terminator for the entropy array as well as a real pass-through option. A spec with <code>entropy[0] = TDC_ENTROPY_NONE</code> and <code>entropy[1..3] = 0</code> is the same as a spec with all entropy slots zero: the driver treats both as "no entropy" and writes the transform output directly to the payload. The difference is only cosmetic on disk; the block record still carries the entropy ids as written.</p>
+<h2 id="failure-modes">Failure modes<a class="headerlink" href="#failure-modes" title="Permanent link">&para;</a></h2>
+<p>Four failure modes dominate entropy-stage bugs in real pipelines. Each has a specific status code and a specific fix.</p>
+<p><code>TDC_E_CORRUPT</code> is the most common. It fires whenever the decoder detects that the on-disk payload violates an invariant: a sequence claims to match beyond the current output offset, a literal pool is shorter than declared, a Huffman code table encodes a symbol length greater than 15, an FSE transition table points outside the state space. The fix is to re-encode the block from the source data; a corrupted block cannot be recovered without the original input. The truncation example above hits <code>TDC_E_CORRUPT</code> at every truncation point because either the block header validator or the entropy stream decoder notices the short buffer.</p>
+<p><code>TDC_E_INVAL</code> fires at encode time when the params struct fails a required-field check. <code>TDC_ENTROPY_LANE</code> without <code>entropy_params[0]</code> is the canonical example: the encode path has no <code>n_lanes</code> to work from and no way to guess one. <code>TDC_ENTROPY_LZ_STREAMS</code> with an out-of-range <code>min_match</code> (values above ~8) also hits <code>TDC_E_INVAL</code>. The fix is always to supply the params. Every other core backend accepts NULL params.</p>
+<p><code>TDC_E_NOMEM</code> fires when <code>realloc_fn</code> returns NULL. The encoder asks for up to <code>encode_bound(src_size)</code> bytes for the output plus ~1 MiB of hash-table scratch on LZ, plus code-table memory on Huffman/FSE. A pool or arena allocator that runs out mid-encode returns NULL, the vtable propagates <code>TDC_E_NOMEM</code>, and the caller either grows the allocator or falls back to a cheaper backend. The state on <code>TDC_E_NOMEM</code> is "partial allocation freed"; the caller's output buffer is untouched past its pre-call size.</p>
+<p><code>TDC_E_UNSUPPORTED</code> fires when the id is not registered. <code>TDC_ENTROPY_DEFLATE</code> without <code>TDC_HAVE_ZLIB</code> returns <code>TDC_E_UNSUPPORTED</code> at encode time because the registry switch returns NULL for that id, and the driver surfaces the error before calling the vtable. The fix is to build tdc with <code>-DTDC_HAVE_ZLIB=ON</code> or to pick a native backend.</p>
+<p>Inputs that defeat the backend are a softer failure mode: the encode succeeds but the output comes out the same size or larger than the input. On genuinely random bytes LZ returns ratio ~1.0 because its parser finds no matches, and Huffman returns ratio ~1.0 because the byte histogram is already flat. On a 1 MiB LCG-noise input the LZ encode lands at 1,048,668 bytes (92 bytes of overhead) and HUFFMAN at 1,048,926 bytes (350 bytes of overhead for the code table plus the bitpacked near-uniform distribution). Neither is a bug; it is the entropy bound. Pick <code>TDC_ENTROPY_NONE</code> instead: its in-payload overhead is 0 bytes and it runs at memory bandwidth.</p>
+<p>A subtler failure mode comes from model-transform mismatch. A block that enters the entropy stage with a residual whose byte distribution LZ cannot match and whose distribution Huffman cannot skew is "compressed by accident": the earlier stages have done everything useful, and any entropy stage adds overhead with no ratio payoff. The tell is a post-entropy size within a few tens of bytes of the post-transform size across all backends. The fix is to drop to <code>TDC_ENTROPY_NONE</code>; the other backends are not wrong, they just have nothing to exploit.</p>
+<p>Stacking two entropy stages usually makes things worse. <code>entropy[0] = LZ</code> followed by <code>entropy[1] = HUFFMAN</code> used to be the default in classical pipelines, but on tdc-shaped residuals it loses to <code>TDC_ENTROPY_LZ_SPLIT</code> because the joint parser sees both the sequence structure and the literal distribution at once, while the staged pipeline sees them sequentially. The mechanical loss is about 5-15 percent of the payload on typical inputs. The fix is to pick a joint backend; the stacked-chain option remains supported for callers whose pipeline already depends on that shape.</p>
+<p>Finally, a pipeline that trips <code>TDC_BLOCK_FLAG_ZERO_RESIDUAL</code> (the model produced a zero-length residual, e.g. PLANE_2D on a plane or PRED_3D/GRAD3D on a tri-affine volume) skips the transform and entropy stages entirely. The block record reports <code>payload_size = 0</code> and the entropy backend ids are written to disk but never invoked. Benchmarks that feed too-clean inputs to a model capable of detecting them will hit this path and overstate entropy compression by an order of magnitude. The benchmark workaround is to inject jitter into the input so the model does not recognize the fast-path condition; in production this is the correct behaviour and needs no change, because the zero-residual path is why tdc produces single-byte-header-overhead records on clean inputs.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

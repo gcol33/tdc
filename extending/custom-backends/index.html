@@ -1,0 +1,1776 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed, dimensional compression library in C">
+      
+      
+      
+        <link rel="canonical" href="https://gcol33.github.io/tdc/extending/custom-backends/">
+      
+      
+        <link rel="prev" href="../../performance/tuning/">
+      
+      
+        <link rel="next" href="../../reference/troubleshooting/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Custom backends - tdc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#custom-backends" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdc" class="md-header__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Custom backends
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../format/on-disk/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Format
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../backends/models/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Backends
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../theory/predictors/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Theory
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance/tuning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/troubleshooting/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdc" class="md-nav__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Format
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/on-disk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On-disk format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/transforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/entropy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/predictors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Predictor math
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/lz-inner-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-vtable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The vtable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#registering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wiring-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wiring tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-api-forward-compat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin API forward compat
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-read-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to read next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration-vtr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-vtable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The vtable
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#registering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wiring-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wiring tests
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plugin-api-forward-compat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Plugin API forward compat
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-to-read-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What to read next
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="custom-backends">Custom backends<a class="headerlink" href="#custom-backends" title="Permanent link">&para;</a></h1>
+<p>tdc's four-stage pipeline (model, transform chain, entropy, block record) runs every backend through the same vtable interface. Adding a new backend means writing one vtable, wiring it through the static registry, and shipping a round-trip test. This vignette walks through exactly that, using a reference transform (<code>TDC_XFORM_COMPLEMENT</code>) that lives in the tree at <code>src/transform/complement.c</code>. The backend is intentionally trivial so the prose can concentrate on the extension contract rather than the algorithm; a real backend swaps the kernel and keeps the rest of the scaffolding identical.</p>
+<p>This is the only vignette that reaches into <code>src/</code> by design. Every other vignette stays on the public header surface under <code>include/tdc/</code>; plugin-API callers building against a consumer project can ignore <code>src/</code> entirely. The extension path described here targets tdc contributors and projects that vendor the tdc source tree and want a backend to ship alongside the core ones. A strictly runtime plugin path also exists under <code>include/tdc/plugin.h</code>, and covers the case where a consumer wants to inject a backend at load time without touching the library source. Both paths appear below; the static path comes first because it is the one a core contributor uses when the backend is meant to ship with tdc itself.</p>
+<h2 id="scope">Scope<a class="headerlink" href="#scope" title="Permanent link">&para;</a></h2>
+<p>A "custom backend" is one implementation of a <code>tdc_model_vt</code>, <code>tdc_xform_vt</code>, or <code>tdc_entropy_vt</code>. Each of those three structs is a small vtable: a few function pointers, an id, a name, and per-stage metadata (accepted dtypes, layouts, lossy flag). The library never sees the backend's source: it calls the function pointers through the vtable it gets back from <code>tdc_model_get</code>, <code>tdc_xform_get</code>, or <code>tdc_entropy_get</code>. Those lookup functions live in <code>src/core/registry.c</code> and run a static switch over the enum id. The default case of each switch falls through to a plugin registry array populated by <code>tdc_*_register()</code> calls from <code>include/tdc/plugin.h</code>. Two registration paths, one dispatch surface.</p>
+<p>The reserved id ranges (declared in <code>include/tdc/codec.h</code> and enforced in <code>include/tdc/plugin.h</code>) partition the u16 id space:</p>
+<table>
+<thead>
+<tr>
+<th>Range</th>
+<th>Meaning</th>
+<th>Registration</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x0000</code></td>
+<td>Chain terminator (transforms, entropy) or sentinel (models)</td>
+<td>never a real backend</td>
+</tr>
+<tr>
+<td><code>0x0001-0x00FF</code></td>
+<td>Core, shipped with tdc</td>
+<td>enum entry + static registry switch case</td>
+</tr>
+<tr>
+<td><code>0x0100-0x01FF</code></td>
+<td>Experimental, statically compiled, may change without a format version bump</td>
+<td>enum entry + static registry switch case</td>
+</tr>
+<tr>
+<td><code>0x0200-0xFEFF</code></td>
+<td>Reserved for future use</td>
+<td>registration rejected</td>
+</tr>
+<tr>
+<td><code>0xFF00-0xFFFF</code></td>
+<td>User-defined, runtime plugin registration</td>
+<td>no enum entry; call <code>tdc_*_register()</code> at startup</td>
+</tr>
+</tbody>
+</table>
+<p>The on-disk format never has to grow because every id slot is already a u16. A block encoded with <code>TDC_XFORM_COMPLEMENT</code> (id <code>0x0100</code>) carries the bare <code>0x0100</code> in its header, and any tdc build with a backend registered for that id reads the block back correctly.</p>
+<p>The reference backend for this vignette sits in the experimental range because it is a teaching example. If we were writing a permanent backend we would give it a core-range id instead and document it alongside the rest of the core transforms. Everything below about the code is identical either way; the range affects validation policy, not the vtable.</p>
+<h2 id="the-vtable">The vtable<a class="headerlink" href="#the-vtable" title="Permanent link">&para;</a></h2>
+<p><code>tdc_xform_vt</code> is the smallest of the three vtables, so we use it for the walkthrough. <code>include/tdc/transform.h</code> declares:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">struct</span><span class="w"> </span><span class="nc">tdc_xform_vt</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="n">tdc_xform_id</span><span class="w"> </span><span class="n">id</span><span class="p">;</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="w">  </span><span class="o">*</span><span class="n">name</span><span class="p">;</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">accepted_dtypes</span><span class="p">;</span><span class="w">   </span><span class="cm">/* bitmask over tdc_dtype (input dtype) */</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="kt">int</span><span class="w">      </span><span class="n">can_inplace</span><span class="p">;</span><span class="w">       </span><span class="cm">/* 1 if encode/decode may share src and dst */</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="kt">int</span><span class="w">      </span><span class="n">is_lossy</span><span class="p">;</span><span class="w">          </span><span class="cm">/* 1 if information is discarded */</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="n">tdc_status</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">encode</span><span class="p">)(</span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">src_size</span><span class="p">,</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">                         </span><span class="n">tdc_dtype</span><span class="w">      </span><span class="n">in_dtype</span><span class="p">,</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">                         </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w">    </span><span class="o">*</span><span class="n">params</span><span class="p">,</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">                         </span><span class="n">tdc_buffer</span><span class="w">    </span><span class="o">*</span><span class="n">dst</span><span class="p">,</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">                         </span><span class="n">tdc_dtype</span><span class="w">     </span><span class="o">*</span><span class="n">out_dtype</span><span class="p">);</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="n">tdc_status</span><span class="w"> </span><span class="p">(</span><span class="o">*</span><span class="n">decode</span><span class="p">)(</span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">src_size</span><span class="p">,</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">                         </span><span class="n">tdc_dtype</span><span class="w">      </span><span class="n">in_dtype</span><span class="p">,</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">                         </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w">    </span><span class="o">*</span><span class="n">params</span><span class="p">,</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">                         </span><span class="kt">uint8_t</span><span class="w">       </span><span class="o">*</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">dst_size</span><span class="p">,</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">                         </span><span class="n">tdc_dtype</span><span class="w">     </span><span class="o">*</span><span class="n">out_dtype</span><span class="p">);</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="p">}</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="p">;</span>
+</span></code></pre></div>
+<p>Every transform sees a flat byte buffer on both sides of the call, plus the element dtype it came in as. Transforms are dimension-agnostic by design: they never look at layout, rank, or shape. The <code>can_inplace</code> flag lets the driver elide a scratch copy when the kernel is element-local. The <code>is_lossy</code> flag tells the encoder whether a spec like <code>QUANTIZE -&gt; LZ</code> round-trips exactly or approximately.</p>
+<p>The reference backend is a single-byte bitwise NOT:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="cm">/* src/transform/complement.c */</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">static</span><span class="w"> </span><span class="n">tdc_status</span><span class="w"> </span><span class="nf">complement_encode</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="kt">uint8_t</span><span class="w"> </span><span class="o">*</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">src_size</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">                                    </span><span class="n">tdc_dtype</span><span class="w">      </span><span class="n">in_dtype</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">                                    </span><span class="k">const</span><span class="w"> </span><span class="kt">void</span><span class="w">    </span><span class="o">*</span><span class="n">params</span><span class="p">,</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">                                    </span><span class="n">tdc_buffer</span><span class="w">    </span><span class="o">*</span><span class="n">dst</span><span class="p">,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">                                    </span><span class="n">tdc_dtype</span><span class="w">     </span><span class="o">*</span><span class="n">out_dtype</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">params</span><span class="p">;</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">dst</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="o">!</span><span class="n">dst</span><span class="o">-&gt;</span><span class="n">realloc_fn</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">TDC_E_INVAL</span><span class="p">;</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">src_size</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="n">src</span><span class="p">)</span><span class="w">     </span><span class="k">return</span><span class="w"> </span><span class="n">TDC_E_INVAL</span><span class="p">;</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">complement_dtype_ok</span><span class="p">(</span><span class="n">in_dtype</span><span class="p">))</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">TDC_E_DTYPE</span><span class="p">;</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">    </span><span class="n">tdc_status</span><span class="w"> </span><span class="n">st</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_buf_reserve</span><span class="p">(</span><span class="n">dst</span><span class="p">,</span><span class="w"> </span><span class="n">src_size</span><span class="p">);</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">st</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="n">TDC_OK</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">st</span><span class="p">;</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">out_dtype</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="n">out_dtype</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">in_dtype</span><span class="p">;</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">src_size</span><span class="p">;</span><span class="w"> </span><span class="o">++</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="n">dst</span><span class="o">-&gt;</span><span class="n">data</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">uint8_t</span><span class="p">)</span><span class="o">~</span><span class="n">src</span><span class="p">[</span><span class="n">i</span><span class="p">];</span>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="w">    </span><span class="n">dst</span><span class="o">-&gt;</span><span class="n">size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">src_size</span><span class="p">;</span>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">TDC_OK</span><span class="p">;</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>The decoder runs the same loop with opposite buffer conventions: caller-provided output, exact size known up front, no reallocation. <code>tdc_buf_reserve</code> is a header helper from <code>src/core/buffer.h</code> that grows the output buffer through the caller's <code>realloc_fn</code>. That is the only allocation path any backend may use. No bare <code>malloc</code>, no bare <code>free</code>, no thread-local scratch pool. The reason is not stylistic: vectra, the primary consumer, feeds tdc an arena allocator that reclaims every byte on block exit, and that only works if every scratch allocation flows through the supplied function pointer.</p>
+<p>The vtable instance itself is a file-scope <code>const</code> with no <code>static</code> storage duration:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="n">tdc_xform_complement_vt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="p">.</span><span class="n">id</span><span class="w">              </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_XFORM_COMPLEMENT</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="p">.</span><span class="n">name</span><span class="w">            </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;complement&quot;</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="p">.</span><span class="n">accepted_dtypes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">COMPLEMENT_ACCEPTED_DTYPES</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="p">.</span><span class="n">can_inplace</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="p">.</span><span class="n">is_lossy</span><span class="w">        </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="p">.</span><span class="n">encode</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="n">complement_encode</span><span class="p">,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="p">.</span><span class="n">decode</span><span class="w">          </span><span class="o">=</span><span class="w"> </span><span class="n">complement_decode</span><span class="p">,</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">};</span>
+</span></code></pre></div>
+<p>The <code>const</code> discipline lets the compiler place the vtable in <code>.rodata</code>. The missing <code>static</code> matters: the registry switch in <code>src/core/registry.c</code> takes the address of this symbol from another translation unit, which requires external linkage. A predictable name (<code>tdc_xform_&lt;name&gt;_vt</code>) lets the internal header cross-declare it without collision. The encode and decode functions stay <code>static</code> because the vtable is their only caller; outside access goes through the function pointers.</p>
+<p>Models and entropy backends follow the same pattern. <code>tdc_model_vt</code> adds <code>accepted_layouts</code> and a <code>side_out</code> buffer (so the model can serialize its state alongside the residual stream). <code>tdc_entropy_vt</code> adds an <code>encode_bound</code> function so the driver can size the output buffer before the coder starts filling it. Both keep the allocator rule and the <code>const</code> plus external-linkage convention.</p>
+<h2 id="registering">Registering<a class="headerlink" href="#registering" title="Permanent link">&para;</a></h2>
+<p>Registering a core or experimental backend takes three edits in three files:</p>
+<ol>
+<li>A <code>.c</code> file under <code>src/transform/</code> (or <code>src/model/</code>, <code>src/entropy/</code>) exporting a single <code>const tdc_&lt;stage&gt;_vt tdc_&lt;stage&gt;_&lt;name&gt;_vt = { ... };</code>.</li>
+<li>An <code>extern</code> declaration in the matching internal header (<code>src/transform/transform_internal.h</code>, <code>src/model/model_internal.h</code>, <code>src/entropy/entropy_internal.h</code>). Internal headers live under <code>src/</code>, not <code>include/</code>, so they stay out of the public ABI.</li>
+<li>One new <code>case</code> in the static switch inside <code>src/core/registry.c</code>.</li>
+</ol>
+<p>For the reference backend those three edits are:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="cm">/* src/transform/transform_internal.h */</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="n">tdc_xform_byte_shuffle_vt</span><span class="p">;</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="n">tdc_xform_bit_shuffle_vt</span><span class="p">;</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="n">tdc_xform_quantize_vt</span><span class="p">;</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="n">tdc_xform_zigzag_vt</span><span class="p">;</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="n">tdc_xform_complement_vt</span><span class="p">;</span><span class="w">  </span><span class="cm">/* new */</span>
+</span></code></pre></div>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="cm">/* src/core/registry.c */</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="o">*</span><span class="nf">tdc_xform_get</span><span class="p">(</span><span class="n">tdc_xform_id</span><span class="w"> </span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">id</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="no">TDC_XFORM_BYTE_SHUFFLE</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="o">&amp;</span><span class="n">tdc_xform_byte_shuffle_vt</span><span class="p">;</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="no">TDC_XFORM_NONE</span><span class="p">:</span><span class="w">         </span><span class="k">return</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="no">TDC_XFORM_QUANTIZE</span><span class="p">:</span><span class="w">     </span><span class="k">return</span><span class="w"> </span><span class="o">&amp;</span><span class="n">tdc_xform_quantize_vt</span><span class="p">;</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="no">TDC_XFORM_ZIGZAG</span><span class="p">:</span><span class="w">       </span><span class="k">return</span><span class="w"> </span><span class="o">&amp;</span><span class="n">tdc_xform_zigzag_vt</span><span class="p">;</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="no">TDC_XFORM_BIT_SHUFFLE</span><span class="p">:</span><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="o">&amp;</span><span class="n">tdc_xform_bit_shuffle_vt</span><span class="p">;</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="no">TDC_XFORM_COMPLEMENT</span><span class="p">:</span><span class="w">   </span><span class="k">return</span><span class="w"> </span><span class="o">&amp;</span><span class="n">tdc_xform_complement_vt</span><span class="p">;</span><span class="w">  </span><span class="cm">/* new */</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">        </span><span class="k">default</span><span class="o">:</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="o">*</span><span class="p">)</span><span class="n">plugin_lookup</span><span class="p">(</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">                </span><span class="p">(</span><span class="kt">uint16_t</span><span class="p">)</span><span class="n">id</span><span class="p">,</span><span class="w"> </span><span class="n">s_xform_slots</span><span class="p">,</span><span class="w"> </span><span class="n">s_xform_count</span><span class="p">);</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>The enum value itself lives in <code>include/tdc/codec.h</code>, which is a frozen public header:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">typedef</span><span class="w"> </span><span class="k">enum</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="n">TDC_XFORM_NONE</span><span class="w">         </span><span class="o">=</span><span class="w"> </span><span class="mh">0x0000</span><span class="p">,</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="n">TDC_XFORM_QUANTIZE</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="mh">0x0001</span><span class="p">,</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="n">TDC_XFORM_ZIGZAG</span><span class="w">       </span><span class="o">=</span><span class="w"> </span><span class="mh">0x0002</span><span class="p">,</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="n">TDC_XFORM_BYTE_SHUFFLE</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mh">0x0003</span><span class="p">,</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="n">TDC_XFORM_BIT_SHUFFLE</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="mh">0x0004</span><span class="p">,</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="cm">/* Experimental range (0x0100-0x01FF). */</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="n">TDC_XFORM_COMPLEMENT</span><span class="w">   </span><span class="o">=</span><span class="w"> </span><span class="mh">0x0100</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">}</span><span class="w"> </span><span class="n">tdc_xform_id</span><span class="p">;</span>
+</span></code></pre></div>
+<p>Adding a new enum value to <code>tdc_xform_id</code> preserves backward compatibility: old callers that do not know about the new constant simply never dispatch to it, and compiled binaries stay happy because the enum's underlying type does not change. The frozen-header rule keeps struct layouts and function signatures stable; id-space growth falls outside that rule because every id slot in <code>codec.h</code> is a u16 and the reserved ranges already accommodate it.</p>
+<p>The last edit is the CMake source list. <code>CMakeLists.txt</code> has a <code>TDC_SOURCES</code> variable; append the new file so the static library rebuilds against it. Vectra's vendor build (its <code>Makevars</code> recursively compiles everything under <code>vectra/src/tdc/src/</code>) picks up the new file automatically, which saves a vendor-side edit. That split matters: tdc contributors edit the CMake list, vectra consumers re-sync the vendored tree, and neither side knows about the other's build system.</p>
+<p>A new backend does not need a block-record format change. The block record already carries the 16-bit xform id verbatim. If the id is <code>0x0100</code>, the record stores <code>0x0100</code>, the decoder hands that id to <code>tdc_xform_get</code>, and <code>tdc_xform_get</code> returns the vtable. Self-describing block records carry every stage id with the block, and every id the encoder emitted maps to a concrete vtable the decoder can look up.</p>
+<h2 id="wiring-tests">Wiring tests<a class="headerlink" href="#wiring-tests" title="Permanent link">&para;</a></h2>
+<p>Every backend gets a round-trip test under <code>tests/</code>, wired into CTest by <code>CMakeLists.txt</code>. The test exists to detect exactly the class of bug that registry wiring breaks: a mis-edited switch, an <code>extern</code> declaration typoed, a vtable field left NULL, an allocator call that bypasses <code>realloc_fn</code>. The reference test covers six points:</p>
+<ol>
+<li>The registry returns the expected vtable pointer when queried for the backend's id.</li>
+<li>Vtable metadata (id, <code>accepted_dtypes</code>, <code>can_inplace</code>, <code>is_lossy</code>, <code>name</code>) is internally consistent.</li>
+<li>A round trip on every supported dtype reproduces the input byte-for-byte.</li>
+<li>The empty input does not allocate, does not crash, and reports <code>TDC_OK</code>.</li>
+<li>A single-element input round-trips.</li>
+<li>A degenerate all-equal block round-trips, with an assertion on the encoded pattern so the test fails loudly if the kernel ever regresses.</li>
+</ol>
+<p>The skeleton follows the existing <code>tests/test_zigzag_roundtrip.c</code> convention: a POSIX-style <code>realloc_fn</code>, a <code>make_buffer</code> helper, a single <code>main</code> that calls each subtest and reports the first failure. Tests resolve the vtable via <code>extern</code>, not <code>tdc_xform_get</code>, so the backend itself is testable in isolation from the registry. A separate subtest then verifies the registry path returns the same address, which catches the "forgot to add the case" bug.</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="cm">/* tests/test_complement_roundtrip.c */</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">extern</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="n">tdc_xform_complement_vt</span><span class="p">;</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">static</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="nf">test_registry</span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">tdc_xform_vt</span><span class="w"> </span><span class="o">*</span><span class="n">vt</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_xform_get</span><span class="p">(</span><span class="n">TDC_XFORM_COMPLEMENT</span><span class="p">);</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="n">CHECK</span><span class="p">(</span><span class="n">vt</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="o">&amp;</span><span class="n">tdc_xform_complement_vt</span><span class="p">,</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">          </span><span class="s">&quot;registry should return &amp;tdc_xform_complement_vt&quot;</span><span class="p">);</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="n">CHECK</span><span class="p">(</span><span class="n">vt</span><span class="o">-&gt;</span><span class="n">id</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">TDC_XFORM_COMPLEMENT</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;vt-&gt;id mismatch&quot;</span><span class="p">);</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="n">CHECK</span><span class="p">(</span><span class="n">vt</span><span class="o">-&gt;</span><span class="n">is_lossy</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w">  </span><span class="s">&quot;complement is not lossy&quot;</span><span class="p">);</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="n">CHECK</span><span class="p">(</span><span class="n">vt</span><span class="o">-&gt;</span><span class="n">can_inplace</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;complement is element-local&quot;</span><span class="p">);</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;  [registry + vtable] OK</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">);</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>The round-trip pass runs through three dtypes (<code>u8</code>, <code>i32</code>, <code>f64</code>) chosen to exercise the three fixed-width families. For each, the test encodes into a <code>tdc_buffer</code> (with <code>realloc_fn</code> wired to a <code>free</code>/<code>realloc</code> wrapper), asserts the encoded size matches the input size, checks the encoded bytes against the expected <code>~src[i]</code> pattern, decodes into a caller-owned output, and compares with <code>memcmp</code>. The same helper pattern covers every new transform; only the expected-byte formula changes.</p>
+<p>Edge cases matter more than throughput for a correctness test. Empty input is the most common cliff for a new backend: an encode loop that accidentally reads <code>src[0]</code> on zero input blows up at the first smoke test under AddressSanitizer. A single-element input catches off-by-one wrap-around and ensures the <code>accepted_dtypes</code> check comes before the element-count guard. The all-equal (<code>0xAA</code>) block exercises a predictable output (<code>0x55</code>); asserting that pattern directly turns future regressions into a content error instead of a memcmp mismatch. These three cases earn their keep; everything else is variations on round-trip equality.</p>
+<p>The last subtest runs the backend through the full <code>tdc_encode_block</code> + <code>tdc_decode_block</code> pipeline, with the reference backend in the transform slot. This catches wiring bugs that the vtable-only tests miss: the block record validator has to accept the new id, the driver has to route the correct dtype through the transform chain, and the decoder has to pick up the new backend from the registry at decode time. On a 128-byte u8 input the output is 208 bytes (128-byte payload plus 80-byte block record header), and <code>memcmp</code> confirms the reconstruction is exact.</p>
+<p>The test source goes in <code>tests/test_&lt;name&gt;_roundtrip.c</code>; the <code>CMakeLists.txt</code> additions are two lines:</p>
+<div class="language-cmake highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">add_executable</span><span class="p">(</span><span class="s">test_complement_roundtrip</span><span class="w"> </span><span class="s">tests/test_complement_roundtrip.c</span><span class="p">)</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">test_complement_roundtrip</span><span class="w"> </span><span class="s">PRIVATE</span><span class="w"> </span><span class="s">tdc</span><span class="p">)</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nb">add_test</span><span class="p">(</span><span class="s">NAME</span><span class="w"> </span><span class="s">complement_roundtrip</span><span class="w"> </span><span class="s">COMMAND</span><span class="w"> </span><span class="s">test_complement_roundtrip</span><span class="p">)</span>
+</span></code></pre></div>
+<p>Running <code>ctest -C Debug -R complement</code> selects the new test without running the rest of the suite, useful during development; <code>ctest -C Debug</code> runs everything, which is what we do before a commit. Under sanitizers the test catches the second-most-common backend bug after registry wiring, which is a signed-vs-unsigned dtype mismatch that causes the out_dtype field to diverge between encode and decode. The test pins <code>out_dtype == in_dtype</code> on both sides for the reference backend; a transform that actually changes dtype (like ZIGZAG) would assert the expected unsigned dtype instead.</p>
+<h2 id="performance-checklist">Performance checklist<a class="headerlink" href="#performance-checklist" title="Permanent link">&para;</a></h2>
+<p>Before claiming a new backend is ready, run each of these gates. Every item either measures something or rules something out; none is decorative.</p>
+<p><strong>Allocation rule.</strong> <code>src/**.c</code> is forbidden from calling <code>malloc</code>, <code>calloc</code>, <code>realloc</code>, or <code>free</code> directly. Every scratch buffer goes through <code>buf-&gt;realloc_fn</code>. Grep is cheap and the rule is hard: a backend that sneaks in a raw <code>malloc</code> breaks vectra's arena allocator and every downstream caller that supplied its own. The <code>can_inplace</code> flag is not a workaround for this; it lets the driver skip the round-trip allocation, nothing more.</p>
+<p><strong>Ratio and throughput on two inputs.</strong> Pick two inputs that stress the backend differently: one where the algorithm is expected to pay off, and one where it should no-op or slightly hurt. Run both through <code>bench/bench_throughput.c</code> (or a one-shot driver that wraps <code>tdc_encode_block</code> in a timed loop on a hot input) and record encode MiB/s, decode MiB/s, and ratio. Real numbers only; adjectives are noise. The goal is calibration, not a leaderboard. Ratio is the primary target, and ratio-neutral speed losses are allowed up to roughly 1-2%; an experimental transform that costs more than that without moving the ratio needle does not ship.</p>
+<p><strong>No regression on existing backends.</strong> Re-run every backend's <code>*_roundtrip</code> test after the new code lands. CTest handles this mechanically; the failure mode that matters is a switch-case that accidentally shadows a pre-existing id, which the plugin-capacity test and the per-backend round-trip tests both catch. Do not treat the new backend's pass as a green light; the registry is shared, and adding an experimental case in the wrong place can dispatch the old id to the new vtable.</p>
+<p><strong>SIMD and fallbacks.</strong> tdc targets x86_64 and aarch64, both little-endian, both potentially SIMD-capable. AVX2 intrinsics are allowed behind <code>#if defined(__AVX2__)</code>, NEON behind <code>#if defined(__ARM_NEON)</code>. Every SIMD path requires a scalar fallback that compiles when the intrinsic guard is false. CMake's <code>TDC_ENABLE_AVX2</code> option defaults to ON; a backend that assumes AVX2 without a fallback breaks when the option is flipped off. The reference backend has no SIMD: a per-byte kernel hits memory bandwidth on any half-modern CPU and a vectorized version saves nothing. Adding SIMD to a transform that does not need it is a speed regression waiting for a maintenance tax.</p>
+<p><strong>"Do not retry" notes.</strong> <code>tdc/CLAUDE.md</code> and <code>vectra/CLAUDE.md</code> document the hot-path experiments that have already been measured and rejected. The current list: no Robin Hood hashing in hash tables (12-29% regression in vectra benchmarks), no batched parse-then-copy in the LZ fast path (6-7% regression, may revisit after a real entropy stage lives in front of LZ), no thread-local scratch in <code>src/**.c</code> (breaks the allocator rule and thread safety). A new backend that rediscovers one of these dead ends wastes a review cycle; read the relevant section before touching a loop.</p>
+<p><strong>Fuzz the round trip.</strong> A backend that round-trips cleanly on a hand-written test suite can still crash on random input. Run a few million iterations of "random buffer -&gt; encode -&gt; decode -&gt; compare" under <code>-fsanitize=address,undefined</code>. Pattern-generate the inputs so the shape of the input varies: power-of-two sizes, prime sizes, empty, single-byte, edges of the dtype range, runs of the same byte, interleaved noise. The reference test covers the categorical cases; a night of fuzzing catches the ones no reviewer thought to write down. The cost is trivial (the backends are fast, the comparison is fast), and it rules out a whole class of memory-safety and edge-case bugs that would otherwise surface as customer reports.</p>
+<p><strong>Block-record validation.</strong> The validator in <code>src/format/block_record.c</code> hard-rejects id values outside the reserved ranges. Confirm the appropriate range is accepted for the id you chose: <code>0x0001-0x00FF</code> for core, <code>0x0100-0x01FF</code> for experimental, <code>0xFF00-0xFFFF</code> for user-defined. The validator is the single defense against a stage id being corrupted on disk or injected by a hostile caller; the test suite exercises it via the full pipeline round trip.</p>
+<h2 id="plugin-api-forward-compat">Plugin API forward compat<a class="headerlink" href="#plugin-api-forward-compat" title="Permanent link">&para;</a></h2>
+<p><code>include/tdc/plugin.h</code> exposes the runtime-registration path. Its three functions are <code>tdc_model_register</code>, <code>tdc_xform_register</code>, and <code>tdc_entropy_register</code>; each accepts an id in the user-defined range <code>0xFF00-0xFFFF</code> and a pointer to a user-owned vtable. A backend registered this way is visible to <code>tdc_*_get</code> immediately, and blocks encoded with its id decode without any library rebuild. The registry capacity is <code>TDC_PLUGIN_MAX_SLOTS</code> (16) per stage; registrations above that return <code>TDC_E_NOMEM</code>. All registration happens before any concurrent encode or decode call because the registry is not thread-safe; the expected pattern is "register once at startup, use forever".</p>
+<p>The static path documented above and the runtime plugin path share one dispatch surface. <code>tdc_xform_get(id)</code> first walks the static switch for core and experimental ids, then falls through to the plugin array for user-defined ids. A backend written against this vignette's static pattern is visible through the same pointer type a plugin would return. Swapping the static registration for a plugin registration is mechanical: move the vtable into its own translation unit, drop the internal-header <code>extern</code>, drop the registry-switch case, and call <code>tdc_xform_register(id, &amp;vt)</code> from the consumer's startup path. The on-disk format is identical either way because the block record only carries the u16 id, not a pointer and not a type.</p>
+<p>The plugin API has three constraints that reshape how a backend should be written if a consumer ever wants to register it at runtime. First, the vtable pointer must remain valid for the lifetime of the process. In practice this means the vtable is a file-scope <code>static const</code>, or at least a global with no static destruction order. Second, the <code>id</code> field inside the vtable must agree with the id passed to <code>tdc_*_register</code>; the function cross-checks and returns <code>TDC_E_INVAL</code> on mismatch. Third, the same id cannot be registered twice, and an id in the core or experimental range cannot be registered at all; the function returns <code>TDC_E_INVAL</code> for both. The static path does not enforce these invariants because there is no runtime registration to validate; a consumer moving a backend across the line needs to add the check mentally.</p>
+<p>The rest of the plugin path matches the static walkthrough. The vtable is the same struct. The encode and decode functions have the same signatures. The allocator rule is the same. The <code>can_inplace</code>, <code>is_lossy</code>, and <code>accepted_dtypes</code> fields carry the same meaning. A test covering a runtime-registered backend also looks like the one above, with an extra call to <code>tdc_*_register</code> at the top and <code>tdc_plugin_clear</code> at the bottom. <code>tests/test_plugin.c</code> is the canonical example and exercises the full registration lifecycle plus a round trip through a user-defined entropy coder.</p>
+<p>One forward-compatibility guarantee is worth naming explicitly. The plugin API is additive. Adding a new field to one of the three vtables is allowed only if the zero value of the field is a safe default, because older callers zero-initialize the struct and the library has to accept both the old and the new shapes. This is the same forward-compat rule that applies to the per-stage params structs (<code>tdc_quantize_params</code>, <code>tdc_pred2d_params</code>, etc.) and is stated once in <code>include/tdc/codec.h</code>. A backend that follows the rule survives every minor-version bump; one that relies on an uninitialized field behaving a certain way does not.</p>
+<p>The long-term trajectory is that the static path becomes thinner and the plugin path becomes a strict superset. Today a backend that ships with tdc goes through the static switch because the switch is trivially cheap, the vtable pointer stays in <code>.rodata</code>, and the binary ships with every backend pre-linked. A future release may switch core backends to run through the same plugin array and register them at library init time. The on-disk format does not care; both paths resolve through <code>tdc_*_get(id)</code>. Consumers that build against the v0 public headers and use either path keep working across that transition because the surface they depend on (<code>id -&gt; vtable</code> lookup plus a stable vtable layout) is preserved on both sides.</p>
+<h2 id="what-to-read-next">What to read next<a class="headerlink" href="#what-to-read-next" title="Permanent link">&para;</a></h2>
+<p>A backend that passes the checklist above is ready for a code review. Two adjacent vignettes cover the pieces this one skips. The Performance tuning vignette walks through the bench harness and the knob-calibration methodology; Troubleshooting lists the <code>tdc_status</code> codes and the most common decode failures they point at. The <a href="../../integration/">Integration vignette</a> is the companion document for consumers vendoring the tdc source tree into their own build. The <a href="../../format/on-disk/">format spec</a> documents the block record layout the new id will appear in.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

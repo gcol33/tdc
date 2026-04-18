@@ -1,0 +1,1706 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed, dimensional compression library in C">
+      
+      
+      
+        <link rel="canonical" href="https://gcol33.github.io/tdc/integration/">
+      
+      
+        <link rel="prev" href="../quickstart/">
+      
+      
+        <link rel="next" href="../format/on-disk/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Integration - tdc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#integration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="tdc" class="md-header__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Integration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../format/on-disk/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Format
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../backends/models/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Backends
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../theory/predictors/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Theory
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../performance/tuning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../extending/custom-backends/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/troubleshooting/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="tdc" class="md-nav__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#linking-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linking options
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Linking options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cmake-subproject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CMake subproject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vendoring-the-source-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vendoring the source tree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#installed-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installed library
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#allocator-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Allocator wiring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#threading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Threading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#abi-and-version-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ABI and version policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-consumer-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal consumer template
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Format
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../format/on-disk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On-disk format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/transforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../backends/entropy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../theory/predictors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Predictor math
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../theory/lz-inner-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../extending/custom-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/migration-vtr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#linking-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linking options
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Linking options">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cmake-subproject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CMake subproject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vendoring-the-source-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vendoring the source tree
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#installed-library" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Installed library
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#allocator-wiring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Allocator wiring
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#threading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Threading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#abi-and-version-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ABI and version policy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-consumer-template" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal consumer template
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="integration">Integration<a class="headerlink" href="#integration" title="Permanent link">&para;</a></h1>
+<p>tdc is a C11 static library with a frozen public header set under <code>include/tdc/</code>. Consumers wire it in one of three ways: as a CMake subproject via <code>add_subdirectory</code>, as a vendored source tree compiled by the consumer's own build system, or, eventually, as an installed library via <code>find_package</code>. The first two paths are production-ready today and cover every current consumer. The installed-library path is not yet wired. This vignette walks through all three options, the allocator contract the caller has to honor, the threading guarantees the library makes, the ABI policy across <code>0.x</code> releases, and a minimal consumer template that rolls every piece into one translation unit.</p>
+<p>The four-layer pipeline (model, transform, entropy, storage) never surfaces in the integration story. From the consumer's side, tdc is a single library target that exposes one umbrella header (<code>tdc.h</code>) and a set of one-shot entry points. The caller builds a <code>tdc_block</code>, picks a <code>tdc_codec_spec</code>, hands both to <code>tdc_encode_block</code>, and routes the result back through <code>tdc_decode_block_into</code> (fixed-width dtypes) or <code>tdc_decode_block_varlen</code> (variable-width). Everything in this vignette is scaffolding around those calls.</p>
+<h2 id="linking-options">Linking options<a class="headerlink" href="#linking-options" title="Permanent link">&para;</a></h2>
+<p>The three paths correspond to three different consumer situations. A C or C++ project that already uses CMake picks the subproject path and inherits tdc's warning flags, libm link, and platform defines automatically. A consumer whose build system is not CMake (R's Makevars, a custom Makefile, a vendored-source library release) picks the vendoring path and replicates the handful of flags tdc sets in its own CMakeLists. An end user who has tdc installed system-wide picks <code>find_package</code> once we ship install rules.</p>
+<h3 id="cmake-subproject">CMake subproject<a class="headerlink" href="#cmake-subproject" title="Permanent link">&para;</a></h3>
+<p>Drop the tdc tree into <code>third_party/tdc/</code> and reference it from the top-level <code>CMakeLists.txt</code>:</p>
+<div class="language-cmake highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cmake_minimum_required</span><span class="p">(</span><span class="s">VERSION</span><span class="w"> </span><span class="s">3.15</span><span class="p">)</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">project</span><span class="p">(</span><span class="s">my_app</span><span class="w"> </span><span class="s">C</span><span class="p">)</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_C_STANDARD</span><span class="w"> </span><span class="s">11</span><span class="p">)</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_C_STANDARD_REQUIRED</span><span class="w"> </span><span class="s">ON</span><span class="p">)</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c"># tdc&#39;s own options; turn off everything the consumer does not need.</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="nb">set</span><span class="p">(</span><span class="s">TDC_BUILD_TESTS</span><span class="w">    </span><span class="s">OFF</span><span class="w"> </span><span class="s">CACHE</span><span class="w"> </span><span class="s">BOOL</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="s">FORCE</span><span class="p">)</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nb">set</span><span class="p">(</span><span class="s">TDC_BUILD_BENCH</span><span class="w">    </span><span class="s">OFF</span><span class="w"> </span><span class="s">CACHE</span><span class="w"> </span><span class="s">BOOL</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="s">FORCE</span><span class="p">)</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="nb">set</span><span class="p">(</span><span class="s">TDC_BUILD_TOOLS</span><span class="w">    </span><span class="s">OFF</span><span class="w"> </span><span class="s">CACHE</span><span class="w"> </span><span class="s">BOOL</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="s">FORCE</span><span class="p">)</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="nb">set</span><span class="p">(</span><span class="s">TDC_BUILD_EXAMPLES</span><span class="w"> </span><span class="s">OFF</span><span class="w"> </span><span class="s">CACHE</span><span class="w"> </span><span class="s">BOOL</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="s">FORCE</span><span class="p">)</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="nb">add_subdirectory</span><span class="p">(</span><span class="s">third_party/tdc</span><span class="p">)</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="nb">add_executable</span><span class="p">(</span><span class="s">my_app</span><span class="w"> </span><span class="s">src/main.c</span><span class="p">)</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">my_app</span><span class="w"> </span><span class="s">PRIVATE</span><span class="w"> </span><span class="s">tdc</span><span class="p">)</span>
+</span></code></pre></div>
+<p>The <code>tdc</code> target propagates its public include directory to every downstream target, so <code>#include "tdc.h"</code> resolves inside <code>my_app</code> without any further configuration. On non-Windows platforms tdc links <code>libm</code> publicly, and downstream executables pick up that link automatically. Disabling the test, bench, and tools options cuts configure time in half on fresh checkouts and keeps the downstream build graph small.</p>
+<p>Enabling the optional deflate backend requires two extra lines:</p>
+<div class="language-cmake highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">set</span><span class="p">(</span><span class="s">TDC_HAVE_ZLIB</span><span class="w"> </span><span class="s">ON</span><span class="w"> </span><span class="s">CACHE</span><span class="w"> </span><span class="s">BOOL</span><span class="w"> </span><span class="s2">&quot;&quot;</span><span class="w"> </span><span class="s">FORCE</span><span class="p">)</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">find_package</span><span class="p">(</span><span class="s">ZLIB</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
+</span></code></pre></div>
+<p>With <code>TDC_HAVE_ZLIB=ON</code>, the library's <code>tdc_entropy_get(TDC_ENTROPY_DEFLATE)</code> returns a real vtable instead of NULL. Every other backend ships unconditionally.</p>
+<h3 id="vendoring-the-source-tree">Vendoring the source tree<a class="headerlink" href="#vendoring-the-source-tree" title="Permanent link">&para;</a></h3>
+<p>Non-CMake consumers copy <code>include/</code> and <code>src/</code> under their own tree (<code>third_party/tdc/</code> by convention) and compile the sources with their own rules. This is how the vectra R package consumes tdc: the Makevars file adds <code>third_party/tdc/include</code> to <code>PKG_CPPFLAGS</code> and globs <code>third_party/tdc/src/**/*.c</code> into the compilation unit list.</p>
+<p>Two flags matter on Linux, and the consumer's build system has to set them explicitly when it is not CMake:</p>
+<div class="language-makefile highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">PKG_CPPFLAGS</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span>-I./tdc/include<span class="w"> </span>-D_POSIX_C_SOURCE<span class="o">=</span>200809L
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">PKG_LIBS</span><span class="w">    </span><span class="o">+=</span><span class="w"> </span>-lm
+</span></code></pre></div>
+<p><code>-D_POSIX_C_SOURCE=200809L</code> exposes <code>clock_gettime</code> and <code>CLOCK_MONOTONIC</code> under glibc's strict <code>-std=c11</code> mode. tdc cannot set this in a header because sibling system headers pull in glibc's <code>&lt;features.h&gt;</code> first; the flag has to sit on the compile command line. <code>-lm</code> picks up <code>round</code>, <code>log2</code>, and a handful of other libm entries that the predictor and plane-fit models call through. Both flags are no-ops on macOS, where the headers stay permissive and the linker pulls in libm by default, and no-ops on Windows, where MSVC's CRT already carries them. The CMakeLists carries the same two lines for its own Linux builds, so the requirement is identical; the only difference is that the vendored consumer types them by hand.</p>
+<p>A vendored R Makevars typically looks like this:</p>
+<div class="language-makefile highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nv">PKG_CPPFLAGS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>-I./tdc/include<span class="w"> </span>-D_POSIX_C_SOURCE<span class="o">=</span>200809L
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nv">PKG_LIBS</span><span class="w">     </span><span class="o">=</span><span class="w"> </span>-lm
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nv">TDC_OBJECTS</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">$(</span>patsubst<span class="w"> </span>%.c,%.o,<span class="k">$(</span>wildcard<span class="w"> </span>tdc/src/*/*.c<span class="k">))</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nv">OBJECTS</span><span class="w">     </span><span class="o">=</span><span class="w"> </span><span class="k">$(</span>TDC_OBJECTS<span class="k">)</span><span class="w"> </span>pkg_glue.o
+</span></code></pre></div>
+<p>Per-translation-unit compilation matches how tdc builds inside CMake; there is no unity-build step and no generated source to run first. A consumer that wants AVX2 can append <code>-mavx2</code> on x86_64 and call it done; tdc's AVX2 code paths already sit behind <code>__AVX2__</code> guards with scalar fallbacks.</p>
+<p>A pure-Makefile consumer on Linux looks nearly identical:</p>
+<div class="language-makefile highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">CFLAGS</span><span class="w">  </span><span class="o">+=</span><span class="w"> </span>-std<span class="o">=</span>c11<span class="w"> </span>-O2<span class="w"> </span>-Wall<span class="w"> </span>-I./third_party/tdc/include<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">           </span>-D_POSIX_C_SOURCE<span class="o">=</span>200809L
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nv">LDFLAGS</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span>-lm
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="nv">SRCS</span><span class="w">    </span><span class="o">:=</span><span class="w"> </span><span class="k">$(</span>wildcard<span class="w"> </span>third_party/tdc/src/*/*.c<span class="k">)</span><span class="w"> </span>main.c
+</span></code></pre></div>
+<p>A Windows MSVC consumer replaces the POSIX define with nothing (MSVC's headers already expose <code>clock_gettime</code>-equivalents through <code>&lt;timespec.h&gt;</code> on recent SDKs, and tdc uses its own <code>_WIN32</code> branch when neither is available) and skips the <code>-lm</code> line.</p>
+<h3 id="installed-library">Installed library<a class="headerlink" href="#installed-library" title="Permanent link">&para;</a></h3>
+<p><code>find_package(tdc)</code> is not yet shipped. We have not committed the install rules because the ABI is still moving between <code>0.x</code> minors, and publishing an install target would lock down a symbol set ahead of that stabilization. The plan is to add <code>install(TARGETS tdc EXPORT tdcTargets ...)</code> and a generated <code>tdcConfig.cmake</code> once vectra's rewire completes and the first <code>1.0</code> tag goes out. Until then, consumers use either of the two paths above; both produce the same static library and the same public symbols.</p>
+<h2 id="allocator-wiring">Allocator wiring<a class="headerlink" href="#allocator-wiring" title="Permanent link">&para;</a></h2>
+<p>tdc does not allocate memory behind the caller's back. The caller owns every growable buffer the library touches and grows it through a function pointer the caller supplies on the buffer. The contract is a single signature:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">realloc_fn</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">new_size</span><span class="p">);</span>
+</span></code></pre></div>
+<p>Three cases cover every call: <code>(user, NULL, n)</code> allocates <code>n</code> bytes, <code>(user, p, 0)</code> frees <code>p</code>, <code>(user, p, n)</code> grows <code>p</code> to <code>n</code> bytes and may return a different pointer. Returning NULL on a non-zero request surfaces as <code>TDC_E_NOMEM</code>. A stdlib-backed implementation is a dozen lines:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">static</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="nf">my_realloc</span><span class="p">(</span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">user</span><span class="p">,</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="o">*</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="p">(</span><span class="kt">void</span><span class="p">)</span><span class="n">user</span><span class="p">;</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">free</span><span class="p">(</span><span class="n">ptr</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nb">NULL</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">realloc</span><span class="p">(</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">);</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>That wiring works for tools, tests, and most first-draft integrations. Larger consumers usually want something with state: a pool allocator, a tracked arena, a debug allocator that records every call site. <a href="../examples/integration_arena.c"><code>integration_arena.c</code></a> wires a bump-allocated arena with peak tracking into both the encode output buffer and the decode scratch buffer of <code>tdc_decode_block_ex</code>. Running it on a 16 KiB <code>i32</code> ramp:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>encode arena: 8 allocs, 0 reallocs, 7 frees
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>encode arena: live=1147120 peak=1196080 out_size=106
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>decode arena: peak=1229040 memcmp=yes
+</span></code></pre></div>
+<p>Encoding made eight allocations through the arena, freed seven of them before return (the only live allocation after encode is the output block record), and peaked at roughly 1.17 MiB. The encode-time LZ scratch accounts for most of the peak, and all of it stays inside the one arena the caller passed in. Without a caller-owned allocator there would be no way to account for that memory against a per-request budget. The value of <code>realloc_fn</code> is that the peak is visible at all.</p>
+<p>The caller frees the output buffer on every path. <code>tdc_encode_block</code> returns a grown <code>tdc_buffer</code>; the caller owns <code>buffer.data</code> until it calls <code>buffer.realloc_fn(buffer.user, buffer.data, 0)</code>. The same holds for the decode destination: <code>tdc_decode_block_into</code> writes into a buffer the caller allocated, and the caller frees it after use. <code>tdc_decode_block_ex</code> adds one more clause: the function borrows the <code>tdc_buffer *scratch</code> the caller passes in for internal ping-pong scratch, and on return (success or failure) every scratch allocation has already gone back through the same <code>realloc_fn</code>. Callers do not need to clean up anything extra; the function promises balance.</p>
+<p><code>tdc_decode_block_varlen</code> is the exception to the "caller allocates the destination" rule. Variable-width blocks cannot size their output heap from the 80-byte block header alone, so the function allocates <code>dst-&gt;data</code> and <code>dst-&gt;offsets</code> through the caller's <code>realloc_fn</code> during the decode. The caller must pass those in as NULL (the function rejects non-NULL with <code>TDC_E_INVAL</code> to prevent leaking the caller's buffer) and must free them with the same <code>realloc_fn</code> when done. The library never retains a pointer past return in any path.</p>
+<h2 id="threading">Threading<a class="headerlink" href="#threading" title="Permanent link">&para;</a></h2>
+<p>tdc has no thread-local state and no module-level locks. Every pipeline-stage vtable is a const struct with pure function pointers; one call site owns each <code>tdc_block</code>, <code>tdc_codec_spec</code>, and <code>tdc_buffer</code> for the duration of its encode or decode. The consequence is a simple rule: two threads can safely encode or decode two different blocks concurrently, with no coordination, as long as their <code>tdc_block</code>, <code>tdc_buffer</code>, and codec-spec pointers do not alias each other.</p>
+<p>Sharing a single <code>tdc_buffer</code> across threads does not work. The library mutates the buffer's <code>data</code>, <code>size</code>, and <code>capacity</code> fields in place during encode and during every internal grow through <code>realloc_fn</code>. Two threads growing the same buffer simultaneously will tear the size field. The same rule applies to the decode destination: <code>tdc_decode_block_into</code> writes element-by-element into <code>dst-&gt;data</code>, and two threads pointing at overlapping destinations race. The fix is the normal parallel-pipelines pattern: one buffer per thread, one block per thread.</p>
+<p>Two things survive sharing. The first is read-only source data. A worker pool encoding N blocks from a shared <code>const</code> input array can all point at the same source buffer; tdc never writes through <code>blk-&gt;data</code> during encode. The second is a <code>tdc_codec_spec</code>. Specs are POD and the library treats them as immutable; all workers can point at the same spec.</p>
+<p>Plugin registration through <code>tdc_model_register</code> and its friends in <code>tdc/plugin.h</code> is explicitly NOT thread-safe, and every registration call must complete before any concurrent encode or decode starts. The plugin header documents this up front; registering during active workers triggers undefined behavior. The typical pattern is a call in the consumer's initialization path, well before any worker thread spawns.</p>
+<p>Allocators passed through <code>realloc_fn</code> must themselves be thread-safe across the set of buffers they back. The stdlib <code>realloc</code>/<code>free</code> pair is thread-safe under every C runtime we target, so the one-liner wrapper is fine for a worker pool out of the box. A tracked arena or pool allocator usually is not, and the consumer either gives each worker its own arena or wraps the allocator in a mutex. tdc never calls the allocator recursively, so a plain pthread_mutex around the four arena entry points is enough; there is no reentrancy to design around.</p>
+<h2 id="abi-and-version-policy">ABI and version policy<a class="headerlink" href="#abi-and-version-policy" title="Permanent link">&para;</a></h2>
+<p>The public ABI lives under <code>include/tdc/</code>. We freeze those headers unless the user authorizes a change. The freeze applies to struct layouts (field order, padding, total size), enum values (numeric id of every <code>tdc_model_id</code>, <code>tdc_xform_id</code>, <code>tdc_entropy_id</code>, <code>tdc_status</code>, <code>tdc_dtype</code>, <code>tdc_layout</code>), function signatures on every public entry point, and the on-disk format described in <code>tdc/format.h</code> (container header, block record). Within a <code>0.x</code> cycle we may add fields to existing structs behind a zero-default rule: the new field must have a meaningful zero value so old call sites that <code>memset</code> the struct keep working. Anything that breaks that rule forces a format version bump and a minor-version tag.</p>
+<p>Enum ranges are reserved for who can register which ids. The <code>0x0001-0x00FF</code> range is core (shipped with tdc), <code>0x0100-0x01FF</code> is experimental (may change without a version bump), <code>0x0200-0xFEFF</code> is reserved, and <code>0xFF00-0xFFFF</code> is user-defined. The plugin API in <code>tdc/plugin.h</code> enforces this at registration time; <code>tdc_model_register</code> rejects any id outside the user-defined range with <code>TDC_E_INVAL</code>. Consumers that want to ship their own backends today pick ids in the user range and know those ids will never collide with future core additions.</p>
+<p>The v0 on-disk format is little-endian only. Supported targets are x86_64 and aarch64; both are little-endian. A big-endian port would require a format version bump and a full pass through every serializer. Cross-endian reads are not a goal and will not become one without an explicit decision. Inside a version, the self-describing block record carries every field needed to decode it, so a block copied out of one container and into another survives without reformatting. The container header is duplicated on purpose; a stranded block is still decodable.</p>
+<p>tdc is pre-<code>1.0</code>. Between <code>0.x</code> minor bumps the API may break, and every break is called out in the release notes. The ABI becomes stable at <code>1.0</code>; that tag is gated on vectra's rewire completing and on at least one external consumer shipping against the library.</p>
+<h2 id="minimal-consumer-template">Minimal consumer template<a class="headerlink" href="#minimal-consumer-template" title="Permanent link">&para;</a></h2>
+<p><a href="../examples/integration_consumer.c"><code>integration_consumer.c</code></a> is the smallest useful wiring a downstream project usually copies first: one function that encodes an i16 column, one function that decodes it back, a stdlib allocator, and an error path that prints <code>tdc_strerror</code> on any non-<code>TDC_OK</code> status. Running it on 1,024 signed 16-bit values with mild jitter:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>raw=2048 encoded=109 decoded=2048 match=yes
+</span></code></pre></div>
+<p>The encode function constructs a <code>tdc_block</code> over the caller's array, installs <code>cn_realloc</code> on a fresh <code>tdc_buffer</code>, picks a <code>DELTA_1D + ZIGZAG + BSHUF + LZ</code> spec, calls <code>tdc_encode_block</code>, and returns the grown buffer's <code>data</code> pointer as a consumer-owned byte blob. The decode function peeks the record, allocates the destination, and calls <code>tdc_decode_block_into</code>. Every failure path runs the buffer pointer through <code>cn_realloc</code> with size zero before returning, so there is no leak on any branch. The caller of either function owns the returned pointer and frees it through the same <code>cn_realloc</code>.</p>
+<p>For consumers that want richer diagnostics than a raw status code, <a href="../examples/integration_error.c"><code>integration_error.c</code></a> shows a pattern: wrap every <code>tdc</code> call with a helper that records the call site, the block index, and a pre-formatted message. Running it on a deliberately wrong spec (<code>DELTA_1D</code> against a 2D raster) surfaces the mismatch with full context:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>tdc[encode_row_group_block] block=42 status=5 (layout not accepted by stage)
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  fix: pick a model that accepts RASTER_2D (e.g. PRED_2D)
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>retry: TDC_OK
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>encoded size: 4177 bytes
+</span></code></pre></div>
+<p><code>tdc_strerror</code> returns a static literal, so the wrapper can <code>snprintf</code> it into a caller-owned message buffer without lifetime concerns. The error-handling table in <a href="../reference/troubleshooting/">the troubleshooting reference</a> covers every status code with one likely cause and one fix per entry. Consumers that want to dispatch on the error (retry with a different spec, escalate to the caller, propagate through their own error type) have the full enum to switch on; none of the codes require parsing a string.</p>
+<p>The three examples cover the full wiring surface. Most real consumers need nothing beyond what they show: a <code>realloc_fn</code>, a codec spec picked from the backend walkthroughs, a peek-then-decode pair, and a consumer-side error type that wraps <code>tdc_status</code>. The <a href="../quickstart/">quickstart</a> covers the block abstraction itself; the <a href="../backends/models/">backends</a> pages cover which codec to pick for which layout; the <a href="../format/on-disk/">on-disk format</a> spells out what is actually landing in the byte stream once the allocator gives those bytes somewhere to live.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,1747 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed, dimensional compression library in C">
+      
+      
+      
+        <link rel="canonical" href="https://gcol33.github.io/tdc/reference/migration-vtr/">
+      
+      
+        <link rel="prev" href="../troubleshooting/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Migration from vectra - tdc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#migration-from-vectras-old-vtr-codec" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdc" class="md-header__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Migration from vectra
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../format/on-disk/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Format
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../backends/models/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Backends
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../theory/predictors/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Theory
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance/tuning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../extending/custom-backends/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../troubleshooting/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdc" class="md-nav__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Format
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/on-disk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On-disk format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/transforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../backends/entropy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/predictors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Predictor math
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/lz-inner-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../extending/custom-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status-of-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status of migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#function-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Function mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-tdc-call-looks-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the tdc call looks like
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#format-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Format compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-not-to-migrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When NOT to migrate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-lose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you lose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-gain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you gain
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status-of-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status of migration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#function-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Function mapping
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-tdc-call-looks-like" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the tdc call looks like
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#format-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Format compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-not-to-migrate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When NOT to migrate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-lose" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you lose
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-gain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you gain
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="migration-from-vectras-old-vtr-codec">Migration from vectra's old vtr codec<a class="headerlink" href="#migration-from-vectras-old-vtr-codec" title="Permanent link">&para;</a></h1>
+<p>This vignette walks through the migration from vectra's legacy C codec (<code>vtr_codec.c</code>, <code>vtr_encodings.c</code>, <code>vtr_compress.c</code>, and the v4 row-group paths in <code>vtr1.c</code>) to tdc's public API. Two audiences should find it useful: the vectra codebase itself, where the migration already shipped and these notes serve as the historical design record, and other R or C libraries that run a similar per-column encoding pipeline and want to adopt tdc as a drop-in backend.</p>
+<h2 id="status-of-migration">Status of migration<a class="headerlink" href="#status-of-migration" title="Permanent link">&para;</a></h2>
+<p>Vectra completed the rewire to tdc in its 0.5.0 release. Commit <code>bf4c8db</code> on the vectra <code>main</code> branch deleted the legacy v4 codec files (<code>vtr_codec.c</code>, <code>vtr_encodings.c</code>, <code>vtr_compress.c</code>) and the v4 row-group paths in <code>vtr1.c</code>; tdc is now the sole compression path behind every <code>C_write_vtr</code> / <code>C_scan_node</code> entry point. The rewire shipped as phases P1 through P5 described in <code>VECTRA_REWIRE.md</code>, and nothing from the old codec is reachable at runtime. Treat <code>VECTRA_REWIRE.md</code> as a historical design document, not a to-do list.</p>
+<p>Two caveats matter for anyone reading this vignette in its own migration context. First, the tdc-backed <code>.vtr</code> writer intentionally breaks file-level backward compatibility with pre-0.5.0 vectra archives. No tdc reader exists for the old v4 layout; the old and new writers share only the <code>.vtr</code> file extension. Second, the rewire closed most of vectra's fast paths but left one open. The v4 writer carried a dict-defer CHARSXP optimization that skipped R's string-interning hash on repeated strings, and the tdc-backed writer currently hits the hash per string. Vectra plans to rebuild that path on top of tdc's <code>TDC_MODEL_DICT_1D</code> output once string throughput becomes the hot spot. The regression is flagged in vectra's own <code>CLAUDE.md</code> under "Key Design Decisions" and remains the last piece of v4-era behaviour with no direct tdc counterpart.</p>
+<p>Full public tdc surface: <code>include/tdc/types.h</code> (block, buffer, status codes), <code>include/tdc/codec.h</code> (codec spec, one-shot encode/decode), <code>include/tdc/stream.h</code> (container-level row-group writer / reader), <code>include/tdc/format.h</code> (on-disk block record and container header), <code>include/tdc/error.h</code>. Every call swap below cites these headers; the internal tree under <code>src/</code> is not part of the contract and is not referenced here.</p>
+<h2 id="function-mapping">Function mapping<a class="headerlink" href="#function-mapping" title="Permanent link">&para;</a></h2>
+<p>The table below pairs every externally visible old-vectra codec entry point with the tdc call that replaced it in 0.5.0. Left column is the function or constant as it appeared in vectra 0.4 and earlier. Right column is the tdc equivalent as of tdc 0.2.x. A downstream project that followed the same four-function shape (encode-one-column, decode-one-column, write-rowgroup, read-rowgroup) can use this table as a direct recipe.</p>
+<table>
+<thead>
+<tr>
+<th>Vectra v4 (pre-0.5.0)</th>
+<th>tdc public API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VecArray</code> (typed column + validity + length)</td>
+<td><code>tdc_block</code> (data + dtype + layout + shape + optional validity)</td>
+</tr>
+<tr>
+<td><code>VtrEncodedCol</code> (data, sizes, quantize meta, spatial meta, plane coeffs)</td>
+<td>One <code>tdc_block_record</code> byte buffer carrying header + side meta + payload</td>
+</tr>
+<tr>
+<td><code>VTR_COMPRESS_NONE / _FAST / _SMALL</code> level knob</td>
+<td>Hand-picked <code>tdc_codec_spec</code> (model + xform chain + entropy chain)</td>
+</tr>
+<tr>
+<td><code>VTR_ENC_PLAIN</code></td>
+<td><code>TDC_MODEL_RAW</code></td>
+</tr>
+<tr>
+<td><code>VTR_ENC_DELTA</code> / <code>VTR_ENC_DIFF</code></td>
+<td><code>TDC_MODEL_DELTA_1D</code></td>
+</tr>
+<tr>
+<td><code>VTR_ENC_DICTIONARY</code></td>
+<td><code>TDC_MODEL_DICT_1D</code></td>
+</tr>
+<tr>
+<td><code>VTR_ENC_DICT_NUM</code></td>
+<td><code>TDC_MODEL_DICT_NUMERIC_1D</code></td>
+</tr>
+<tr>
+<td><code>VTR_ENC_SPARSE_ZERO</code></td>
+<td><code>TDC_MODEL_SPARSE_ZERO_1D</code></td>
+</tr>
+<tr>
+<td><code>VTR_ENC_QUANTIZE</code></td>
+<td><code>TDC_XFORM_QUANTIZE</code> (transform stage; <code>tdc_quantize_params</code>)</td>
+</tr>
+<tr>
+<td><code>VTR_ENC_SPATIAL</code> (<code>VtrSpatialSpec.coeffs[]</code>)</td>
+<td><code>TDC_MODEL_PRED_2D</code> (AUTO/LEFT/UP/AVERAGE/PAETH) or <code>TDC_MODEL_PLANE_2D</code></td>
+</tr>
+<tr>
+<td><code>VTR_COMP_SHUFFLE_LZ</code></td>
+<td>xform chain <code>[TDC_XFORM_BYTE_SHUFFLE]</code> + <code>TDC_ENTROPY_LZ</code></td>
+</tr>
+<tr>
+<td><code>VTR_COMP_SHUFFLE_LZ_HUFF</code></td>
+<td><code>[TDC_XFORM_BYTE_SHUFFLE]</code> + <code>TDC_ENTROPY_LZ_OPT</code></td>
+</tr>
+<tr>
+<td><code>VTR_COMP_SHUFFLE_LZ_STREAMS</code></td>
+<td><code>[TDC_XFORM_BYTE_SHUFFLE]</code> + <code>TDC_ENTROPY_LZ_STREAMS</code></td>
+</tr>
+<tr>
+<td><code>VTR_COMP_SHUFFLE_FSE</code></td>
+<td><code>[TDC_XFORM_BYTE_SHUFFLE]</code> + <code>TDC_ENTROPY_FSE</code></td>
+</tr>
+<tr>
+<td><code>VTR_COMP_SHUFFLE_HUFF</code></td>
+<td><code>[TDC_XFORM_BYTE_SHUFFLE]</code> + <code>TDC_ENTROPY_HUFFMAN</code></td>
+</tr>
+<tr>
+<td><code>VecType::VEC_INT64 / _INT32 / _INT16 / _INT8</code></td>
+<td><code>TDC_DT_I64 / _I32 / _I16 / _I8</code></td>
+</tr>
+<tr>
+<td><code>VecType::VEC_DOUBLE</code></td>
+<td><code>TDC_DT_F64</code></td>
+</tr>
+<tr>
+<td><code>VecType::VEC_BOOL</code></td>
+<td><code>TDC_DT_U8</code> (one byte per boolean; vectra's convention)</td>
+</tr>
+<tr>
+<td><code>VecType::VEC_STRING</code></td>
+<td><code>TDC_DT_STRING</code> with a <code>uint32_t offsets[n+1]</code> buffer</td>
+</tr>
+<tr>
+<td><code>vtr_encode_column_qs(...)</code> (v4 encode entry)</td>
+<td><code>tdc_encode_block(&amp;src, &amp;spec, &amp;out)</code> (one-shot)</td>
+</tr>
+<tr>
+<td><code>vtr_decode_column_qs(...)</code> (v4 decode)</td>
+<td><code>tdc_decode_peek</code> + <code>tdc_decode_block_into</code> (fixed-width)</td>
+</tr>
+<tr>
+<td><code>vtr_decode_column_qs_string(...)</code></td>
+<td><code>tdc_decode_block_varlen</code> (varlen / strings)</td>
+</tr>
+<tr>
+<td><code>vtr1_write_rowgroup_qs(...)</code></td>
+<td><code>tdc_stream_encoder_open</code> + N × <code>write_block</code> + <code>end_rowgroup</code> + <code>close</code></td>
+</tr>
+<tr>
+<td><code>vtr1_read_rowgroup_v4(...)</code></td>
+<td><code>tdc_stream_decoder_open</code> + N × <code>peek_block</code> + <code>read_block</code></td>
+</tr>
+<tr>
+<td>v4 per-column stats sidecar</td>
+<td><code>tdc_stream_encoder_set_rowgroup_stats</code> + <code>tdc_stream_decoder_get_stats</code></td>
+</tr>
+<tr>
+<td>v4 column directory + row-group index</td>
+<td>Trailing row-group index carried in the tdc container header</td>
+</tr>
+<tr>
+<td><code>VtrQuantizeSpec.scale / offset / target_type</code></td>
+<td><code>tdc_quantize_params.scale / offset / target</code></td>
+</tr>
+<tr>
+<td><code>VtrSpatialSpec.predictor</code> (LEFT/UP/AVG/PAETH/PLANE)</td>
+<td><code>tdc_pred2d_kind</code> (AUTO/LEFT/UP/AVERAGE/PAETH); PLANE is its own model id</td>
+</tr>
+</tbody>
+</table>
+<p>The vectra source tree under <code>vectra/src/vtr_codec_tdc.c</code> and <code>vectra/src/vtr1_tdc.c</code> is the reference implementation of this table. Every row maps to a concrete transition visible in the diff from vectra 0.4 to 0.5.0.</p>
+<h2 id="what-the-tdc-call-looks-like">What the tdc call looks like<a class="headerlink" href="#what-the-tdc-call-looks-like" title="Permanent link">&para;</a></h2>
+<p>The worked example below encodes a 1024-element <code>i64</code> ramp column through the tdc public API and decodes it back. It is the smallest possible stand-in for what <code>vtr_encode_column_qs</code> / <code>vtr_decode_column_qs</code> did inside the old codec, minus every vectra-specific integration detail (R bridge, validity bitmap plumbing, <code>VecArray</code> allocation). The full runnable program lives at <a href="../../examples/migration_one_column.c"><code>docs/examples/migration_one_column.c</code></a>; the encode-side core is:</p>
+<div class="language-c highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">tdc_block</span><span class="w"> </span><span class="n">src</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">src</span><span class="p">.</span><span class="n">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">values</span><span class="p">;</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">src</span><span class="p">.</span><span class="n">dtype</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_DT_I64</span><span class="p">;</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">src</span><span class="p">.</span><span class="n">layout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_LAYOUT_VECTOR_1D</span><span class="p">;</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">.</span><span class="n">rank</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">.</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="kt">int64_t</span><span class="p">)</span><span class="n">N</span><span class="p">;</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">tdc_shape_set_contiguous</span><span class="p">(</span><span class="o">&amp;</span><span class="n">src</span><span class="p">.</span><span class="n">shape</span><span class="p">);</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">tdc_codec_spec</span><span class="w"> </span><span class="n">spec</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">spec</span><span class="p">.</span><span class="n">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_MODEL_DELTA_1D</span><span class="p">;</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">spec</span><span class="p">.</span><span class="n">xform</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_XFORM_ZIGZAG</span><span class="p">;</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">spec</span><span class="p">.</span><span class="n">xform</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_XFORM_BYTE_SHUFFLE</span><span class="p">;</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="n">spec</span><span class="p">.</span><span class="n">entropy</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TDC_ENTROPY_LZ</span><span class="p">;</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">tdc_buffer</span><span class="w"> </span><span class="n">enc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="mi">0</span><span class="p">};</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="n">enc</span><span class="p">.</span><span class="n">realloc_fn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mg_realloc</span><span class="p">;</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="n">tdc_status</span><span class="w"> </span><span class="n">st</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tdc_encode_block</span><span class="p">(</span><span class="o">&amp;</span><span class="n">src</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">spec</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">enc</span><span class="p">);</span>
+</span></code></pre></div>
+<p>Running it on the author's machine:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>raw     : 8192 bytes (1024 x i64)
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>encoded : 106 bytes (one tdc_block_record)
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>decoded : 8192 bytes, match=yes
+</span></code></pre></div>
+<p>The encoded block is 106 bytes: 80 bytes of tdc block header plus 26 bytes for the residual payload. The residual collapses so hard because a monotone i64 ramp flows through DELTA_1D into a constant-valued residual, then through ZIGZAG and BYTE_SHUFFLE into a long run of zero bytes, then through LZ into a two-byte match sequence. This is the same flow the old <code>VTR_ENC_DELTA + VTR_COMP_SHUFFLE_LZ</code> path produced, except the result is one self-describing record instead of a struct of four sibling byte buffers.</p>
+<p>Three structural things changed at the call site relative to the v4 codec. The column handle lost its dedicated type: <code>VecArray</code> became a generic <code>tdc_block</code> with dtype plus layout plus shape. The encoding level and compression level merged into one <code>tdc_codec_spec</code> value with four independent axes (model, transform chain, entropy chain, per-stage params). And the multi-field <code>VtrEncodedCol</code> collapsed into a single <code>uint8_t *</code> byte buffer carrying every field the decoder needs. The decoder has no sidecar it reads; <code>tdc_decode_peek</code> on the first 80 bytes of the block is enough to size and allocate the output, and <code>tdc_decode_block_into</code> writes directly into the caller-owned buffer without touching the pointer.</p>
+<h2 id="format-compatibility">Format compatibility<a class="headerlink" href="#format-compatibility" title="Permanent link">&para;</a></h2>
+<p>tdc does not read v4 <code>.vtr</code> files, and the tdc-backed vectra writer does not produce a v4-compatible archive. The file extension stays <code>.vtr</code> because it is the vectra product identity, but the byte-for-byte contents are a tdc container (<code>TDC1</code> magic) with an embedded schema section, per-block tdc block records, and a trailing row-group index. The old column directory, encoding-tag byte, sidecar coefficient table, and per-encoding metadata layout are gone. Vectra's maintainers spelled out the break in <code>VECTRA_REWIRE.md</code>, and the project memory note records the same decision: archives written before vectra 0.5.0 need to be re-written through a current version before they round-trip through the new reader. No conversion tool ships with the release and none is planned. P5 deleted the v4 reader alongside the writer so that the codec surface has a single source of truth.</p>
+<p>Three design choices baked into tdc from day zero drive the format break. First, block records carry their own description: every field the decoder needs lives in the 80-byte record header, including dtype, layout, shape, model id, transform chain, entropy chain, and section sizes. Second, side metadata for predictor coefficients and dictionary tables lives inside the block record's side-metadata section, never in a sidecar. Third, the container metadata (schema, row-group index, statistics) duplicates into the block records themselves, so a single block record extracted with <code>dd</code> is still decodable on its own. None of these three properties held for the v4 layout, and layering them on top would have required a format-version bump plus a branch in every read path for every old encoding tag. P5 shipped precisely to delete that branching surface.</p>
+<p>Evolution from here gets simpler. Block-level model, transform, and entropy ids are <code>uint16_t</code>, with id ranges reserved up front: <code>0x0001</code>–<code>0x00FF</code> for core (stable), <code>0x0100</code>–<code>0x01FF</code> for experimental (semantics may change without a format bump), and <code>0xFF00</code>–<code>0xFFFF</code> for user-defined backends once a runtime plugin API lands. A tdc 0.2 reader will not decode a file written against a tdc release that ships a new core backend at id <code>0x0010</code>, but shipping that backend does not itself bump the format version. tdc 0.x may still break on-disk layout between minor releases while the API settles; the first stable archive version will land when the downstream consumers cross their own 1.0 thresholds. Every current tdc-written archive is a working artifact, not an archival artifact. Treat stored <code>.vtr</code> files the same way you treat a <code>gzip -3</code> cache, not the way you treat a tar backup.</p>
+<h2 id="when-not-to-migrate">When NOT to migrate<a class="headerlink" href="#when-not-to-migrate" title="Permanent link">&para;</a></h2>
+<p>Three situations are clear holds.</p>
+<p>A C consumer sitting on a large corpus of pre-0.5.0 <code>.vtr</code> archives cannot migrate by swapping the library alone: the tdc reader refuses to open those files. The migration path runs in three steps: read with an old vectra, re-write with a current vectra, then switch the reader dependency. The old reader has to stay in the build until the re-write covers every file in the corpus. The cost is transient rather than permanent, but it is the first line item in any migration plan.</p>
+<p>The second hold concerns string-heavy write pipelines. A consumer that depends on vectra's old CHARSXP dict-defer fast path will hit the regression flagged in vectra's <code>CLAUDE.md</code>: strings still round-trip correctly through tdc's varlen decode, but the per-string intern-hash lookup is back on the write side. If repeated-string write throughput drives the format choice, wait for the dict-defer rebuild on top of <code>TDC_MODEL_DICT_1D</code> output. That rebuild is scoped as a vectra-side fast path, not a tdc-side feature. tdc already exposes everything the rebuild will need; the holdup is prioritization, not capability.</p>
+<p>Adaptive <code>SMALL</code> mode is the third hold. Consumers leaning on <code>VTR_COMPRESS_SMALL</code>'s try-all-pick-smallest outer loop should know tdc carries no equivalent <code>tdc_encode_block_auto</code> call. Vectra's tdc bridge currently treats <code>SMALL</code> identically to <code>FAST</code>: one codec spec, no candidate menu. P2a deliberately left the outer loop on the vectra side rather than promoting it into tdc, because picking-smallest is a vectra-product choice rather than a codec-library primitive. If smallest-of-several-specs behaviour matters, either keep the outer loop inside the consumer (write to N buffers, pick the shortest, discard the rest), or wait until a second tdc consumer makes the concrete case for a core auto-spec call.</p>
+<p>Beyond those three holds, the migration is ready. Vectra itself passed its full <code>testthat</code> suite across the cutover with benchmarks inside the 1-2% ratio band that the project memory notes permit. The codec surface is smaller, the on-disk record is self-describing, and the same <code>tdc_encode_block</code> / <code>tdc_decode_block_into</code> pair encodes a 1D column, a 2D raster, a 2D stack, and a 3D volume without any dispatch branching leaking into the caller.</p>
+<h2 id="what-you-lose">What you lose<a class="headerlink" href="#what-you-lose" title="Permanent link">&para;</a></h2>
+<p>The losses are finite and listed once above; they repeat here so the list is one scroll away. The v4 on-disk format is gone: every pre-0.5.0 <code>.vtr</code> archive has to be round-tripped through a current vectra before the tdc reader will touch it. The adaptive <code>SMALL</code> outer loop is not shipped on the tdc side and is currently treated as <code>FAST</code> in the vectra bridge. The CHARSXP dict-defer fast path is removed on the write side pending a rebuild on top of <code>TDC_MODEL_DICT_1D</code>. Beyond those three, no v4 feature is silently missing; every encoding tag, predictor selection, and compression level in the v4 knob set has a direct counterpart in the function-mapping table.</p>
+<h2 id="what-you-gain">What you gain<a class="headerlink" href="#what-you-gain" title="Permanent link">&para;</a></h2>
+<p>The gains fall into three groups. The first is dimensional generality: the same <code>tdc_encode_block</code> / <code>tdc_decode_block_into</code> pair handles <code>VECTOR_1D</code>, <code>RASTER_2D</code>, <code>STACK_2D</code>, and <code>VOLUME_3D</code> blocks, and the model dispatcher branches on semantic layout rather than structural rank. A consumer that previously had parallel code paths for 1D columns and 2D rasters can collapse them into one. The second is the self-describing block record: the decoder needs no schema file, no sidecar, and no version negotiation — a <code>tdc_decode_peek</code> on the first 80 bytes of any record returns the dtype, layout, and shape the caller needs to allocate its destination buffer. The third is the reserved id space. Model, transform, and entropy ids are <code>uint16_t</code> with the core range carved out up front, which leaves room for a future runtime plugin API to slot in without touching the format version or the call surface used by code written today.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

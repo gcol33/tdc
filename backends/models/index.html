@@ -1,0 +1,1896 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed, dimensional compression library in C">
+      
+      
+      
+        <link rel="canonical" href="https://gcol33.github.io/tdc/backends/models/">
+      
+      
+        <link rel="prev" href="../../format/on-disk/">
+      
+      
+        <link rel="next" href="../transforms/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Models - tdc</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,700,700i%7CJetBrains+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#models" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="tdc" class="md-header__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            tdc
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Models
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../format/on-disk/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Format
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Backends
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../theory/predictors/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Theory
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance/tuning/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../extending/custom-backends/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Extending
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/troubleshooting/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="tdc" class="md-nav__button md-logo" aria-label="tdc" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    tdc
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/gcol33/tdc" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    gcol33/tdc
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Format
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../format/on-disk/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    On-disk format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backends
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Backends
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-when-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use / when NOT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-raw-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The RAW baseline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delta_1d-on-integers-and-floats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELTA_1D on integers and floats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pred_2d-kinds-compared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PRED_2D kinds compared
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plane_2d-on-a-tiled-dem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PLANE_2D on a tiled DEM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pred_3d-kinds-compared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PRED_3D kinds compared
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge cases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../transforms/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Transforms
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../entropy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entropy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Theory
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Theory
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/predictors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Predictor math
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../theory/lz-inner-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LZ inner loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance/tuning/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Extending
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../extending/custom-backends/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Custom backends
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration-vtr/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration from vectra
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-to-use-when-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When to use / when NOT
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-raw-baseline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The RAW baseline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delta_1d-on-integers-and-floats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DELTA_1D on integers and floats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pred_2d-kinds-compared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PRED_2D kinds compared
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plane_2d-on-a-tiled-dem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PLANE_2D on a tiled DEM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pred_3d-kinds-compared" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PRED_3D kinds compared
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-tuning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter tuning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#benchmarks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Benchmarks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#edge-cases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Edge cases
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integration-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integration notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="models">Models<a class="headerlink" href="#models" title="Permanent link">&para;</a></h1>
+<p>Models own the first stage of the tdc pipeline. A model reads a typed <code>tdc_block</code> and emits two byte streams: a residual stream that the transform chain will massage into entropy-coder-friendly bytes, and a tiny side-metadata stream that the decoder needs to run the inverse. Every model id in <code>codec.h</code> points to a vtable with <code>encode</code> and <code>decode</code> function pointers, acceptance bitmasks for dtypes and layouts, and a human-readable name. The dispatcher routes incoming blocks by layout first (<code>VECTOR_1D</code>, <code>RASTER_2D</code>, <code>STACK_2D</code>, <code>VOLUME_3D</code>) and by dtype second; a mismatch returns <code>TDC_E_LAYOUT</code> or <code>TDC_E_DTYPE</code> before any model code runs.</p>
+<p>This page walks every model backend tdc ships in v0 as a first-class pick in the common pipelines: <code>TDC_MODEL_RAW</code>, <code>TDC_MODEL_DELTA_1D</code>, <code>TDC_MODEL_PRED_2D</code>, <code>TDC_MODEL_PLANE_2D</code>, and <code>TDC_MODEL_PRED_3D</code>. Together they cover every layout the library supports. Dictionary models (<code>TDC_MODEL_DICT_1D</code>, <code>TDC_MODEL_DICT_NUMERIC_1D</code>), float-specific models (<code>TDC_MODEL_DELTA2_1D</code>, <code>TDC_MODEL_FPC_1D</code>), the sparse-zero specialization, the fused <code>TDC_MODEL_QUANTIZE_PRED_2D</code>, and <code>TDC_MODEL_STACK_2D</code> are mentioned where they overlap, but each has its own dedicated walkthrough. The quickstart's layout taste tests sit directly on top of the ids described here; reading that page first will make the examples below land faster.</p>
+<p>All six examples on this page compile as part of <code>TDC_DOC_EXAMPLES</code> in the top-level <code>CMakeLists.txt</code>, and <code>cmake --build build --config Debug</code> rebuilds them. Every byte count and ratio printed below came from running the built binaries on the author's Windows MSVC build at <code>tdc 0.2.0-dev</code>. The 80-byte block record header counts in every reported encoded size, which is why the RAW baseline on a 1 KiB input reports 1104 bytes instead of 1024.</p>
+<h2 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
+<p>A model produces a residual stream whose statistics are friendlier to downstream stages than the input's. The simplest case is <code>TDC_MODEL_RAW</code>, which copies the input byte-for-byte; its residual is the input and the transform + entropy stages carry the whole load. At the other end, <code>TDC_MODEL_PRED_3D / GRAD3D</code> runs a trilinear predictor that is exact on any tri-affine volume and leaves a zero residual over every interior voxel. Everything else sits on a continuum between those poles.</p>
+<p>Concretely, each model in <code>src/model/*.c</code> implements the two function pointers in <code>tdc_model_vt</code>:</p>
+<ul>
+<li><code>encode</code> reads the <code>tdc_block</code>, computes a per-element prediction from available causal neighbors, stores the modular difference <code>val - pred</code> (or <code>val XOR pred</code> on the float path) as the residual, and writes any decoder-visible state into <code>side_out</code>. Side metadata is tiny by contract: <code>DELTA_1D</code> stores zero bytes (the seed lives inside the residual stream), <code>PRED_2D</code> and <code>PRED_3D</code> store one byte (the resolved predictor kind), <code>PLANE_2D</code> stores a per-tile varint-packed coefficient table.</li>
+<li><code>decode</code> takes the residual bytes plus the side metadata and reconstructs <code>out-&gt;data</code> in place by inverting the predictor. Models never resize <code>out-&gt;data</code>: the block record carried the exact uncompressed byte count, the caller sized the buffer, the model only walks it.</li>
+</ul>
+<p>Models are dimension-aware. <code>DELTA_1D</code> iterates a flat vector; <code>PRED_2D</code> walks a raster row by row; <code>PRED_3D</code> walks a volume octant by octant because every face, every edge, and the corner voxel need different in-bounds rules for their neighbors. That iteration logic is what <code>layout/traverse.c</code> and <code>layout/tiling.c</code> help with; the model calls into layout, layout never calls into models. Byte shuffling, zigzag mapping, quantization, and LZ or Huffman coding live in the transform and entropy stages and do not belong anywhere in this file.</p>
+<p>Every model in v0 accepts only fixed-width numeric dtypes. Strings go through <code>TDC_MODEL_DICT_1D</code>, which owns its own <code>offsets[]</code> side metadata and uses <code>tdc_decode_block_varlen</code> to round-trip; the rest of the pipeline only sees numeric residuals. Integer dtypes wrap modularly at their native width on both sides, which is why a wrapping overflow in an <code>i64</code> delta still round-trips. Float dtypes go through an ordered-integer mapping (<code>src/core/float_order.h</code>) so that the prediction kernels operate entirely on unsigned integers; float subtraction never appears in the residual path.</p>
+<h2 id="when-to-use-when-not">When to use / when NOT<a class="headerlink" href="#when-to-use-when-not" title="Permanent link">&para;</a></h2>
+<p>Which model to reach for first falls out of the block's layout and dtype.</p>
+<p><strong>RAW</strong> pays off on two inputs. The first is already-random data (LCG noise, hashed keys, ciphertext) where no predictor will find structure; RAW plus a byte-level entropy coder is the honest baseline. The second is short blocks. When the 80-byte block record header already dominates the compressed size, the predictor's residual would be just as small, so the simpler model wins on decode speed. RAW falls over as soon as the data has obvious structure the transforms and the entropy coder cannot see: a monotonic integer column, a smooth raster, a voxel grid with a gradient. A byte-level LZ matcher cannot turn an <code>i32</code> ramp <code>1000 + i*3</code> into matches because no two adjacent 4-byte elements share a byte; the ratio returns roughly 1.0.</p>
+<p><strong>DELTA_1D</strong> fits a single numeric column with along-axis correlation: sensor timeseries, monotonic ids, quantized signals, float traces with mostly-shared exponents. The model accepts every fixed-width numeric dtype. The integer path writes <code>val - prev</code> in modular arithmetic at the input width; the float path XORs raw bits so that consecutive samples sharing an exponent produce high-order zeros. DELTA_1D is the wrong pick on incompressible columns (random draws, hashed ids), on a column where neighboring values are unrelated (shuffled keys), and on anything multi-dimensional; the model rejects <code>RASTER_2D</code> and above with <code>TDC_E_LAYOUT</code> before running.</p>
+<p><strong>PRED_2D</strong> covers natural rasters where each pixel has useful left / up / up-left neighbors. Accepted dtypes cover <code>i8</code>–<code>i64</code>, <code>u8</code>–<code>u64</code>, and all three IEEE floats. Pick <code>PAETH</code> when axes disagree about which neighbor is closest (natural images, thermal maps, sparse bi-axial structure); pick <code>LEFT</code> or <code>UP</code> when only one axis carries signal; pick <code>AUTO</code> when the block is small enough that the 10,000-element sample cost is invisible. The model is wrong on incompressible rasters (camera noise, random mixes): the residual is the input minus a random value, still random, and <code>RAW + LZ</code> beats it slightly because it skips the model's walking cost. Float rasters that need quantizing should pass through <code>TDC_MODEL_QUANTIZE_PRED_2D</code> instead, to avoid the ordering bug where the predictor emits a float residual that the <code>QUANTIZE</code> transform then misinterprets.</p>
+<p><strong>PLANE_2D</strong> fits a per-tile <code>a + b·x + c·y</code> plane by solving a 3×3 normal-equation system, stores the three int32 fixed-point coefficients as side metadata, and subtracts the plane before writing the residual. The sweet spot is piecewise-planar rasters with long ramps: DEM tiles, depth maps, fluid-field slices, synthetic aperture products. The wrong pick is a raster with no planar structure: PRED_2D's one-byte side metadata beats PLANE_2D's per-tile coefficients on anything that is not locally planar, and on incompressible noise both collapse to roughly 1.0.</p>
+<p><strong>PRED_3D</strong> is the only <code>VOLUME_3D</code> model in v0. <code>GRAD3D</code> is exact on tri-affine fields and the right pick when the volume stays smooth over its full extent. <code>PAETH3D</code> handles volumes with sharp edges better because on each face and each edge run it reduces to a 2D Paeth or 1D nearest-neighbor rule and adapts to the local discontinuity. <code>AVG3</code> and the single-axis kinds (<code>LEFT</code>, <code>UP</code>, <code>FRONT</code>) fit volumes where the correlation lives mostly on one axis. Pick <code>AUTO</code> when the volume is a black box; the sample-prefix cost is small and the resolved kind lands in the 1-byte side metadata so the decoder dispatches with no ambiguity. PRED_3D is the wrong pick on <code>STACK_2D</code> layouts where the frames are independent; reach for <code>TDC_MODEL_STACK_2D</code> with <code>inter_slice = 0</code> in that case.</p>
+<h2 id="the-raw-baseline">The RAW baseline<a class="headerlink" href="#the-raw-baseline" title="Permanent link">&para;</a></h2>
+<p><code>docs/examples/models_raw.c</code> encodes three blocks with <code>tdc_codec_spec_raw()</code> (identity model, no transforms, passthrough entropy) and with <code>RAW + ENTROPY_LZ</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>-- i32 ramp (N=256): --
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>RAW                        raw= 1024 encoded= 1104 ratio= 0.93x
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>RAW + LZ                   raw= 1024 encoded= 1116 ratio= 0.92x
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>-- u8 noise (128x128): --
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>RAW                        raw=16384 encoded=16464 ratio= 1.00x
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>RAW + LZ                   raw=16384 encoded=16476 ratio= 0.99x
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>-- u8 repeating pattern (N=4096, period 16): --
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>RAW                        raw= 4096 encoded= 4176 ratio= 0.98x
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>RAW + LZ                   raw= 4096 encoded=  114 ratio=35.93x
+</span></code></pre></div>
+<p>Three takeaways. First, every RAW block carries the 80-byte block record header; for short inputs the header alone pushes the ratio below 1. Second, LZ on an <code>i32</code> ramp finds no matches (no two adjacent 4-byte elements share a byte) and adds the entropy stage's book-keeping on top of the header, hurting the ratio by another dozen bytes. Third, LZ on a 16-byte-periodic byte pattern collapses to a near-optimal compressed size because the matcher sees 4080 bytes of exact repetition after the first 16. The same input fed to any of the structure-aware models below beats 35.93× without breaking a sweat, but the LZ-only path is a useful reference for what the entropy stage alone can do.</p>
+<p>The construction path is the same as every other spec in tdc. The caller sets <code>spec.model = TDC_MODEL_RAW</code>, optionally fills <code>spec.entropy[0]</code>, initializes a <code>tdc_buffer</code> with a <code>realloc_fn</code>, and calls <code>tdc_encode_block</code>. Decode is the usual peek-then-into pair; nothing about RAW requires a special code path.</p>
+<h2 id="delta_1d-on-integers-and-floats">DELTA_1D on integers and floats<a class="headerlink" href="#delta_1d-on-integers-and-floats" title="Permanent link">&para;</a></h2>
+<p><code>docs/examples/models_delta1d.c</code> exercises DELTA_1D across three inputs: a near-linear <code>i64</code> timestamp column, a random-walk <code>i64</code> column, and an <code>f64</code> polynomial sine wave. The float path takes the XOR-delta variant automatically; the driver dispatches on dtype.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>-- i64 timestamp column (N=4096): --
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  RAW + LZ          raw=32768 enc=20638 ratio=  1.59x
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  DELTA+ZZ+BSHUF+LZ raw=32768 enc=  127 ratio=258.02x
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>-- i64 random walk (N=4096):
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  RAW + LZ          raw=32768 enc=16817 ratio=  1.95x
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>  DELTA+ZZ+BSHUF+LZ raw=32768 enc= 8268 ratio=  3.96x
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>-- f64 smooth sinusoid (XOR-delta path, N=4096):
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>  RAW + LZ          raw=32768 enc=32860 ratio=  1.00x
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>  DELTA + BSHUF + LZ raw=32768 enc=25460 ratio=  1.29x
+</span></code></pre></div>
+<p>For the timestamp column the delta stream is almost constant (1000 to 1006); zigzag maps those small signed values to single-byte magnitudes, byte shuffle groups the one interesting byte lane, and LZ collapses the long runs. 258× at 32 KiB input, ending at 127 bytes (of which 80 are the block record header). The random walk is harder: deltas span about ±2048 after the step function used in the example, which is a 12-bit range. DELTA still more than doubles the LZ-only ratio because the walk's absolute values roam over the whole <code>i64</code> range and have no byte-level repetition for LZ to catch.</p>
+<p>The float case is the one to dwell on. <code>TDC_DT_F64</code> goes through DELTA_1D's XOR-delta kernel rather than the integer subtraction kernel. <code>ZIGZAG</code> is an integer transform, so the spec drops it. The ratio of 1.29 reflects the fact that a polynomial sine wave changes its exponent often enough that consecutive bit patterns do not share as much as the top mantissa bits would suggest. DELTA_1D on floats is a better pick than DELTA_1D on raw bytes but not a great pick on smoothly-varying signals with fast-moving exponents; <code>TDC_MODEL_DELTA2_1D</code> and <code>TDC_MODEL_FPC_1D</code> are the specialized float predictors to reach for when this line of the table matters.</p>
+<h2 id="pred_2d-kinds-compared">PRED_2D kinds compared<a class="headerlink" href="#pred_2d-kinds-compared" title="Permanent link">&para;</a></h2>
+<p><code>docs/examples/models_pred2d_kinds.c</code> encodes a 256×256 <code>u8</code> raster with a bi-axial gradient plus a low-amplitude diagonal ripple. Every kind runs; the PAETH round trip is verified with <code>memcmp</code>.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>-- 256x256 u8, bi-axial gradient + diagonal ripple (raw=65536): --
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  LEFT       enc=  1895 ratio= 34.58x
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  UP         enc=   438 ratio=149.63x
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  AVERAGE    enc=  2238 ratio= 29.28x
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  PAETH      enc=   188 ratio=348.60x
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  PAETH roundtrip: ok
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  AUTO       enc=   188 ratio=348.60x
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>-- 256x256 u8, horizontal gradient (UP is exact): --
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>  LEFT       enc=   106 ratio=618.26x
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>  UP         enc=   357 ratio=183.57x
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  PAETH      enc=   107 ratio=612.49x
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>  AUTO       enc=   107 ratio=612.49x
+</span></code></pre></div>
+<p>For the bi-axial input LEFT explains the <code>x</code> component and leaves the <code>y</code> component in the residual; UP does the reverse; PAETH captures the plane <code>x + y - up_left</code> and reduces the residual to the diagonal ripple alone. AVERAGE is the worst of the lot here because <code>(left + up) / 2</code> under C truncation is half the plane rather than the plane itself, leaving a systematic bias. AUTO samples the first 10,000 elements, scores every kind by <code>sum |residual|</code>, and picks the winner. On this input AUTO and PAETH produce identical output because AUTO resolved to PAETH and wrote the same 1-byte side metadata.</p>
+<p>The horizontal gradient flips the usual intuition. UP predicts every interior row exactly, but pays for the 0..255 seed row; LEFT has a constant-1 residual everywhere, which LZ collapses into one long match of 106 bytes. PAETH reduces to LEFT on this input and lands within one byte of LEFT's output. This is what "PAETH is a safe default" means in practice: when the gradient lives on one axis PAETH picks up the winning single-axis predictor, and when the gradient is bi-axial PAETH captures the plane directly.</p>
+<p>The params struct is <code>tdc_pred2d_params { tdc_pred2d_kind kind; }</code>. Passing NULL is equivalent to <code>AUTO</code>. The resolved kind is always recorded as one byte in side metadata, so the decoder never re-runs the scoring loop.</p>
+<h2 id="plane_2d-on-a-tiled-dem">PLANE_2D on a tiled DEM<a class="headerlink" href="#plane_2d-on-a-tiled-dem" title="Permanent link">&para;</a></h2>
+<p><code>docs/examples/models_plane2d.c</code> encodes a 512×512 <code>i16</code> raster split into four quadrants, each holding a distinct plane <code>a + b·x + c·y</code>:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-- 512x512 i16 piecewise-planar DEM (raw=524288): --
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  PRED_2D / PAETH                  enc=   188 ratio=2788.77x
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  PLANE_2D, tile_size=16           enc=  3296 ratio=159.07x
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  PLANE_2D, tile_size=32 (default) enc=   928 ratio=564.97x
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  PLANE_2D, tile_size=128          enc=   160 ratio=3276.80x
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>-- 512x512 i16 incompressible noise: --
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  PRED_2D / PAETH                  enc=524381 ratio=  1.00x
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  PLANE_2D, tile_size=32           enc=526553 ratio=  1.00x
+</span></code></pre></div>
+<p>PAETH hits 2788× on the DEM because every pixel except the four quadrant seams matches a linear predictor exactly; only the seam pixels generate residual. PLANE_2D at the default tile_size of 32 loses to PAETH here because each 32×32 tile contributes a three-coefficient side record even on the interior of a single quadrant, and the varint encoder can fold redundant neighbors down to about three bytes per tile but not to zero. Raising <code>tile_size</code> to 128 amortizes the side metadata across much larger tiles and wins outright (3276× vs 2788×); lowering it to 16 quadruples the tile count and loses. On the noise input both models collapse; the side-metadata cost shows up as 2.2 KiB of dead weight on top of an already-incompressible stream.</p>
+<p>Tuning <code>tile_size</code> is the one knob PLANE_2D exposes via <code>tdc_plane2d_params { uint16_t tile_size; }</code>. A <code>tile_size</code> of 0 resolves to the default 32. The right value depends on two things: how long the locally-planar runs are (a raster with 64-pixel planar tiles is best served by <code>tile_size = 64</code>) and how many discontinuities the raster holds (a patchy raster needs more, smaller tiles or the predictor is fitting a plane across a seam). PAETH stays the safer default on unknown rasters because its side metadata is one byte regardless of resolution.</p>
+<p>PLANE_2D accepts <code>i8</code>, <code>i16</code>, <code>i32</code>, <code>u8</code>, <code>u16</code>, <code>u32</code>. It rejects <code>i64</code> and <code>u64</code> (the accumulator inside the normal-equation solver is <code>int64_t</code> and cannot prove overflow-free at 64-bit input) and rejects floats (quantize through <code>TDC_MODEL_QUANTIZE_PRED_2D</code> first). Layout is <code>RASTER_2D</code> only.</p>
+<h2 id="pred_3d-kinds-compared">PRED_3D kinds compared<a class="headerlink" href="#pred_3d-kinds-compared" title="Permanent link">&para;</a></h2>
+<p><code>docs/examples/models_pred3d.c</code> runs every PRED_3D kind on two volumes: a pure tri-affine field (the GRAD3D sweet spot) and a smooth Gaussian bell with a sharp step edge:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>-- 24x32x40 i32 tri-affine volume (raw=122880): --
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  LEFT       enc=  1284 ratio=  95.70x
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  UP         enc=   733 ratio= 167.64x
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  FRONT      enc=   627 ratio= 195.98x
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  AVG3       enc=   135 ratio= 910.22x
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  GRAD3D     enc=   129 ratio= 952.56x
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  PAETH3D    enc=   137 ratio= 896.93x
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  AUTO       enc=   129 ratio= 952.56x
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>-- 16x32x32 i32 smooth bell + step edge (raw=65536): --
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>  LEFT       enc=  5129 ratio=  12.78x
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>  AVG3       enc= 12278 ratio=   5.34x
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>  GRAD3D     enc=  7822 ratio=   8.38x
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>  PAETH3D    enc=  7816 ratio=   8.38x
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  AUTO       enc=  7822 ratio=   8.38x
+</span></code></pre></div>
+<p>With the tri-affine volume GRAD3D hits the zero-residual fast path: <code>pred = a + b + c - ab - ac - bc + abc</code> is exact for every function linear in all three axes, so every interior voxel predicts its exact value and only the three boundary seed faces contribute residual bytes. AVG3 comes close (910× vs 952×) because on the inner box <code>(a + b + c) / 3</code> is a good plane approximation but loses at most one LSB to C integer truncation per voxel. PAETH3D on smooth data picks the face neighbor closest to GRAD3D's linear predictor and lands within one integer of the same answer.</p>
+<p>The bell + step volume makes every kind fight the step edge. LEFT wins on this input because the bell has strong x-axis correlation (r² on x alone is close to 1) and the step edge is aligned with the x-axis boundary, so LEFT gets one big residual at the step and short residuals everywhere else. GRAD3D pays for the step seven voxels at a time because every tri-affine term that crosses the discontinuity contributes a residual byte to the stream, which adds up fast across a 64³ volume; PAETH3D adapts to the step but still needs to carry the edge data on its face-slab path. AVG3 does worst here. <code>(a + b + c) / 3</code> is a poor predictor near a step: all three neighbors lie on one side of the edge while the target lies on the other, so the residual is about <code>step / 3</code> for every voxel in the affected slab.</p>
+<p>The right default for natural volumes (medical CT, seismic blocks, climate fields) is <code>TDC_PRED3D_AUTO</code> or <code>TDC_PRED3D_PAETH3D</code>. AUTO samples the first slab and picks by <code>sum |residual|</code>; the cost is a single slab of prediction at encode time and nothing at decode. <code>GRAD3D</code> is the right pick when the volume is known to be smooth throughout (synthetic fields, bandlimited simulations). <code>LEFT / UP / FRONT</code> exist for the edge cases where a volume is structured on exactly one axis and the single-axis predictor's residual is already tiny.</p>
+<h2 id="parameter-tuning">Parameter tuning<a class="headerlink" href="#parameter-tuning" title="Permanent link">&para;</a></h2>
+<p>Every model except RAW and DELTA_1D exposes at least one knob.</p>
+<p><code>tdc_pred2d_params { kind }</code> and <code>tdc_pred3d_params { kind }</code> select among the enumerated predictor kinds. Passing NULL resolves to <code>AUTO</code>, which scores the kinds on a sample prefix and picks the smallest <code>sum |residual|</code>. AUTO adds a small encode-time cost (one sample pass per kind) and zero decode cost; the resolved kind lands in side metadata. Call sites that know their data shape can skip AUTO: <code>PAETH</code> on natural 2D rasters, <code>GRAD3D</code> on smooth volumes, <code>PAETH3D</code> on volumes with discontinuities.</p>
+<p><code>tdc_plane2d_params { uint16_t tile_size }</code> sets the per-tile square side. Default is 32. The bench line in <code>models_plane2d.c</code> shows the sensitivity clearly: on a four-quadrant 512×512 DEM, <code>tile_size = 128</code> beats 32 by 3.5× because the locally-planar runs are longer than 128 pixels; on a raster that genuinely changes every 16 pixels, <code>tile_size = 16</code> would win. The encoder's side metadata is a delta-coded varint stream over the 3×N tile-coefficient table, so interior tiles that predict exactly from their left neighbor cost about three bytes each; raising <code>tile_size</code> beyond the actual planar-run length costs a large per-tile residual. The knob is a single integer; a sensitivity sweep over <code>{16, 32, 64, 128}</code> covers most real use cases.</p>
+<p><code>tdc_stack2d_params { kind, inter_slice }</code> is described in full in the STACK_2D walkthrough; briefly, <code>inter_slice = 1</code> subtracts the previous slice before running the in-plane predictor (right for frame stacks where consecutive frames are nearly identical) and <code>inter_slice = 0</code> treats each frame independently (right for independent frames batched for storage).</p>
+<p><code>tdc_quantize_pred2d_params</code> fuses <code>QUANTIZE</code> with <code>PRED_2D</code> for float rasters. The two sub-params (<code>scale / offset / target</code> on the quantize side, <code>kind</code> on the pred2d side) apply atomically. Unfused, running <code>model = PRED_2D, xform[0] = QUANTIZE</code> on an f32 raster runs the predictor first and produces a float residual the quantizer then mangles; the fused model avoids that ordering bug by construction.</p>
+<p>Callers pass params as a <code>const void *</code> in <code>tdc_codec_spec.model_params</code>, and the receiving model casts back to its own params type. Passing NULL is always legal and always resolves to a working default. Adding a field to a params struct stays forward-compatible as long as the new field has a meaningful zero value; otherwise the format version bumps.</p>
+<h2 id="benchmarks">Benchmarks<a class="headerlink" href="#benchmarks" title="Permanent link">&para;</a></h2>
+<p>The numbers below came from running each example once on the author's machine (Windows 10, MSVC 2022, <code>tdc 0.2.0-dev</code>, Debug configuration). They are ratio comparisons, not absolute throughput; a separate <a href="../../performance/tuning/">performance tuning page</a> covers encode and decode speed with warm-cache medians.</p>
+<table>
+<thead>
+<tr>
+<th>Input (raw bytes)</th>
+<th>Spec</th>
+<th style="text-align: right;">Encoded</th>
+<th style="text-align: right;">Ratio</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>4096-element i64 timestamps (32,768 B)</td>
+<td>RAW + LZ</td>
+<td style="text-align: right;">20,638</td>
+<td style="text-align: right;">1.59×</td>
+</tr>
+<tr>
+<td>4096-element i64 timestamps</td>
+<td>DELTA_1D + ZIGZAG + BSHUF + LZ</td>
+<td style="text-align: right;">127</td>
+<td style="text-align: right;">258.02×</td>
+</tr>
+<tr>
+<td>4096-element i64 random walk (32,768 B)</td>
+<td>RAW + LZ</td>
+<td style="text-align: right;">16,817</td>
+<td style="text-align: right;">1.95×</td>
+</tr>
+<tr>
+<td>4096-element i64 random walk</td>
+<td>DELTA_1D + ZIGZAG + BSHUF + LZ</td>
+<td style="text-align: right;">8,268</td>
+<td style="text-align: right;">3.96×</td>
+</tr>
+<tr>
+<td>4096-element f64 sinusoid (32,768 B)</td>
+<td>RAW + LZ</td>
+<td style="text-align: right;">32,860</td>
+<td style="text-align: right;">1.00×</td>
+</tr>
+<tr>
+<td>4096-element f64 sinusoid</td>
+<td>DELTA_1D + BSHUF + LZ</td>
+<td style="text-align: right;">25,460</td>
+<td style="text-align: right;">1.29×</td>
+</tr>
+<tr>
+<td>256×256 u8 bi-axial gradient (65,536 B)</td>
+<td>PRED_2D / PAETH + LZ</td>
+<td style="text-align: right;">188</td>
+<td style="text-align: right;">348.60×</td>
+</tr>
+<tr>
+<td>256×256 u8 horizontal gradient (65,536 B)</td>
+<td>PRED_2D / LEFT + LZ</td>
+<td style="text-align: right;">106</td>
+<td style="text-align: right;">618.26×</td>
+</tr>
+<tr>
+<td>512×512 i16 DEM quadrants (524,288 B)</td>
+<td>PRED_2D / PAETH + ZZ + BSHUF + LZ</td>
+<td style="text-align: right;">188</td>
+<td style="text-align: right;">2788.77×</td>
+</tr>
+<tr>
+<td>512×512 i16 DEM quadrants</td>
+<td>PLANE_2D tile=32 + ZZ + BSHUF + LZ</td>
+<td style="text-align: right;">928</td>
+<td style="text-align: right;">564.97×</td>
+</tr>
+<tr>
+<td>512×512 i16 DEM quadrants</td>
+<td>PLANE_2D tile=128 + ZZ + BSHUF + LZ</td>
+<td style="text-align: right;">160</td>
+<td style="text-align: right;">3276.80×</td>
+</tr>
+<tr>
+<td>24×32×40 i32 tri-affine (122,880 B)</td>
+<td>PRED_3D / GRAD3D + ZZ + BSHUF + LZ</td>
+<td style="text-align: right;">129</td>
+<td style="text-align: right;">952.56×</td>
+</tr>
+<tr>
+<td>16×32×32 i32 bell + step (65,536 B)</td>
+<td>PRED_3D / PAETH3D + ZZ + BSHUF + LZ</td>
+<td style="text-align: right;">7,816</td>
+<td style="text-align: right;">8.38×</td>
+</tr>
+</tbody>
+</table>
+<p>Reading the table: the model stage is where ratio comes from. <code>RAW + LZ</code> on the timestamp column returns 1.59× because LZ matches short byte-runs inside the i64 representation, and adding DELTA_1D in front drops the residual to near-constant bytes so the ratio jumps to 258×. <code>RAW + LZ</code> on the f64 sinusoid returns 1.00× because the bit patterns are unique enough that LZ finds nothing; adding DELTA_1D's XOR path helps modestly. <code>PRED_2D / PAETH</code> on the DEM reaches 2788× because PAETH predicts exactly on three of the four quadrants' interiors, and raising <code>PLANE_2D</code>'s tile_size to 128 matches or beats PAETH when the planar runs are longer than the tile.</p>
+<p>Two pointers are worth flagging against these numbers. The zero-residual fast path (<code>TDC_BLOCK_FLAG_ZERO_RESIDUAL</code>) fires whenever the model reports an all-zero residual, which short-circuits the transform and entropy stages entirely. The tri-affine volume (952×) hits this path; most of the ratio comes from the flag, not from LZ. Synthetic benchmarks that are exactly predictable will therefore overstate real compression on noisy data; the random-walk line and the bell + step volume are calibration points for what a genuinely-noisy input looks like after a well-chosen model.</p>
+<p>The next-closest tdc backend for each row is the RAW + LZ baseline above it. A comparison against the closest third-party library (<code>zstd -3</code>, say) belongs in the <a href="../../performance/tuning/">performance tuning page</a>, where encode / decode timing and a third-party reference appear side by side.</p>
+<h2 id="edge-cases">Edge cases<a class="headerlink" href="#edge-cases" title="Permanent link">&para;</a></h2>
+<p><code>docs/examples/models_edge_cases.c</code> exercises the corners:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>-- empty block (n=0, i32, VECTOR_1D): --
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  DELTA_1D + LZ                raw=   0 encoded=  92  (empty block, no payload to decode)
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>-- single element (n=1): --
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  DELTA_1D + LZ                raw=   4 encoded=  96  memcmp=ok
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>-- all-equal block (n=4096, zero-residual fast path): --
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>  DELTA_1D + LZ                raw=16384 encoded= 106  memcmp=ok
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>-- layout mismatch (PRED_2D on VECTOR_1D): --
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>  PRED_2D on VECTOR_1D         error: layout not accepted by stage
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>-- degenerate raster 1x256 (PRED_2D/PAETH): --
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>  PAETH on 1xW raster          encoded=100 bytes
+</span></code></pre></div>
+<p>An empty block (<code>n_elems = 0</code>) is valid. The encoder writes the 80-byte block record header plus 12 bytes of per-stage framing and returns <code>TDC_OK</code>; the decoder's peek reports zero bytes required and no payload needs copying. Callers that ferry zero-length slices through tdc can rely on this path round-tripping.</p>
+<p>A single-element block is also valid. DELTA_1D stores the seed (no deltas to write), the transform chain sees 4 bytes, and the block record lands at 96 bytes (80 bytes of header plus 16 bytes of per-stage framing). The ratio is meaningless on a 4-byte input; what the line demonstrates is that the pipeline does not choke on <code>n_elems = 1</code>.</p>
+<p>An all-equal block trips the zero-residual fast path. DELTA_1D maps a constant column to a non-zero seed plus zero deltas, which is not quite an all-zero residual but produces a residual that LZ collapses almost entirely. The output lands at 106 bytes on a 16 KiB input. Synthetic benchmarks of "the compressor" run against this kind of input, and the resulting ratios measure the fast path, not the matcher.</p>
+<p>Layout mismatches are caught before any model code runs. <code>PRED_2D</code> is restricted to <code>RASTER_2D</code> via its <code>accepted_layouts</code> bitmask; feeding it a <code>VECTOR_1D</code> block returns <code>TDC_E_LAYOUT</code> with the output buffer untouched. The same gate catches <code>DELTA_1D</code> on a 3D block (returns <code>TDC_E_LAYOUT</code>) and <code>PLANE_2D</code> on an <code>f64</code> raster (returns <code>TDC_E_DTYPE</code>). Callers can run <code>tdc_block_validate</code> ahead of time to catch shape and layout errors, though the encoder will re-check regardless; the validation is cheap enough to leave on in release builds.</p>
+<p>A degenerate 1×256 raster is a boundary case for PRED_2D: every pixel's "up" neighbor is out of bounds because <code>ny = 1</code>, so the predictor degenerates to LEFT on the single row. The PAETH kernel handles this internally (the tie-break rules fall out of the formula), and the output is 100 bytes, roughly what DELTA_1D on the same 256-byte column would produce. 1-row and 1-column rasters are unusual but valid.</p>
+<h2 id="integration-notes">Integration notes<a class="headerlink" href="#integration-notes" title="Permanent link">&para;</a></h2>
+<p>The five model backends on this page pair naturally with different transform + entropy chains. A short menu:</p>
+<ul>
+<li><strong>RAW</strong> pairs with <code>ENTROPY_LZ</code> or <code>ENTROPY_LZ_OPT</code> for the "compress the bytes as-is" case. Add <code>XFORM_BYTE_SHUFFLE</code> when the input is a multi-byte dtype whose per-lane statistics differ (a timeseries of <code>f32</code> measurements with a near-constant exponent byte, a <code>u32</code> column whose high lane is nearly all zero). The shuffle transposes the input by byte lane, so the 4-byte <code>f32</code> elements become four contiguous runs (all sign bits, all upper-exponent bytes, all mantissa-high bytes, all mantissa-low bytes) and LZ then matches within each run. Do not chain <code>XFORM_QUANTIZE</code> directly on floats under RAW; reach for <code>TDC_MODEL_QUANTIZE_PRED_2D</code> instead so the quantization precedes the predictor, and the decoder rehydrates through the paired model automatically.</li>
+<li><strong>DELTA_1D</strong> on integers: chain <code>ZIGZAG</code>, <code>BYTE_SHUFFLE</code>, <code>LZ</code>. On floats drop zigzag and keep <code>BYTE_SHUFFLE + LZ</code>.</li>
+<li><strong>PRED_2D</strong> on integers: same chain as DELTA_1D. On <code>u8</code> rasters zigzag is a no-op (the dtype is already unsigned) and byte shuffle at width 1 is another no-op, so the example in this page runs straight from the model into LZ. On <code>u16</code> or <code>u32</code> rasters keep byte shuffle in the chain.</li>
+<li><strong>PLANE_2D</strong> uses the same <code>ZIGZAG + BYTE_SHUFFLE + LZ</code> chain as PRED_2D. Side metadata is varint-packed internally, so no separate transform is needed for the coefficient table.</li>
+<li><strong>PRED_3D</strong> uses <code>ZIGZAG + BYTE_SHUFFLE + LZ</code> on integers and <code>BYTE_SHUFFLE + LZ</code> on floats. A volume whose residual is already near-zero after GRAD3D benefits most from byte shuffle at the natural element width.</li>
+</ul>
+<p>Models conflict with a few chains. <code>XFORM_QUANTIZE</code> before a predictor model is almost always wrong: the predictor wants to see the same dtype on encode and decode, so quantization at that point should go through the fused model id (<code>TDC_MODEL_QUANTIZE_PRED_2D</code>). Stacking two entropy stages (<code>entropy[0] = LZ, entropy[1] = HUFFMAN</code>) is legal and works but tends to lose to a single <code>ENTROPY_LZ_SPLIT</code> for the same reason a two-pass image compressor loses to a single pass that sees both streams jointly.</p>
+<p>All five backends honor the same allocator convention. The encoder grows <code>out-&gt;data</code> through the caller's <code>realloc_fn</code> (same <code>(user, ptr, n)</code> contract as the library's internal allocations). The decoder asks the caller to size <code>dst-&gt;data</code> ahead of time using <code>tdc_decode_peek</code>; the model writes in place and never reallocates. Scratch memory for ordering tables, residual staging, and the encoder's zero-residual check all goes through the same allocator if the caller uses <code>tdc_decode_block_ex</code>; otherwise internal scratch falls back to libc <code>realloc</code>. R consumers plug an arena here; CLI tools use plain <code>realloc</code>.</p>
+<p>The <a href="../transforms/">Transforms</a> and <a href="../entropy/">Entropy</a> pages cover the downstream stages. The <a href="../../theory/predictors/">Predictor math</a> page derives Paeth, GRAD3D, and the PLANE_2D normal-equation solve. <a href="../../performance/tuning/">Performance tuning</a> carries the timed throughput numbers that this page only ratio-summarizes.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
