@@ -100,7 +100,12 @@ typedef enum {
     TDC_XFORM_QUANTIZE     = 0x0001, /* lossy: f32/f64 -> narrow int */
     TDC_XFORM_ZIGZAG       = 0x0002, /* signed -> unsigned, small magnitudes near 0 */
     TDC_XFORM_BYTE_SHUFFLE = 0x0003, /* transpose by byte lane (8/4/2 byte elems) */
-    TDC_XFORM_BIT_SHUFFLE  = 0x0004  /* transpose by bit lane (post-v0; reserved) */
+    TDC_XFORM_BIT_SHUFFLE  = 0x0004, /* transpose by bit lane (post-v0; reserved) */
+    /* Experimental range (0x0100-0x01FF). Backends in this range are
+     * statically compiled, reserved via an enum entry, and may change
+     * semantics without a format version bump. Used as the landing pad
+     * for reference backends shipped alongside the "Extending" vignette. */
+    TDC_XFORM_COMPLEMENT   = 0x0100  /* bitwise-NOT (reference backend) */
 } tdc_xform_id;
 
 /* Entropy coders */

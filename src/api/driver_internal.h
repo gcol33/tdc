@@ -315,6 +315,7 @@ static inline tdc_dtype driver_xform_out_dtype(tdc_xform_id xid,
     switch (xid) {
         case TDC_XFORM_BYTE_SHUFFLE:
         case TDC_XFORM_BIT_SHUFFLE:
+        case TDC_XFORM_COMPLEMENT:
             return in;
         case TDC_XFORM_ZIGZAG:
             switch (in) {

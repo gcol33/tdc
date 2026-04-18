@@ -26,6 +26,9 @@ extern const tdc_xform_vt tdc_xform_byte_shuffle_vt;
 extern const tdc_xform_vt tdc_xform_bit_shuffle_vt;
 extern const tdc_xform_vt tdc_xform_quantize_vt;
 extern const tdc_xform_vt tdc_xform_zigzag_vt;
+/* Experimental range (0x0100-0x01FF): reference backend for the
+ * "Extending" vignette. Statically compiled, always present. */
+extern const tdc_xform_vt tdc_xform_complement_vt;
 
 #ifdef __cplusplus
 }

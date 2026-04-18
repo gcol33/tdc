@@ -133,6 +133,7 @@ const tdc_xform_vt *tdc_xform_get(tdc_xform_id id) {
         case TDC_XFORM_QUANTIZE:     return &tdc_xform_quantize_vt;
         case TDC_XFORM_ZIGZAG:       return &tdc_xform_zigzag_vt;
         case TDC_XFORM_BIT_SHUFFLE:  return &tdc_xform_bit_shuffle_vt;
+        case TDC_XFORM_COMPLEMENT:   return &tdc_xform_complement_vt;
         default:
             return (const tdc_xform_vt *)plugin_lookup(
                 (uint16_t)id, s_xform_slots, s_xform_count);

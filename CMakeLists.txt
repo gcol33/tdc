@@ -81,6 +81,7 @@ set(TDC_SOURCES
     src/transform/zigzag.c
     src/transform/shuffle.c
     src/transform/bitshuffle.c
+    src/transform/complement.c
 
     src/symbols/residuals.c
     src/symbols/runs.c
@@ -283,6 +284,10 @@ if(TDC_BUILD_TESTS)
     add_executable(test_plugin tests/test_plugin.c)
     target_link_libraries(test_plugin PRIVATE tdc)
     add_test(NAME plugin COMMAND test_plugin)
+
+    add_executable(test_complement_roundtrip tests/test_complement_roundtrip.c)
+    target_link_libraries(test_complement_roundtrip PRIVATE tdc)
+    add_test(NAME complement_roundtrip COMMAND test_complement_roundtrip)
 
     add_executable(test_adversarial_inputs tests/test_adversarial_inputs.c)
     target_link_libraries(test_adversarial_inputs PRIVATE tdc)

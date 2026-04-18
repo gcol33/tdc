@@ -56,26 +56,36 @@ static int blk_layout_rank(uint8_t lo) {
  * transforms; for the model and entropy slots NONE is invalid because
  * the encoder always selects a concrete backend.
  *
- * User-defined ids (0xFF00-0xFFFF) are accepted by all three validators
- * so that blocks encoded with plugin backends can be decoded. */
+ * Reserved ranges (from tdc/codec.h):
+ *   0x0001-0x00FF   core (shipped with tdc)
+ *   0x0100-0x01FF   experimental (statically compiled, may change
+ *                    without format version bump)
+ *   0xFF00-0xFFFF   user-defined (plugin registry)
+ *
+ * All three ranges are accepted by the validators so blocks encoded with
+ * any registered backend decode cleanly. The 0x0200-0xFEFF reserved range
+ * is rejected — no existing backend uses it. */
 static int blk_model_id_valid(uint16_t id) {
     return (id >= TDC_MODEL_RAW && id <= TDC_MODEL_QUANTIZE_PRED_2D) ||
+           (id >= 0x0100u && id <= 0x01FFu) ||
            (id >= 0xFF00u && id <= 0xFFFFu);
 }
 
 static int blk_xform_id_valid(uint16_t id) {
-    /* 0 is allowed (chain terminator); otherwise must be a known core id
-     * or a user-defined id. */
+    /* 0 is allowed (chain terminator); otherwise must be a known core id,
+     * an experimental id, or a user-defined id. */
     return id == TDC_XFORM_NONE ||
            (id >= TDC_XFORM_QUANTIZE && id <= TDC_XFORM_BIT_SHUFFLE) ||
+           (id >= 0x0100u && id <= 0x01FFu) ||
            (id >= 0xFF00u && id <= 0xFFFFu);
 }
 
 static int blk_entropy_id_valid(uint16_t id) {
-    /* NONE is allowed as chain terminator; otherwise must be a known id
-     * or a user-defined id. */
+    /* NONE is allowed as chain terminator; otherwise must be a known id,
+     * an experimental id, or a user-defined id. */
     return id == TDC_ENTROPY_NONE ||
            (id >= TDC_ENTROPY_LZ && id <= TDC_ENTROPY_HUFFMAN4) ||
+           (id >= 0x0100u && id <= 0x01FFu) ||
            (id >= 0xFF00u && id <= 0xFFFFu);
 }
 
