@@ -275,13 +275,26 @@ static inline tdc_status driver_xform_params_parse(driver_xform_params_table *t,
  * out-parameter on encode(); only the decoder needs this static mapping,
  * because it has to seed the forward chain dtype walk before any of the
  * runtime stages have run.
+ *
+ * Composite models whose residual dtype is chosen per-block (recorded in
+ * side meta rather than fixed by the model id) take side_meta + side_size
+ * and dispatch to a per-model peek helper. QUANTIZE_PRED_2D is the only
+ * such model in v0; its target dtype lives in side_meta[0]. side_meta
+ * may be NULL for the static cases that don't need it.
  */
-static inline tdc_dtype driver_model_residual_dtype(tdc_model_id mid,
-                                                    tdc_dtype    in_dtype) {
+tdc_dtype qp2_residual_dtype_from_side_meta(const uint8_t *side_meta,
+                                            size_t         side_meta_size);
+
+static inline tdc_dtype driver_model_residual_dtype(tdc_model_id   mid,
+                                                    tdc_dtype      in_dtype,
+                                                    const uint8_t *side_meta,
+                                                    size_t         side_meta_size) {
     switch (mid) {
         case TDC_MODEL_DICT_1D:         return TDC_DT_U32;
         case TDC_MODEL_DICT_NUMERIC_1D: return TDC_DT_U32;
         case TDC_MODEL_SPARSE_ZERO_1D:  return TDC_DT_U32;
+        case TDC_MODEL_QUANTIZE_PRED_2D:
+            return qp2_residual_dtype_from_side_meta(side_meta, side_meta_size);
         default:                        return in_dtype;
     }
 }

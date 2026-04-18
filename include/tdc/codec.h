@@ -73,7 +73,7 @@ typedef enum {
                                         * readings) where byte-level predictor
                                         * residuals have higher entropy than
                                         * the raw bytes. */
-    TDC_MODEL_SPARSE_ZERO_1D  = 0x000B /* sparse-zero: positions+values of
+    TDC_MODEL_SPARSE_ZERO_1D  = 0x000B, /* sparse-zero: positions+values of
                                         * non-zero entries; VECTOR_1D over the
                                         * same numeric dtypes as DICT_NUMERIC_1D.
                                         * Wins on ≥75%-zero int/float vectors
@@ -81,6 +81,17 @@ typedef enum {
                                         * coefficients). Zero = all-zero bytes
                                         * (so +0.0 is zero, -0.0 is not —
                                         * byte identity, like DICT_NUMERIC_1D). */
+    TDC_MODEL_QUANTIZE_PRED_2D = 0x000C /* fused quantize-then-PRED_2D for
+                                        * RASTER_2D float blocks. Quantizes
+                                        * f32/f64 to a narrow integer target
+                                        * with the QUANTIZE arithmetic, then
+                                        * applies the PRED_2D predictor on the
+                                        * integer raster in one step. Residual
+                                        * dtype = params->target. Solves the
+                                        * ordering bug where PRED_2D applied
+                                        * to raw floats produces a float
+                                        * residual that QUANTIZE then mangles
+                                        * into garbage. */
 } tdc_model_id;
 
 /* Transforms (representation stage; chained) */
@@ -167,6 +178,20 @@ typedef enum {
 typedef struct {
     tdc_pred2d_kind kind;
 } tdc_pred2d_params;
+
+/* TDC_MODEL_QUANTIZE_PRED_2D — fused quantize-then-pred2d for float rasters.
+ *
+ * Combines tdc_quantize_params (scale/offset/target) and tdc_pred2d_params
+ * (predictor kind) into one model so they apply atomically. Without the
+ * fusion, "model = PRED_2D, xform[0] = QUANTIZE" runs PRED_2D on raw
+ * doubles first (producing a float residual) and then QUANTIZE re-quantizes
+ * the residual into garbage values. */
+typedef struct {
+    double          scale;        /* same semantics as tdc_quantize_params */
+    double          offset;
+    tdc_dtype       target;       /* I8/I16/I32 — narrow integer raster */
+    tdc_pred2d_kind kind;         /* AUTO selects on the quantized raster */
+} tdc_quantize_pred2d_params;
 
 /* TDC_MODEL_PRED_3D — true 3D neighborhood predictor selection.
  *

@@ -137,7 +137,9 @@ tdc_status driver_decode_block_impl(const uint8_t        *src,
      * the block dtype.
      */
     tdc_dtype residual_dtype = driver_model_residual_dtype(
-        (tdc_model_id)hdr.model_id, dst->dtype);
+        (tdc_model_id)hdr.model_id, dst->dtype,
+        (hdr.side_meta_size > 0) ? side_meta_p : NULL,
+        (size_t)hdr.side_meta_size);
     size_t    residual_elem_size = tdc_dtype_size(residual_dtype);
     if (residual_elem_size == 0) return TDC_E_UNSUPPORTED;
 

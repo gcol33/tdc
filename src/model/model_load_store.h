@@ -57,9 +57,11 @@ tdc_model_load(tdc_dtype dt, const uint8_t *base, int64_t i)
         case TDC_DT_I8:  { int8_t   v; memcpy(&v, base + (size_t)i,       1u); return (int64_t)v; }
         case TDC_DT_I16: { int16_t  v; memcpy(&v, base + (size_t)i * 2u,  2u); return (int64_t)v; }
         case TDC_DT_I32: { int32_t  v; memcpy(&v, base + (size_t)i * 4u,  4u); return (int64_t)v; }
+        case TDC_DT_I64: { int64_t  v; memcpy(&v, base + (size_t)i * 8u,  8u); return v; }
         case TDC_DT_U8:  { uint8_t  v; memcpy(&v, base + (size_t)i,       1u); return (int64_t)v; }
         case TDC_DT_U16: { uint16_t v; memcpy(&v, base + (size_t)i * 2u,  2u); return (int64_t)v; }
         case TDC_DT_U32: { uint32_t v; memcpy(&v, base + (size_t)i * 4u,  4u); return (int64_t)v; }
+        case TDC_DT_U64: { uint64_t v; memcpy(&v, base + (size_t)i * 8u,  8u); return (int64_t)v; }
         case TDC_DT_F16: return (int64_t)tdc_f16_to_ordered(
                             tdc_load_f16_bits(base + (size_t)i * 2u));
         case TDC_DT_F32: return (int64_t)tdc_f32_to_ordered(
@@ -79,9 +81,11 @@ tdc_model_load_int(tdc_dtype dt, const uint8_t *base, int64_t i)
         case TDC_DT_I8:  { int8_t   v; memcpy(&v, base + (size_t)i,       1u); return (int64_t)v; }
         case TDC_DT_I16: { int16_t  v; memcpy(&v, base + (size_t)i * 2u,  2u); return (int64_t)v; }
         case TDC_DT_I32: { int32_t  v; memcpy(&v, base + (size_t)i * 4u,  4u); return (int64_t)v; }
+        case TDC_DT_I64: { int64_t  v; memcpy(&v, base + (size_t)i * 8u,  8u); return v; }
         case TDC_DT_U8:  { uint8_t  v; memcpy(&v, base + (size_t)i,       1u); return (int64_t)v; }
         case TDC_DT_U16: { uint16_t v; memcpy(&v, base + (size_t)i * 2u,  2u); return (int64_t)v; }
         case TDC_DT_U32: { uint32_t v; memcpy(&v, base + (size_t)i * 4u,  4u); return (int64_t)v; }
+        case TDC_DT_U64: { uint64_t v; memcpy(&v, base + (size_t)i * 8u,  8u); return (int64_t)v; }
         default:         return 0;
     }
 }

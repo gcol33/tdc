@@ -62,6 +62,7 @@ set(TDC_SOURCES
     src/model/fpc1d.c
     src/model/dict_numeric.c
     src/model/sparse_zero_1d.c
+    src/model/quantize_pred2d.c
 
     src/transform/quantize.c
     src/transform/zigzag.c
@@ -171,6 +172,13 @@ if(TDC_BUILD_TESTS)
     add_executable(test_pred2d_roundtrip tests/test_pred2d_roundtrip.c)
     target_link_libraries(test_pred2d_roundtrip PRIVATE tdc)
     add_test(NAME pred2d_roundtrip COMMAND test_pred2d_roundtrip)
+
+    add_executable(test_quantize_pred2d_roundtrip tests/test_quantize_pred2d_roundtrip.c)
+    target_link_libraries(test_quantize_pred2d_roundtrip PRIVATE tdc)
+    if(NOT MSVC)
+        target_link_libraries(test_quantize_pred2d_roundtrip PRIVATE m)
+    endif()
+    add_test(NAME quantize_pred2d_roundtrip COMMAND test_quantize_pred2d_roundtrip)
 
     add_executable(test_pred3d_roundtrip tests/test_pred3d_roundtrip.c)
     target_link_libraries(test_pred3d_roundtrip PRIVATE tdc)

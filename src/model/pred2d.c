@@ -18,10 +18,13 @@
  * and is large enough to live in its own src/model/plane2d.c when it
  * lands.
  *
- * Accepted dtypes: i8, i16, i32, u8, u16, u32. (No 64-bit: 64-bit raster
- * imagery is vanishingly rare and the predictor's internal arithmetic
- * cannot guard against overflow at that width.) Floats are rejected —
- * quantize first.
+ * Accepted dtypes: i8, i16, i32, i64, u8, u16, u32, u64, f16, f32, f64.
+ * The 64-bit integer kernels reuse paeth64 for the working arithmetic;
+ * `a + b - c` can overflow at the extremes of the int64 range, but no
+ * realistic raster has neighboring pixels separated by ~INT64_MAX, and
+ * the residual store goes through the unsigned narrow counterpart so
+ * encode and decode wrap symmetrically. Floats use the ordered-uint
+ * mapping path described under "Float predictor path" below.
  *
  * Accepted layouts: RASTER_2D only. shape.rank must be 2 with row-major
  * contiguous storage:
@@ -365,9 +368,11 @@ static void pred2d_up_dec_row_neon(uint8_t *dst, const uint8_t *res,
     TDC_DT_BIT(TDC_DT_I8)  |             \
     TDC_DT_BIT(TDC_DT_I16) |             \
     TDC_DT_BIT(TDC_DT_I32) |             \
+    TDC_DT_BIT(TDC_DT_I64) |             \
     TDC_DT_BIT(TDC_DT_U8)  |             \
     TDC_DT_BIT(TDC_DT_U16) |             \
     TDC_DT_BIT(TDC_DT_U32) |             \
+    TDC_DT_BIT(TDC_DT_U64) |             \
     TDC_DT_BIT(TDC_DT_F16) |             \
     TDC_DT_BIT(TDC_DT_F32) |             \
     TDC_DT_BIT(TDC_DT_F64))
@@ -695,6 +700,13 @@ DEFINE_PRED2D_TYPED(i16, int16_t,  uint16_t, int32_t, paeth32)
 DEFINE_PRED2D_TYPED(u16, uint16_t, uint16_t, int32_t, paeth32)
 DEFINE_PRED2D_TYPED(i32, int32_t,  uint32_t, int64_t, paeth64)
 DEFINE_PRED2D_TYPED(u32, uint32_t, uint32_t, int64_t, paeth64)
+/* 64-bit kernels reuse paeth64 / int64 working type. The paeth term
+ * `a + b - c` can overflow at the int64 extremes, but real raster data
+ * never spans that range; encode and decode wrap symmetrically through
+ * the unsigned narrow store, so any path that survives encode also
+ * round-trips on decode. */
+DEFINE_PRED2D_TYPED(i64, int64_t,  uint64_t, int64_t, paeth64)
+DEFINE_PRED2D_TYPED(u64, uint64_t, uint64_t, int64_t, paeth64)
 
 #undef DEFINE_PRED2D_TYPED
 #undef IF_SSE2
@@ -1074,11 +1086,14 @@ static void pred2d_decode_float(tdc_dtype dt, tdc_pred2d_kind kind,
                                 int64_t nx, int64_t ny);
 
 /* ----- Sweep dispatchers ------------------------------------------------- */
+/* Non-static so the QUANTIZE_PRED_2D composite model in
+ * src/model/quantize_pred2d.c can call them directly on the quantized
+ * integer raster. Declared in src/model/pred2d_internal.h. */
 
-static void pred2d_encode_sweep(tdc_dtype dt, tdc_pred2d_kind kind,
-                                const uint8_t *src,
-                                uint8_t *res,
-                                int64_t nx, int64_t ny) {
+void pred2d_encode_sweep(tdc_dtype dt, tdc_pred2d_kind kind,
+                         const uint8_t *src,
+                         uint8_t *res,
+                         int64_t nx, int64_t ny) {
     if (tdc_dtype_is_float(dt)) {
         pred2d_encode_float(dt, kind, src, res, nx, ny);
         return;
@@ -1090,14 +1105,16 @@ static void pred2d_encode_sweep(tdc_dtype dt, tdc_pred2d_kind kind,
         case TDC_DT_U16: pred2d_enc_u16(kind, (const uint16_t *)src, (uint16_t *)res, nx, ny); break;
         case TDC_DT_I32: pred2d_enc_i32(kind, (const int32_t  *)src, (int32_t  *)res, nx, ny); break;
         case TDC_DT_U32: pred2d_enc_u32(kind, (const uint32_t *)src, (uint32_t *)res, nx, ny); break;
+        case TDC_DT_I64: pred2d_enc_i64(kind, (const int64_t  *)src, (int64_t  *)res, nx, ny); break;
+        case TDC_DT_U64: pred2d_enc_u64(kind, (const uint64_t *)src, (uint64_t *)res, nx, ny); break;
         default: break;
     }
 }
 
-static void pred2d_decode_sweep(tdc_dtype dt, tdc_pred2d_kind kind,
-                                const uint8_t *res,
-                                uint8_t *dst,
-                                int64_t nx, int64_t ny) {
+void pred2d_decode_sweep(tdc_dtype dt, tdc_pred2d_kind kind,
+                         const uint8_t *res,
+                         uint8_t *dst,
+                         int64_t nx, int64_t ny) {
     /* u16 PAETH is the bench loser; route it through the wavefront kernel
      * which runs two independent dependency chains in parallel. The
      * fallback nx<2 case is handled by the wavefront itself; the ny<3
@@ -1130,6 +1147,8 @@ static void pred2d_decode_sweep(tdc_dtype dt, tdc_pred2d_kind kind,
         case TDC_DT_U16: pred2d_dec_u16(kind, (const uint16_t *)res, (uint16_t *)dst, nx, ny); break;
         case TDC_DT_I32: pred2d_dec_i32(kind, (const int32_t  *)res, (int32_t  *)dst, nx, ny); break;
         case TDC_DT_U32: pred2d_dec_u32(kind, (const uint32_t *)res, (uint32_t *)dst, nx, ny); break;
+        case TDC_DT_I64: pred2d_dec_i64(kind, (const int64_t  *)res, (int64_t  *)dst, nx, ny); break;
+        case TDC_DT_U64: pred2d_dec_u64(kind, (const uint64_t *)res, (uint64_t *)dst, nx, ny); break;
         default: break;
     }
 }
@@ -1281,8 +1300,8 @@ static int64_t pred2d_compute(tdc_pred2d_kind kind,
 
 #define PRED2D_AUTO_SAMPLE 10000
 
-static tdc_pred2d_kind pred2d_auto_select(tdc_dtype dt, const uint8_t *src,
-                                          int64_t nx, int64_t ny) {
+tdc_pred2d_kind pred2d_auto_select(tdc_dtype dt, const uint8_t *src,
+                                   int64_t nx, int64_t ny) {
     int64_t n = nx * ny;
     int64_t sample_n = n < PRED2D_AUTO_SAMPLE ? n : PRED2D_AUTO_SAMPLE;
     /* sample is a row-aligned prefix so the predictor sees the same

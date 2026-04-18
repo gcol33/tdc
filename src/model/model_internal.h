@@ -33,6 +33,21 @@ extern const tdc_model_vt tdc_model_delta2_1d_vt;
 extern const tdc_model_vt tdc_model_fpc1d_vt;
 extern const tdc_model_vt tdc_model_dict_numeric_1d_vt;
 extern const tdc_model_vt tdc_model_sparse_zero_1d_vt;
+extern const tdc_model_vt tdc_model_quantize_pred2d_vt;
+
+/* ----- Cross-stage residual dtype helpers ---------------------------------
+ *
+ * Composite models whose residual dtype depends on per-block side meta
+ * (rather than being fixed for the model id) expose a small peek helper
+ * that the driver calls before model.decode runs. Lives in the matching
+ * model .c file alongside its side-meta layout.
+ *
+ * QUANTIZE_PRED_2D's side meta byte 0 is the integer target dtype that
+ * the predictor actually emitted. Returning (tdc_dtype)0 signals corrupt
+ * side meta and aborts the decode.
+ */
+tdc_dtype qp2_residual_dtype_from_side_meta(const uint8_t *side_meta,
+                                            size_t         side_meta_size);
 
 /* ----- Variable-width sizing helpers --------------------------------------
  *

@@ -6,8 +6,8 @@
  * Verifies:
  *   1. residual_dtype == in->dtype, side metadata is exactly 1 byte = the
  *      resolved predictor kind.
- *   2. Round-trip on every supported dtype (i8/i16/i32/u8/u16/u32) for
- *      every fixed kind (LEFT/UP/AVERAGE/PAETH) on a small synthetic
+ *   2. Round-trip on every supported dtype (i8/i16/i32/i64/u8/u16/u32/u64)
+ *      for every fixed kind (LEFT/UP/AVERAGE/PAETH) on a small synthetic
  *      raster.
  *   3. Round-trip on a smooth gradient where each predictor produces
  *      small residuals (sanity check that the predictor math is right).
@@ -18,7 +18,7 @@
  *   6. Edge values: i8/i16 boundaries (type min, type max, ±1, 0) round-trip
  *      under all four kinds — guards the modular wrap.
  *   7. Empty block (n == 0) round-trips.
- *   8. Encoder rejects 64-bit ints, non-RASTER_2D layouts.
+ *   8. Encoder rejects non-RASTER_2D layouts.
  *   9. Decoder rejects missing / wrong-size side metadata.
  *  10. Registry returns &tdc_model_pred2d_vt for TDC_MODEL_PRED_2D.
  *  11. Float round-trip (f16/f32/f64) using ordered-integer prediction
@@ -139,9 +139,11 @@ static int rt_one(const char *label, tdc_pred2d_kind kind,
 
 static int test_dtype_all_kinds(void) {
     /* 4x5 raster with mixed structure: a gradient + a localized bump. */
+    int64_t  src_i64[20];
     int32_t  src_i32[20];
     int16_t  src_i16[20];
     int8_t   src_i8 [20];
+    uint64_t src_u64[20];
     uint32_t src_u32[20];
     uint16_t src_u16[20];
     uint8_t  src_u8 [20];
@@ -149,9 +151,11 @@ static int test_dtype_all_kinds(void) {
         for (int c = 0; c < 5; ++c) {
             int idx = r * 5 + c;
             int v = 10 + r * 2 + c * 3 + (r == 2 && c == 3 ? 25 : 0);
+            src_i64[idx] = v;
             src_i32[idx] = v;
             src_i16[idx] = (int16_t)v;
             src_i8 [idx] = (int8_t)v;
+            src_u64[idx] = (uint64_t)v;
             src_u32[idx] = (uint32_t)v;
             src_u16[idx] = (uint16_t)v;
             src_u8 [idx] = (uint8_t)v;
@@ -166,9 +170,11 @@ static int test_dtype_all_kinds(void) {
         if (rt_one("i8 4x5",  kind, TDC_DT_I8,  1, src_i8,  4, 5)) return 1;
         if (rt_one("i16 4x5", kind, TDC_DT_I16, 2, src_i16, 4, 5)) return 1;
         if (rt_one("i32 4x5", kind, TDC_DT_I32, 4, src_i32, 4, 5)) return 1;
+        if (rt_one("i64 4x5", kind, TDC_DT_I64, 8, src_i64, 4, 5)) return 1;
         if (rt_one("u8 4x5",  kind, TDC_DT_U8,  1, src_u8,  4, 5)) return 1;
         if (rt_one("u16 4x5", kind, TDC_DT_U16, 2, src_u16, 4, 5)) return 1;
         if (rt_one("u32 4x5", kind, TDC_DT_U32, 4, src_u32, 4, 5)) return 1;
+        if (rt_one("u64 4x5", kind, TDC_DT_U64, 8, src_u64, 4, 5)) return 1;
     }
     return 0;
 }
@@ -318,14 +324,6 @@ static int test_rejections(void) {
     tdc_buffer side     = make_buffer();
     tdc_dtype  rdt      = (tdc_dtype)0;
     tdc_pred2d_params params = { .kind = TDC_PRED2D_LEFT };
-
-    /* i64 rejected (no 64-bit support in v0 PRED_2D) */
-    {
-        int64_t src[4] = { 0, 1, 2, 3 };
-        tdc_block in = raster(src, 2, 2, TDC_DT_I64);
-        tdc_status st = vt->encode(&in, &params, &residual, &rdt, &side);
-        ASSERT_OR_DIE(st == TDC_E_DTYPE, "i64 should be rejected");
-    }
 
     /* non-RASTER_2D layout rejected */
     {
