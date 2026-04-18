@@ -89,6 +89,9 @@ extern "C" {
 #define TDC_CONTAINER_HEADER_SIZE 64
 
 #define TDC_CONTAINER_FLAG_HETEROGENEOUS 0x0001u  /* per-block dtype/layout */
+#define TDC_CONTAINER_FLAG_HAS_STATS     0x0002u  /* >=1 row group carries
+                                                     per-column min/max stats
+                                                     in the trailing index */
 
 typedef struct {
     uint32_t magic;

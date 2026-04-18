@@ -1,38 +1,38 @@
 /*
- * src/format/stats_internal.h — column statistics for zone-map filtering
+ * src/format/stats_internal.h — column statistics: compute + wire codec
  *
- * Per-column min/max stats attached to row-group index entries.
- * Wire format: 33 bytes per column (1 has_stats + 16 min + 16 max).
+ * The `tdc_column_stats` struct and the TDC_STATS_VALUE_SIZE constant
+ * are defined in the public `tdc/stream.h` header (the streaming API
+ * exposes stats to callers via set_rowgroup_stats / get_stats).
  *
- * Internal header — not part of the public ABI.
+ * This internal header adds:
+ *   - The on-disk entry size (41 bytes: 1 has_stats + 16 min + 16 max
+ *     + 8 null_count), used by the encoder/decoder to size the per-rg
+ *     stats block in the trailing row-group index.
+ *   - Compute / serialize / parse entry points not meant to be public.
  */
 
 #ifndef TDC_FORMAT_STATS_INTERNAL_H
 #define TDC_FORMAT_STATS_INTERNAL_H
 
 #include "tdc/types.h"
+#include "tdc/stream.h"   /* tdc_column_stats, TDC_STATS_VALUE_SIZE */
 #include <stdint.h>
 #include <stddef.h>
 
-#define TDC_STATS_ENTRY_SIZE 33   /* 1 + 16 + 16 */
-#define TDC_STATS_VALUE_SIZE 16
-
-/* One column's statistics */
-typedef struct {
-    uint8_t  has_stats;
-    uint8_t  min[TDC_STATS_VALUE_SIZE];
-    uint8_t  max[TDC_STATS_VALUE_SIZE];
-} tdc_column_stats;
+#define TDC_STATS_ENTRY_SIZE 41   /* 1 has_stats + 16 min + 16 max + 8 null_count */
 
 /*
  * Compute min/max statistics from a tdc_block. Writes into `out`.
  * Sets has_stats = 1 on success, 0 if dtype is unsupported for stats
- * or the block is empty (n_elems == 0).
+ * or the block is empty (n_elems == 0). null_count is always zeroed by
+ * compute; callers that track nulls write their own count before
+ * handing the struct to set_rowgroup_stats.
  */
 tdc_status tdc_stats_compute(const tdc_block *blk, tdc_column_stats *out);
 
 /*
- * Serialize n_cols stats entries into buf (must be n_cols * 33 bytes).
+ * Serialize n_cols stats entries into buf (must be n_cols * 41 bytes).
  * Returns bytes written.
  */
 size_t tdc_stats_serialize(const tdc_column_stats *stats, uint16_t n_cols,

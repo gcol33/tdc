@@ -98,6 +98,26 @@ typedef struct {
     tdc_rg_col_entry *columns;   /* array of n_cols entries; owned */
 } tdc_rowgroup_entry;
 
+/* ----- Column statistics ------------------------------------------------ */
+
+/*
+ * Per-column statistics attached to a row group. The min/max fields are
+ * raw dtype-native bytes, zero-padded to 16 bytes, stored little-endian.
+ * For strings, they hold the first 8 bytes of the lexicographic min/max.
+ *
+ * null_count is caller-supplied: the encoder never inspects block data
+ * to compute it; instead `set_rowgroup_stats` records whatever the caller
+ * passes in. Pipelines that don't track null counts should leave it zero.
+ */
+#define TDC_STATS_VALUE_SIZE 16
+
+typedef struct {
+    uint8_t  has_stats;
+    uint8_t  min[TDC_STATS_VALUE_SIZE];
+    uint8_t  max[TDC_STATS_VALUE_SIZE];
+    uint64_t null_count;
+} tdc_column_stats;
+
 /* ----- Encoder ---------------------------------------------------------- */
 
 /* Opaque encoder state.  Allocated by open, freed by close. */
@@ -156,6 +176,25 @@ tdc_status tdc_stream_encoder_write_block(tdc_stream_encoder       *enc,
  */
 tdc_status tdc_stream_encoder_end_rowgroup(tdc_stream_encoder *enc,
                                            uint64_t n_rows);
+
+/*
+ * Attach per-column statistics to the currently-open row group.
+ *
+ * Must be called after all n_cols blocks for the group have been written
+ * via write_block, but BEFORE end_rowgroup. n_cols must match the number
+ * of blocks written since the last end_rowgroup. The stats array is
+ * copied internally; the caller retains ownership of the argument.
+ *
+ * Calling this function on any row group causes the container header's
+ * TDC_CONTAINER_FLAG_HAS_STATS bit to be set at close time. Row groups
+ * that do not receive a set_rowgroup_stats call are recorded as having
+ * no stats; tdc_stream_decoder_get_stats returns NULL for them.
+ *
+ * May be called at most once per row group.
+ */
+tdc_status tdc_stream_encoder_set_rowgroup_stats(tdc_stream_encoder     *enc,
+                                                 const tdc_column_stats *stats,
+                                                 uint16_t                n_cols);
 
 /*
  * Finalize the container:
@@ -226,6 +265,22 @@ uint64_t tdc_stream_decoder_rowgroup_count(
  * out of range or the index is not loaded. */
 const tdc_rowgroup_entry *tdc_stream_decoder_get_rowgroup(
     const tdc_stream_decoder *dec, uint64_t rg_index);
+
+/*
+ * Read-only view of the column statistics attached to a specific
+ * (rg_index, col_index) cell. Returns NULL if:
+ *   - dec is NULL or no row-group index is loaded,
+ *   - the container was encoded without TDC_CONTAINER_FLAG_HAS_STATS,
+ *   - the specific row group has no stats attached, OR
+ *   - rg_index or col_index is out of range.
+ *
+ * The returned pointer is owned by the decoder and valid for its
+ * lifetime.
+ */
+const tdc_column_stats *tdc_stream_decoder_get_stats(
+    const tdc_stream_decoder *dec,
+    uint64_t                  rg_index,
+    uint16_t                  col_index);
 
 /*
  * Random-access: seek to column `col_index` within row group `rg_index`

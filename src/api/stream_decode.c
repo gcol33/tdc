@@ -34,6 +34,7 @@
 #include "tdc/codec.h"
 #include "tdc/format.h"
 #include "tdc/types.h"
+#include "../format/stats_internal.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -59,6 +60,11 @@ struct tdc_stream_decoder {
     tdc_rowgroup_entry  *rg_entries;
     uint64_t             rg_count;
     int                  has_rg_index;
+
+    /* Per-rowgroup stats. Parallel array of rg_count slots; slot i is
+     * NULL when rg i has no stats, otherwise an n_cols-sized owned array.
+     * Only populated when TDC_CONTAINER_FLAG_HAS_STATS is set. */
+    tdc_column_stats   **rg_stats;
 
     /* File offset where blocks begin (after header + schema). */
     uint64_t    blocks_start;
@@ -265,18 +271,22 @@ static tdc_status parse_schema(struct tdc_stream_decoder *d,
 /*
  * Row-group index wire format (at index_offset):
  *   u64 n_rowgroups
- *   per row group (24 + 16*n_cols bytes):
+ *   per row group:
  *       u64 offset
  *       u64 n_rows
  *       u16 n_cols
  *       u16 _pad
- *       u32 _reserved
+ *       u32 stats_size      (bytes of trailing stats block; 0 = none)
  *       per column:
  *           u64 block_offset
  *           u64 block_total
+ *       [stats block of stats_size bytes, if non-zero]
+ *
+ * The stats block, when present, is exactly n_cols * TDC_STATS_ENTRY_SIZE
+ * bytes (see src/format/stats.c).
  */
 
-#define RG_HEADER_SIZE 24  /* offset(8) + n_rows(8) + n_cols(2) + pad(2) + reserved(4) */
+#define RG_HEADER_SIZE 24  /* offset(8) + n_rows(8) + n_cols(2) + pad(2) + stats_size(4) */
 #define RG_COL_SIZE    16  /* block_offset(8) + block_total(8) */
 
 static tdc_status parse_rowgroup_index(struct tdc_stream_decoder *d,
@@ -287,6 +297,9 @@ static tdc_status parse_rowgroup_index(struct tdc_stream_decoder *d,
     uint64_t n_rg = read_u64_le(buf);
     if (n_rg == 0) return TDC_OK;
 
+    int has_stats_flag =
+        (d->header.flags & TDC_CONTAINER_FLAG_HAS_STATS) != 0;
+
     /* Validate that the buffer is large enough. We need to parse
      * incrementally because n_cols varies per row group. */
     size_t pos = 8;
@@ -294,16 +307,37 @@ static tdc_status parse_rowgroup_index(struct tdc_stream_decoder *d,
     /* First pass: validate sizes. */
     for (uint64_t i = 0; i < n_rg; i++) {
         if (pos + RG_HEADER_SIZE > buf_size) return TDC_E_CORRUPT;
-        uint16_t nc = read_u16_le(buf + pos + 16); /* n_cols at offset 16 within RG header */
-        pos += RG_HEADER_SIZE + (size_t)nc * RG_COL_SIZE;
+        uint16_t nc       = read_u16_le(buf + pos + 16);
+        uint32_t stats_sz = read_u32_le(buf + pos + 20);
+        /* A non-zero stats_size must match exactly n_cols * entry_size
+         * and may only appear when the container flag was set. */
+        if (stats_sz != 0) {
+            if (!has_stats_flag) return TDC_E_CORRUPT;
+            if (stats_sz != (uint32_t)nc * TDC_STATS_ENTRY_SIZE)
+                return TDC_E_CORRUPT;
+        }
+        pos += RG_HEADER_SIZE
+             + (size_t)nc * RG_COL_SIZE
+             + (size_t)stats_sz;
         if (pos > buf_size) return TDC_E_CORRUPT;
     }
 
-    /* Allocate the entry array. */
+    /* Allocate the entry array and (if needed) the stats array. */
     tdc_rowgroup_entry *entries = (tdc_rowgroup_entry *)v2_alloc(
         d, NULL, (size_t)n_rg * sizeof(tdc_rowgroup_entry));
     if (!entries) return TDC_E_NOMEM;
     memset(entries, 0, (size_t)n_rg * sizeof(tdc_rowgroup_entry));
+
+    tdc_column_stats **stats_arr = NULL;
+    if (has_stats_flag) {
+        stats_arr = (tdc_column_stats **)v2_alloc(
+            d, NULL, (size_t)n_rg * sizeof(tdc_column_stats *));
+        if (!stats_arr) {
+            v2_free(d, entries);
+            return TDC_E_NOMEM;
+        }
+        memset(stats_arr, 0, (size_t)n_rg * sizeof(tdc_column_stats *));
+    }
 
     /* Second pass: fill entries. Allocate per-entry column arrays. */
     pos = 8;
@@ -311,21 +345,14 @@ static tdc_status parse_rowgroup_index(struct tdc_stream_decoder *d,
         entries[i].offset = read_u64_le(buf + pos);
         entries[i].n_rows = read_u64_le(buf + pos + 8);
         entries[i].n_cols = read_u16_le(buf + pos + 16);
-        /* _pad at pos+18, _reserved at pos+20 — skip */
+        uint32_t stats_sz = read_u32_le(buf + pos + 20);
         pos += RG_HEADER_SIZE;
 
         uint16_t nc = entries[i].n_cols;
         if (nc > 0) {
             tdc_rg_col_entry *ce = (tdc_rg_col_entry *)v2_alloc(
                 d, NULL, (size_t)nc * sizeof(tdc_rg_col_entry));
-            if (!ce) {
-                /* Free everything allocated so far. */
-                for (uint64_t j = 0; j < i; j++) {
-                    v2_free(d, entries[j].columns);
-                }
-                v2_free(d, entries);
-                return TDC_E_NOMEM;
-            }
+            if (!ce) goto nomem;
             for (uint16_t c = 0; c < nc; c++) {
                 ce[c].block_offset = read_u64_le(buf + pos);
                 ce[c].block_total  = read_u64_le(buf + pos + 8);
@@ -335,13 +362,45 @@ static tdc_status parse_rowgroup_index(struct tdc_stream_decoder *d,
         } else {
             entries[i].columns = NULL;
         }
+
+        if (stats_sz > 0) {
+            tdc_column_stats *s = (tdc_column_stats *)v2_alloc(
+                d, NULL, (size_t)nc * sizeof(tdc_column_stats));
+            if (!s) goto nomem;
+            tdc_status pst = tdc_stats_parse(buf + pos, stats_sz, nc, s);
+            if (pst != TDC_OK) {
+                v2_free(d, s);
+                for (uint64_t j = 0; j <= i; j++)
+                    v2_free(d, entries[j].columns);
+                if (stats_arr) {
+                    for (uint64_t j = 0; j < i; j++) v2_free(d, stats_arr[j]);
+                    v2_free(d, stats_arr);
+                }
+                v2_free(d, entries);
+                return pst;
+            }
+            /* stats_arr is non-NULL here: stats_sz > 0 implies
+             * has_stats_flag (enforced in the first pass). */
+            stats_arr[i] = s;
+            pos += stats_sz;
+        }
     }
 
     d->rg_entries   = entries;
+    d->rg_stats     = stats_arr;
     d->rg_count     = n_rg;
     d->has_rg_index = 1;
 
     return TDC_OK;
+
+nomem:
+    for (uint64_t j = 0; j < n_rg; j++) v2_free(d, entries[j].columns);
+    if (stats_arr) {
+        for (uint64_t j = 0; j < n_rg; j++) v2_free(d, stats_arr[j]);
+        v2_free(d, stats_arr);
+    }
+    v2_free(d, entries);
+    return TDC_E_NOMEM;
 }
 
 /* ----- Free helpers for owned sub-allocations ---------------------------- */
@@ -363,6 +422,13 @@ static void free_rg_index(struct tdc_stream_decoder *d) {
         }
         v2_free(d, d->rg_entries);
         d->rg_entries = NULL;
+    }
+    if (d->rg_stats) {
+        for (uint64_t i = 0; i < d->rg_count; i++) {
+            v2_free(d, d->rg_stats[i]);
+        }
+        v2_free(d, d->rg_stats);
+        d->rg_stats = NULL;
     }
     d->rg_count = 0;
     d->has_rg_index = 0;
@@ -524,6 +590,21 @@ const tdc_rowgroup_entry *tdc_stream_decoder_get_rowgroup(
     if (!dec || !dec->has_rg_index) return NULL;
     if (rg_index >= dec->rg_count) return NULL;
     return &dec->rg_entries[rg_index];
+}
+
+const tdc_column_stats *tdc_stream_decoder_get_stats(
+    const tdc_stream_decoder *dec,
+    uint64_t                  rg_index,
+    uint16_t                  col_index) {
+    if (!dec || !dec->has_rg_index) return NULL;
+    if (!dec->rg_stats)             return NULL;
+    if (rg_index >= dec->rg_count)  return NULL;
+
+    const tdc_column_stats *rg_row = dec->rg_stats[rg_index];
+    if (!rg_row) return NULL;
+
+    if (col_index >= dec->rg_entries[rg_index].n_cols) return NULL;
+    return &rg_row[col_index];
 }
 
 tdc_status tdc_stream_decoder_seek_rowgroup(tdc_stream_decoder *dec,

@@ -276,6 +276,8 @@ size_t tdc_stats_serialize(const tdc_column_stats *stats, uint16_t n_cols,
         dst[0] = stats[i].has_stats;
         memcpy(dst + 1,  stats[i].min, TDC_STATS_VALUE_SIZE);
         memcpy(dst + 1 + TDC_STATS_VALUE_SIZE, stats[i].max, TDC_STATS_VALUE_SIZE);
+        memcpy(dst + 1 + 2 * TDC_STATS_VALUE_SIZE, &stats[i].null_count,
+               sizeof(uint64_t));
     }
 
     return (size_t)n_cols * TDC_STATS_ENTRY_SIZE;
@@ -294,6 +296,8 @@ tdc_status tdc_stats_parse(const uint8_t *buf, size_t buf_size,
         out[i].has_stats = src[0];
         memcpy(out[i].min, src + 1, TDC_STATS_VALUE_SIZE);
         memcpy(out[i].max, src + 1 + TDC_STATS_VALUE_SIZE, TDC_STATS_VALUE_SIZE);
+        memcpy(&out[i].null_count, src + 1 + 2 * TDC_STATS_VALUE_SIZE,
+               sizeof(uint64_t));
     }
 
     return TDC_OK;

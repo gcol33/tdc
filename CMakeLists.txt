@@ -244,6 +244,10 @@ if(TDC_BUILD_TESTS)
     target_link_libraries(test_stats PRIVATE tdc)
     add_test(NAME stats COMMAND test_stats)
 
+    add_executable(test_rowgroup_stats tests/test_rowgroup_stats.c)
+    target_link_libraries(test_rowgroup_stats PRIVATE tdc)
+    add_test(NAME rowgroup_stats COMMAND test_rowgroup_stats)
+
     add_executable(test_plugin tests/test_plugin.c)
     target_link_libraries(test_plugin PRIVATE tdc)
     add_test(NAME plugin COMMAND test_plugin)

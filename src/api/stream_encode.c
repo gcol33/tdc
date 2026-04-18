@@ -24,6 +24,7 @@
 #include "tdc/types.h"
 #include "../format/schema_internal.h"
 #include "../format/metadata_internal.h"
+#include "../format/stats_internal.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -42,8 +43,12 @@ typedef struct {
     uint64_t offset;        /* file offset of first block */
     uint64_t n_rows;
     uint16_t n_cols;
+    uint8_t  has_stats;     /* 1 if stats[] is populated, 0 otherwise */
+    uint8_t  _pad[5];
 
-    v2_col_entry *cols;     /* array of n_cols entries, heap-allocated */
+    v2_col_entry     *cols;   /* array of n_cols entries, heap-allocated */
+    tdc_column_stats *stats;  /* array of n_cols, heap-allocated when
+                                 has_stats == 1; NULL otherwise */
 } v2_rowgroup_entry;
 
 /* ----- Internal state ----------------------------------------------------- */
@@ -78,6 +83,17 @@ typedef struct {
     uint64_t      cur_cols_cap; /* entries allocated */
     uint64_t      cur_n_cols;   /* entries used */
     uint64_t      cur_group_offset; /* write_pos of first block in cur group */
+
+    /* Per-column stats attached to the currently-open row group via
+     * set_rowgroup_stats. Owned; NULL when no stats were supplied
+     * for the current group. */
+    tdc_column_stats *cur_stats;
+    uint16_t          cur_stats_n_cols;
+    uint8_t           cur_has_stats;
+
+    /* Sticky flag: set the first time any row group receives stats.
+     * Determines whether HAS_STATS is recorded in the final header. */
+    uint8_t           any_stats;
 
     /* --- Finalized row groups --- */
     v2_rowgroup_entry *groups;
@@ -122,6 +138,10 @@ static tdc_status v2_write_header(v2_stream_encoder_state *e,
         }
     }
 
+    if (e->any_stats) {
+        hdr.flags |= TDC_CONTAINER_FLAG_HAS_STATS;
+    }
+
     hdr.n_blocks     = n_blocks;
     hdr.index_offset = index_offset;
     hdr.index_size   = index_size;
@@ -131,15 +151,26 @@ static tdc_status v2_write_header(v2_stream_encoder_state *e,
     return v2_io_write_exact(&e->io, &hdr, TDC_CONTAINER_HEADER_SIZE);
 }
 
-/* Compute the serialized byte size of the row-group index. */
+/* Compute the serialized byte size of the row-group index.
+ *
+ * Wire format per row group:
+ *   fixed header: offset(8) + n_rows(8) + n_cols(2) + _pad(2) + stats_size(4) = 24
+ *   column entries: n_cols * 16
+ *   optional stats block: n_cols * TDC_STATS_ENTRY_SIZE (if has_stats != 0)
+ *
+ * stats_size is the byte count of the stats block attached to this
+ * row group (0 when no stats). It lives in the rowgroup fixed header's
+ * otherwise-reserved u32 slot at offset 20.
+ */
 static uint64_t v2_index_serialized_size(const v2_stream_encoder_state *e) {
-    /* u64 n_rowgroups */
-    uint64_t total = 8;
+    uint64_t total = 8; /* u64 n_rowgroups */
     for (uint64_t i = 0; i < e->n_groups; ++i) {
-        /* u64 offset + u64 n_rows + u16 n_cols + u16 _pad + u32 _reserved */
-        total += 8 + 8 + 2 + 2 + 4;
-        /* per column: u64 block_offset + u64 block_total */
-        total += (uint64_t)e->groups[i].n_cols * 16;
+        const v2_rowgroup_entry *rg = &e->groups[i];
+        total += 24;                              /* fixed rg header */
+        total += (uint64_t)rg->n_cols * 16;       /* column entries */
+        if (rg->has_stats) {
+            total += (uint64_t)rg->n_cols * TDC_STATS_ENTRY_SIZE;
+        }
     }
     return total;
 }
@@ -154,15 +185,24 @@ static size_t v2_index_serialize(const v2_stream_encoder_state *e,
     for (uint64_t i = 0; i < e->n_groups; ++i) {
         const v2_rowgroup_entry *rg = &e->groups[i];
 
-        tdc_le_store_u64(p, rg->offset);  p += 8;
-        tdc_le_store_u64(p, rg->n_rows);  p += 8;
-        tdc_le_store_u16(p, rg->n_cols);  p += 2;
-        tdc_le_store_u16(p, 0);           p += 2;  /* _pad */
-        tdc_le_store_u32(p, 0);           p += 4;  /* _reserved */
+        uint32_t stats_size = rg->has_stats
+            ? (uint32_t)rg->n_cols * TDC_STATS_ENTRY_SIZE
+            : 0u;
+
+        tdc_le_store_u64(p, rg->offset);    p += 8;
+        tdc_le_store_u64(p, rg->n_rows);    p += 8;
+        tdc_le_store_u16(p, rg->n_cols);    p += 2;
+        tdc_le_store_u16(p, 0);             p += 2;  /* _pad */
+        tdc_le_store_u32(p, stats_size);    p += 4;  /* repurposed reserved */
 
         for (uint16_t c = 0; c < rg->n_cols; ++c) {
             tdc_le_store_u64(p, rg->cols[c].block_offset); p += 8;
             tdc_le_store_u64(p, rg->cols[c].block_total);  p += 8;
+        }
+
+        if (rg->has_stats) {
+            size_t written = tdc_stats_serialize(rg->stats, rg->n_cols, p);
+            p += written;
         }
     }
 
@@ -173,6 +213,7 @@ static size_t v2_index_serialize(const v2_stream_encoder_state *e,
 static void v2_free_groups(v2_stream_encoder_state *e) {
     for (uint64_t i = 0; i < e->n_groups; ++i) {
         v2_free(e, e->groups[i].cols);
+        v2_free(e, e->groups[i].stats);
     }
     v2_free(e, e->groups);
     e->groups     = NULL;
@@ -317,6 +358,7 @@ tdc_status tdc_stream_encoder_end_rowgroup(tdc_stream_encoder *enc,
 
     /* Finalize the current row group. Transfer ownership of cur_cols. */
     v2_rowgroup_entry *rg = &e->groups[e->n_groups];
+    memset(rg, 0, sizeof(*rg));
     rg->offset = e->cur_group_offset;
     rg->n_rows = n_rows;
     rg->n_cols = (uint16_t)e->cur_n_cols;
@@ -327,12 +369,47 @@ tdc_status tdc_stream_encoder_end_rowgroup(tdc_stream_encoder *enc,
     if (!rg->cols) return TDC_E_NOMEM;
     memcpy(rg->cols, e->cur_cols, cols_sz);
 
+    /* Attach pending stats (if any). set_rowgroup_stats validated that
+     * cur_stats_n_cols == cur_n_cols, so we can transfer ownership. */
+    if (e->cur_has_stats) {
+        rg->has_stats = 1;
+        rg->stats     = e->cur_stats;      /* transfer ownership */
+        e->cur_stats  = NULL;
+        e->cur_stats_n_cols = 0;
+        e->cur_has_stats    = 0;
+    }
+
     e->n_groups++;
 
     /* Reset the accumulator (keep the buffer allocated for reuse). */
     e->cur_n_cols       = 0;
     e->cur_group_offset = 0;
 
+    return TDC_OK;
+}
+
+tdc_status tdc_stream_encoder_set_rowgroup_stats(tdc_stream_encoder     *enc,
+                                                 const tdc_column_stats *stats,
+                                                 uint16_t                n_cols) {
+    if (!enc || !stats) return TDC_E_INVAL;
+
+    v2_stream_encoder_state *e = (v2_stream_encoder_state *)enc;
+
+    /* Must be called after the group's blocks are written and before
+     * end_rowgroup. The n_cols argument must match. */
+    if (e->cur_n_cols == 0)        return TDC_E_INVAL;
+    if (e->cur_has_stats)          return TDC_E_INVAL; /* called twice */
+    if ((uint64_t)n_cols != e->cur_n_cols) return TDC_E_INVAL;
+
+    size_t bytes = (size_t)n_cols * sizeof(tdc_column_stats);
+    tdc_column_stats *copy = (tdc_column_stats *)v2_alloc(e, NULL, bytes);
+    if (!copy) return TDC_E_NOMEM;
+    memcpy(copy, stats, bytes);
+
+    e->cur_stats        = copy;
+    e->cur_stats_n_cols = n_cols;
+    e->cur_has_stats    = 1;
+    e->any_stats        = 1;
     return TDC_OK;
 }
 
@@ -377,6 +454,7 @@ tdc_status tdc_stream_encoder_close(tdc_stream_encoder **enc) {
 
     /* Free internal state regardless of errors. */
     v2_free(e, e->cur_cols);
+    v2_free(e, e->cur_stats);
     v2_free_groups(e);
     if (e->scratch.data) {
         e->realloc_fn(e->alloc_user, e->scratch.data, 0);
