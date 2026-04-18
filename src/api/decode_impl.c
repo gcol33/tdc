@@ -45,11 +45,13 @@
 
 /* ----- Shared pipeline ---------------------------------------------------- */
 
-tdc_status driver_decode_block_impl(const uint8_t     *src,
-                                    size_t             src_size,
-                                    tdc_block         *dst,
-                                    const tdc_buffer  *scratch_parent,
-                                    const char        *timer_tag) {
+tdc_status driver_decode_block_impl(const uint8_t        *src,
+                                    size_t                src_size,
+                                    tdc_block            *dst,
+                                    const tdc_buffer     *scratch_parent,
+                                    const char           *timer_tag,
+                                    driver_pre_model_hook hook,
+                                    void                 *hook_user) {
     if (!src || !dst || !scratch_parent) return TDC_E_INVAL;
     if (!scratch_parent->realloc_fn)     return TDC_E_INVAL;
     if (src_size < TDC_BLOCK_HEADER_SIZE) return TDC_E_CORRUPT;
@@ -91,8 +93,11 @@ tdc_status driver_decode_block_impl(const uint8_t     *src,
         if (dst->shape.dim[i] != hdr.dim[i]) return TDC_E_SHAPE;
     }
 
-    /* dst->data may be NULL only if the block is empty. */
-    if (n_elems > 0 && dst->data == NULL) return TDC_E_INVAL;
+    /* dst->data may be NULL only if the block is empty. For variable-
+     * width entry points the hook below allocates dst->data after the
+     * residual is in hand, so we defer this check until after the hook
+     * has had a chance to run. */
+    if (!hook && n_elems > 0 && dst->data == NULL) return TDC_E_INVAL;
 
     /* Resolve vtables. */
     const tdc_model_vt *model_vt = tdc_model_get((tdc_model_id)hdr.model_id);
@@ -285,6 +290,23 @@ tdc_status driver_decode_block_impl(const uint8_t     *src,
     /* ----- Stage 4: model decode -------------------------------------- */
 
 run_model:
+    /* Pre-model hook: variable-width entry points size dst->data and
+     * dst->offsets from the decoded residual + side metadata here. The
+     * hook may grow caller-owned buffers and must satisfy the dst->data
+     * non-NULL contract before the model runs. */
+    if (hook) {
+        st = hook(dst, bufs[cur].data, bufs[cur].size,
+                  (hdr.side_meta_size > 0) ? side_meta_p : NULL,
+                  hdr.side_meta_size,
+                  residual_dtype,
+                  (tdc_model_id)hdr.model_id,
+                  hook_user);
+        if (st != TDC_OK) goto cleanup;
+        /* The hook is responsible for satisfying the same dst->data
+         * contract the early check enforces in the no-hook path. */
+        if (n_elems > 0 && dst->data == NULL) { st = TDC_E_INVAL; goto cleanup; }
+    }
+
     st = model_vt->decode(dst, NULL, residual_dtype,
                           bufs[cur].data, bufs[cur].size,
                           (hdr.side_meta_size > 0) ? side_meta_p : NULL,

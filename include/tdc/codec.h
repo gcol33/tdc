@@ -426,6 +426,63 @@ tdc_status tdc_decode_peek(const uint8_t *src, size_t src_size,
                            tdc_block *out_meta,
                            size_t    *out_bytes_required);
 
+/*
+ * Decode a variable-width block (TDC_DT_STRING in v0).
+ *
+ * Variable-width blocks cannot use tdc_decode_block_into: the output
+ * heap size depends on the dictionary indices in the residual stream
+ * and is not derivable from the 80-byte block header alone. This entry
+ * point runs the standard pipeline (header validate, entropy decode,
+ * transform reverse), then sizes dst->data and dst->offsets from the
+ * decoded residual + side metadata, allocates both via
+ * alloc->realloc_fn, and runs the model decode in place.
+ *
+ * On entry:
+ *   src, src_size:    the block record bytes;
+ *   dst->dtype:       must be a variable-width dtype (TDC_DT_STRING in
+ *                     v0). Validated against the header.
+ *   dst->layout, dst->shape: must match the header (validated, not
+ *                     overwritten — same convention as
+ *                     tdc_decode_block_into);
+ *   dst->data, dst->offsets: MUST be NULL on entry; the function
+ *                     allocates them via alloc->realloc_fn. Passing
+ *                     non-NULL is rejected with TDC_E_INVAL to avoid
+ *                     leaking caller memory;
+ *   alloc->realloc_fn: must be set; alloc->user is forwarded. The
+ *                     same realloc_fn is used for internal ping-pong
+ *                     scratch as well as for the final dst->data /
+ *                     dst->offsets allocations.
+ *
+ * On TDC_OK:
+ *   dst->data is a freshly allocated byte heap whose size equals
+ *     dst->offsets[n_elems] (zero is allowed; in that case dst->data
+ *     is left NULL);
+ *   dst->offsets is a freshly allocated (n_elems + 1)-entry uint32_t
+ *     table (allocated even when n_elems == 0, to a single sentinel
+ *     entry of value 0).
+ *   Both buffers are owned by the caller and must be freed via
+ *     alloc->realloc_fn(alloc->user, ptr, 0).
+ *
+ * On error: dst->data and dst->offsets are NULL (any partial
+ *   allocation has been freed via alloc->realloc_fn). Internal scratch
+ *   is always freed before return.
+ *
+ * Returns:
+ *   TDC_OK                on success;
+ *   TDC_E_INVAL           NULL src/dst/alloc, missing realloc_fn,
+ *                         non-NULL dst->data or dst->offsets on entry;
+ *   TDC_E_DTYPE           dst->dtype is fixed-width (use _into instead),
+ *                         or disagrees with the record header;
+ *   TDC_E_LAYOUT/_SHAPE   dst->layout / dst->shape disagrees with header;
+ *   TDC_E_UNSUPPORTED     model id is not a variable-width producer
+ *                         (only TDC_MODEL_DICT_1D in v0);
+ *   TDC_E_CORRUPT/_VERSION malformed record;
+ *   TDC_E_NOMEM           alloc->realloc_fn returned NULL;
+ *   other TDC_E_*         on entropy/transform/model decode failure.
+ */
+tdc_status tdc_decode_block_varlen(const uint8_t *src, size_t src_size,
+                                   tdc_block     *dst, tdc_buffer *alloc);
+
 #ifdef __cplusplus
 }
 #endif

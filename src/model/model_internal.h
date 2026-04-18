@@ -34,6 +34,23 @@ extern const tdc_model_vt tdc_model_fpc1d_vt;
 extern const tdc_model_vt tdc_model_dict_numeric_1d_vt;
 extern const tdc_model_vt tdc_model_sparse_zero_1d_vt;
 
+/* ----- Variable-width sizing helpers --------------------------------------
+ *
+ * Public-API helper used by tdc_decode_block_varlen to size the output
+ * heap before the model.decode runs. Lives next to dict1d_decode in
+ * src/model/dict.c. Pure: validates the side-meta header + offsets
+ * table, then walks the residual indices to sum the output byte count.
+ *
+ * Returns TDC_OK on success with *out_heap_bytes set; on error the
+ * status is forwarded and *out_heap_bytes is zero.
+ */
+tdc_status dict1d_compute_output_size(const uint8_t *residuals,
+                                      size_t         residual_size,
+                                      const uint8_t *side_meta,
+                                      size_t         side_size,
+                                      int64_t        n_elems,
+                                      size_t        *out_heap_bytes);
+
 #ifdef __cplusplus
 }
 #endif

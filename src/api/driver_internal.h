@@ -48,23 +48,43 @@ extern "C" {
 /* ----- Shared decode pipeline --------------------------------------------- */
 /*
  * Single source of truth for the block-decode pipeline. Used by
- * tdc_decode_block, tdc_decode_block_ex, and tdc_decode_block_into. The
- * three public entry points differ only in where they source the scratch
- * allocator and in how strict they are about dst->data — the pipeline
- * itself is defined exactly once in src/api/decode_impl.c.
+ * tdc_decode_block, tdc_decode_block_ex, tdc_decode_block_into, and
+ * tdc_decode_block_varlen. Public entry points differ only in where
+ * they source the scratch allocator, how strict they are about
+ * dst->data, and (for varlen) whether they install a pre-model hook
+ * to allocate dst->data + dst->offsets from the decoded residual.
  *
  * scratch_parent supplies realloc_fn/user for internal ping-pong buffers;
  * its data/size/capacity fields are ignored. dst->data is NOT allocated
- * here — callers that need allocation must do it before calling.
+ * here — fixed-width callers must do it before calling; variable-width
+ * callers install a hook that allocates after the residual is in hand.
  *
  * timer_tag is a short label (<= 5 chars) used by the stage-timer prints
- * so the three entry points can be told apart in decode_profile output.
+ * so the entry points can be told apart in decode_profile output.
+ *
+ * Pre-model hook: invoked exactly once after the entropy + transform
+ * stages have produced the residual stream and before the model decode
+ * runs. The hook may populate dst->data and dst->offsets via any
+ * allocator the caller has access to. Pass NULL for fixed-width entry
+ * points that already pre-sized dst->data. Returning non-OK from the
+ * hook aborts the decode and forwards the status back to the caller.
  */
-tdc_status driver_decode_block_impl(const uint8_t    *src,
-                                    size_t            src_size,
-                                    tdc_block        *dst,
-                                    const tdc_buffer *scratch_parent,
-                                    const char       *timer_tag);
+typedef tdc_status (*driver_pre_model_hook)(tdc_block      *dst,
+                                            const uint8_t  *residual_data,
+                                            size_t          residual_size,
+                                            const uint8_t  *side_meta,
+                                            size_t          side_size,
+                                            tdc_dtype       residual_dtype,
+                                            tdc_model_id    model_id,
+                                            void           *user);
+
+tdc_status driver_decode_block_impl(const uint8_t        *src,
+                                    size_t                src_size,
+                                    tdc_block            *dst,
+                                    const tdc_buffer     *scratch_parent,
+                                    const char           *timer_tag,
+                                    driver_pre_model_hook hook,
+                                    void                 *hook_user);
 
 /* ----- Libc-backed realloc shim ------------------------------------------- */
 /*

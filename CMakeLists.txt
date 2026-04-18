@@ -95,6 +95,7 @@ set(TDC_SOURCES
     src/api/decode_ex.c
     src/api/decode_impl.c
     src/api/decode_into.c
+    src/api/decode_varlen.c
     src/api/stream_encode.c
     src/api/stream_decode.c
     src/api/pushpull_encode.c
@@ -235,6 +236,10 @@ if(TDC_BUILD_TESTS)
     add_executable(test_decode_into tests/test_decode_into.c)
     target_link_libraries(test_decode_into PRIVATE tdc)
     add_test(NAME decode_into COMMAND test_decode_into)
+
+    add_executable(test_decode_varlen tests/test_decode_varlen.c)
+    target_link_libraries(test_decode_varlen PRIVATE tdc)
+    add_test(NAME decode_varlen COMMAND test_decode_varlen)
 
     add_executable(test_rowgroup_index tests/test_rowgroup_index.c)
     target_link_libraries(test_rowgroup_index PRIVATE tdc)

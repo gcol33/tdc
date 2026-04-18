@@ -301,6 +301,100 @@ cleanup:
     return st;
 }
 
+/* ----- Decode-side helpers ----------------------------------------------- */
+/*
+ * dict1d_validate_side_header parses the 8-byte side-meta header and the
+ * (count+1) offsets table, validating internal consistency. Returns the
+ * dict_count, dict_total, and a pointer to the offsets sub-table on TDC_OK.
+ *
+ * dict1d_compute_output_size walks the residual stream to compute the
+ * exact byte count the output heap will occupy. Exposed (non-static) so
+ * the variable-width public decode entry point (tdc_decode_block_varlen)
+ * can size dst->data without running the model decode twice.
+ *
+ * Both helpers are pure: they do not allocate and do not touch the
+ * caller's output buffers.
+ */
+
+static tdc_status dict1d_validate_side_header(const uint8_t *side_meta,
+                                              size_t         side_size,
+                                              uint32_t      *out_dict_count,
+                                              uint32_t      *out_dict_total,
+                                              const uint8_t **out_off_p) {
+    if (side_size < 8u || side_meta == NULL) return TDC_E_CORRUPT;
+
+    uint32_t dict_count, dict_total;
+    memcpy(&dict_count, side_meta + 0, 4u);
+    memcpy(&dict_total, side_meta + 4, 4u);
+
+    size_t want_side = (size_t)8u
+                     + (size_t)(dict_count + 1u) * 4u
+                     + (size_t)dict_total;
+    if (side_size != want_side) return TDC_E_CORRUPT;
+
+    const uint8_t *off_p = side_meta + 8u;
+
+    /* Verify the offsets table is internally consistent and matches the
+     * declared total. Catches torn/corrupt records before we dereference
+     * out-of-range offsets in the inner loop. */
+    uint32_t prev_off = 0u;
+    for (uint32_t d = 0; d <= dict_count; ++d) {
+        uint32_t cur;
+        memcpy(&cur, off_p + (size_t)d * 4u, 4u);
+        if (cur < prev_off)   return TDC_E_CORRUPT;
+        if (cur > dict_total) return TDC_E_CORRUPT;
+        prev_off = cur;
+    }
+    {
+        uint32_t last;
+        memcpy(&last, off_p + (size_t)dict_count * 4u, 4u);
+        if (last != dict_total) return TDC_E_CORRUPT;
+    }
+
+    *out_dict_count = dict_count;
+    *out_dict_total = dict_total;
+    *out_off_p      = off_p;
+    return TDC_OK;
+}
+
+tdc_status dict1d_compute_output_size(const uint8_t *residuals,
+                                      size_t         residual_size,
+                                      const uint8_t *side_meta,
+                                      size_t         side_size,
+                                      int64_t        n_elems,
+                                      size_t        *out_heap_bytes) {
+    if (!out_heap_bytes) return TDC_E_INVAL;
+    *out_heap_bytes = 0;
+    if (n_elems < 0) return TDC_E_SHAPE;
+
+    uint32_t dict_count = 0, dict_total = 0;
+    const uint8_t *off_p = NULL;
+    tdc_status st = dict1d_validate_side_header(side_meta, side_size,
+                                                &dict_count, &dict_total,
+                                                &off_p);
+    if (st != TDC_OK) return st;
+
+    if (n_elems == 0) return TDC_OK;
+
+    if ((size_t)n_elems * 4u != residual_size) return TDC_E_CORRUPT;
+    if (residuals == NULL) return TDC_E_INVAL;
+
+    uint64_t total_out = 0u;
+    for (int64_t i = 0; i < n_elems; ++i) {
+        uint32_t idx;
+        memcpy(&idx, residuals + (size_t)i * 4u, 4u);
+        if (idx >= dict_count) return TDC_E_CORRUPT;
+        uint32_t s_off, s_next;
+        memcpy(&s_off,  off_p + (size_t)idx       * 4u, 4u);
+        memcpy(&s_next, off_p + (size_t)(idx + 1u) * 4u, 4u);
+        total_out += (uint64_t)(s_next - s_off);
+        if (total_out > UINT32_MAX) return TDC_E_INVAL;
+    }
+
+    *out_heap_bytes = (size_t)total_out;
+    return TDC_OK;
+}
+
 /* ----- Decode ------------------------------------------------------------- */
 
 static tdc_status dict1d_decode(tdc_block      *out,
@@ -318,23 +412,15 @@ static tdc_status dict1d_decode(tdc_block      *out,
     int64_t n = out->shape.dim[0];
     if (n < 0) return TDC_E_SHAPE;
 
-    /* Side meta is mandatory: even an empty input carries the 8-byte
-     * (count=0, total=0) header. */
-    if (side_size < 8u || side_meta == NULL) return TDC_E_CORRUPT;
+    uint32_t dict_count = 0, dict_total = 0;
+    const uint8_t *off_p = NULL;
+    tdc_status st = dict1d_validate_side_header(side_meta, side_size,
+                                                &dict_count, &dict_total,
+                                                &off_p);
+    if (st != TDC_OK) return st;
 
-    uint32_t dict_count, dict_total;
-    memcpy(&dict_count, side_meta + 0, 4u);
-    memcpy(&dict_total, side_meta + 4, 4u);
-
-    size_t want_side = (size_t)8u
-                     + (size_t)(dict_count + 1u) * 4u
-                     + (size_t)dict_total;
-    if (side_size != want_side) return TDC_E_CORRUPT;
-
-    /* Empty case: nothing to write. The caller still must have set
-     * out->offsets to a valid 1-element buffer when n == 0... actually
-     * tdc_block_validate allows offsets == NULL when n == 0, so we
-     * tolerate that. */
+    /* Empty case: nothing to write. tdc_block_validate allows
+     * offsets == NULL when n == 0, so we tolerate that here too. */
     if (n == 0) {
         if (out->offsets) out->offsets[0] = 0u;
         return TDC_OK;
@@ -344,45 +430,23 @@ static tdc_status dict1d_decode(tdc_block      *out,
     if ((size_t)n * 4u != residual_size) return TDC_E_CORRUPT;
     if (residuals == NULL) return TDC_E_INVAL;
 
-    const uint8_t *off_p   = side_meta + 8u;
-    const uint8_t *heap_p  = off_p + (size_t)(dict_count + 1u) * 4u;
+    const uint8_t *heap_p = off_p + (size_t)(dict_count + 1u) * 4u;
 
-    /* Verify the offsets table is internally consistent and matches the
-     * declared total. Catches torn/corrupt records before we deference
-     * out-of-range offsets in the inner loop. */
-    uint32_t prev_off = 0u;
-    for (uint32_t d = 0; d <= dict_count; ++d) {
-        uint32_t cur;
-        memcpy(&cur, off_p + (size_t)d * 4u, 4u);
-        if (cur < prev_off)        return TDC_E_CORRUPT;
-        if (cur > dict_total)      return TDC_E_CORRUPT;
-        prev_off = cur;
-    }
-    {
-        uint32_t last;
-        memcpy(&last, off_p + (size_t)dict_count * 4u, 4u);
-        if (last != dict_total) return TDC_E_CORRUPT;
-    }
-
-    /* Pass 1: total output byte count, and validate every index. */
-    uint64_t total_out = 0u;
+    /* Pass 1: validate every index. The total output byte count is
+     * available via dict1d_compute_output_size for callers that need
+     * to size out->data; this routine only re-validates the indices
+     * because tdc_decode_block_varlen has already used the helper
+     * upstream. */
     for (int64_t i = 0; i < n; ++i) {
         uint32_t idx;
         memcpy(&idx, residuals + (size_t)i * 4u, 4u);
         if (idx >= dict_count) return TDC_E_CORRUPT;
-        uint32_t s_off, s_next;
-        memcpy(&s_off,  off_p + (size_t)idx       * 4u, 4u);
-        memcpy(&s_next, off_p + (size_t)(idx + 1u) * 4u, 4u);
-        total_out += (uint64_t)(s_next - s_off);
-        if (total_out > UINT32_MAX) return TDC_E_INVAL;
     }
 
     /* Pass 2: write out->offsets and out->data. The caller is
-     * responsible for sizing out->data; we cannot reallocate caller-
-     * owned memory. The caller obtains the required size from a prior
-     * decode-side query (planned API extension), or — for the test
-     * harness today — sizes it generously and trusts the assertion
-     * that offsets[n] == total_out. */
+     * responsible for sizing out->data; the variable-width entry point
+     * (tdc_decode_block_varlen) does so via dict1d_compute_output_size.
+     * The model vtable cannot allocate caller-owned memory itself. */
     uint32_t pos = 0u;
     uint8_t *dst = (uint8_t *)out->data;
     for (int64_t i = 0; i < n; ++i) {
