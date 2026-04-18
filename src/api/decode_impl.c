@@ -302,9 +302,15 @@ run_model:
                   (tdc_model_id)hdr.model_id,
                   hook_user);
         if (st != TDC_OK) goto cleanup;
-        /* The hook is responsible for satisfying the same dst->data
-         * contract the early check enforces in the no-hook path. */
-        if (n_elems > 0 && dst->data == NULL) { st = TDC_E_INVAL; goto cleanup; }
+        /* The hook satisfies the dst->data contract the early check
+         * enforces in the no-hook path. For variable-width dtypes the
+         * hook may legitimately leave dst->data NULL when the residual
+         * resolves to a zero-byte heap (e.g. all-empty strings); the
+         * model write loop must guard with `slen > 0` before deref. */
+        if (n_elems > 0 && dst->data == NULL &&
+            !tdc_dtype_is_variable_length(dst->dtype)) {
+            st = TDC_E_INVAL; goto cleanup;
+        }
     }
 
     st = model_vt->decode(dst, NULL, residual_dtype,

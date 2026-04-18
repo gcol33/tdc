@@ -302,6 +302,32 @@ static int test_empty_strings_mixed(void) {
     return rc;
 }
 
+static int test_all_empty_strings(void) {
+    /* All rows are zero-length. The encoded heap is 0 bytes, so the
+     * varlen hook leaves dst.data == NULL; the decode must tolerate that
+     * (regression for dict1d_decode rejecting NULL data even when no
+     * memcpy actually runs — uncovered by vectra rg=1 with an empty
+     * string in its own rowgroup). */
+    static const char *rows[3] = { "", "", "" };
+    string_block sb = make_string_block(rows, 3);
+    tdc_codec_spec spec = {0};
+    spec.model = TDC_MODEL_DICT_1D;
+    int rc = rt_varlen("DICT_1D all-empty strings (n>0, heap=0)", &sb, &spec);
+    free_string_block(&sb);
+    return rc;
+}
+
+static int test_single_empty_string(void) {
+    /* The minimal trigger: n=1, heap_bytes=0. */
+    static const char *rows[1] = { "" };
+    string_block sb = make_string_block(rows, 1);
+    tdc_codec_spec spec = {0};
+    spec.model = TDC_MODEL_DICT_1D;
+    int rc = rt_varlen("DICT_1D single empty string (n=1, heap=0)", &sb, &spec);
+    free_string_block(&sb);
+    return rc;
+}
+
 static int test_empty_block(void) {
     string_block sb = {0};
     sb.block.dtype       = TDC_DT_STRING;
@@ -414,6 +440,8 @@ int main(void) {
     if (test_all_unique())          return 1;
     if (test_embedded_zeros())      return 1;
     if (test_empty_strings_mixed()) return 1;
+    if (test_all_empty_strings())   return 1;
+    if (test_single_empty_string()) return 1;
     if (test_empty_block())         return 1;
     if (test_negatives())           return 1;
     printf("ALL OK\n");

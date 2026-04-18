@@ -426,7 +426,12 @@ static tdc_status dict1d_decode(tdc_block      *out,
         return TDC_OK;
     }
 
-    if (out->offsets == NULL || out->data == NULL) return TDC_E_INVAL;
+    if (out->offsets == NULL) return TDC_E_INVAL;
+    /* out->data may be NULL when the residual indices select only
+     * zero-length dictionary entries (total heap is 0 bytes). The write
+     * loop is gated by `slen > 0u`, so a NULL dst is safe in that case;
+     * tdc_decode_block_varlen's hook intentionally leaves dst.data NULL
+     * for an empty heap. */
     if ((size_t)n * 4u != residual_size) return TDC_E_CORRUPT;
     if (residuals == NULL) return TDC_E_INVAL;
 
