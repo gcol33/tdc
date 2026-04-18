@@ -10,7 +10,11 @@
 # (incremental builds, ctest, sanitizers, IDE integration).
 
 cmake_minimum_required(VERSION 3.15)
-project(tdc C)
+project(tdc
+    VERSION 0.1.0
+    LANGUAGES C
+    DESCRIPTION "Typed, dimensional compression library"
+)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -46,6 +50,7 @@ set(TDC_SOURCES
     src/core/registry.c
     src/core/error.c
     src/core/decode_profile.c
+    src/core/version.c
 
     src/layout/traverse.c
     src/layout/tiling.c

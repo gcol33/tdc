@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        build_type: [Debug, Release]
+        zlib: [OFF]
+        include:
+          - os: ubuntu-latest
+            build_type: Release
+            zlib: ON
+    runs-on: ${{ matrix.os }}
+
+    name: ${{ matrix.os }} / ${{ matrix.build_type }}${{ matrix.zlib == 'ON' && ' / zlib' || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install zlib (Ubuntu)
+        if: matrix.zlib == 'ON' && matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DTDC_HAVE_ZLIB=${{ matrix.zlib }}
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Test
+        working-directory: build
+        run: ctest -C ${{ matrix.build_type }} --output-on-failure

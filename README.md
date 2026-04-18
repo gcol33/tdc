@@ -1,5 +1,8 @@
 # tdc
 
+[![CI](https://github.com/gcol33/tdc/actions/workflows/ci.yml/badge.svg)](https://github.com/gcol33/tdc/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Typed, dimensional compression library in C.
 
 `tdc` is a general-purpose multidimensional codec organized around four
@@ -11,8 +14,10 @@ package, where it powers the `.vtr` columnar format.
 
 ## Status
 
-**Pre-v0.** Public headers are frozen; implementation is being extracted from
-vectra. See `include/tdc/` for the API contract.
+**v0.1.0.** Public headers under `include/tdc/` are stable for the v0
+contract. The API may still evolve between minor versions until the first
+real consumer (vectra) has fully rewired onto tdc. See
+[CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Architecture
 
@@ -97,4 +102,4 @@ src/
 
 ## License
 
-TBD.
+MIT — see [LICENSE](LICENSE).
