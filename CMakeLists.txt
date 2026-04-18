@@ -36,6 +36,14 @@ if(MSVC)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Wstrict-prototypes
                         -Wmissing-prototypes -Wcast-align)
+    # Expose POSIX.1-2008 declarations (clock_gettime, CLOCK_MONOTONIC) under
+    # strict -std=c11 on glibc. Cannot be done reliably in a header because
+    # sibling system headers pull in <features.h> first; must be on the
+    # compile command line. Vectra's Makevars vendor build needs the same
+    # flag in PKG_CPPFLAGS.
+    if(NOT APPLE)
+        add_compile_definitions(_POSIX_C_SOURCE=200809L)
+    endif()
     if(TDC_ENABLE_AVX2)
         add_compile_options(-mavx2)
     endif()
