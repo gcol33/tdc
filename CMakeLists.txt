@@ -121,6 +121,12 @@ target_include_directories(tdc PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
 
+# libm: round(), log2(), and friends live in libm under glibc. PUBLIC so
+# downstream executables (tests, bench, tools) inherit the link.
+if(NOT WIN32)
+    target_link_libraries(tdc PUBLIC m)
+endif()
+
 if(TDC_HAVE_ZLIB)
     find_package(ZLIB REQUIRED)
     target_link_libraries(tdc PUBLIC ZLIB::ZLIB)
