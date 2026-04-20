@@ -60,6 +60,7 @@
 #include "model_internal.h"
 #include "model_load_store.h"
 #include "../core/buffer.h"
+#include "../core/log.h"
 #include "../format/metadata_internal.h"
 
 /* ----- SIMD capability detection ------------------------------------------ */
@@ -141,7 +142,6 @@ static inline void plane2d_varint_read_i32(tdc_meta_reader *r, int32_t *out_val)
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -770,8 +770,7 @@ static tdc_status plane2d_encode(const tdc_block *in,
                 energy += (uint64_t)(r < 0 ? -r : r);
             }
         }
-        fprintf(stderr,
-                "[plane2d] tile_size=%u n_tiles=%u side_meta=%zu B "
+        TDC_LOG("[plane2d] tile_size=%u n_tiles=%u side_meta=%zu B "
                 "residual_bytes=%zu n_nonzero=%llu energy=%llu\n",
                 (unsigned)tile_size, (unsigned)t.n_tiles, side_out->size, bytes,
                 (unsigned long long)n_nonzero, (unsigned long long)energy);

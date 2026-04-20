@@ -26,10 +26,10 @@
 #include "lz_internal.h"
 #include "match_finder.h"
 #include "../core/buffer.h"
+#include "../core/log.h"
 #include "../core/simd.h"
 #include "../core/timer.h"
 
-#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -915,7 +915,7 @@ tdc_status tdc_lz_parse_optimal_streams(const uint8_t *src, uint32_t src_size,
         double t_end = tdc_now_secs();
         uint64_t cnt_total = (uint64_t)N;
         uint64_t cnt_work = cnt_total - cnt_skip - cnt_inf;
-        fprintf(stderr,
+        TDC_LOG(
             "[lz_opt-time] N=%u init=%.1fms loop=%.1fms post=%.1fms\n"
             "              pos: total=%llu  skip=%llu  inf=%llu  work=%llu\n"
             "              work-branches: rep_skip=%llu  chain=%llu  chain_skip=%llu\n"

@@ -74,6 +74,7 @@
 #include "lz_internal.h"
 #include "../format/metadata_internal.h"
 #include "../core/buffer.h"
+#include "../core/log.h"
 #include "../core/simd.h"
 #include "../core/decode_profile.h"
 #include "../core/timer.h"
@@ -81,7 +82,6 @@
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1237,8 +1237,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
                 lzs_uint_to_symbol(seqs[i].match_len-LZ_MIN_MATCH, &s, &ex, &nb); p_extra += nb;
                 lzs_offset_to_symbol(seqs[i].match_off, &s, &ex, &nb); p_extra += nb;
             }
-            fprintf(stderr,
-                    "[lzs-p%d] src=%zu n_seqs=%u  lit=%u  extra=%u bytes\n",
+            TDC_LOG("[lzs-p%d] src=%zu n_seqs=%u  lit=%u  extra=%u bytes\n",
                     pass, src_size, seq_count, tlit_p, (p_extra + 7u) / 8u);
         }
 
@@ -1299,7 +1298,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
     }
 
     if (lzs_dump_enabled() && offset_shift > 0) {
-        fprintf(stderr, "  [lzs-shift] offset_shift=%u (stride=%u)\n",
+        TDC_LOG("  [lzs-shift] offset_shift=%u (stride=%u)\n",
                 offset_shift, 1u << offset_shift);
     }
 
@@ -1421,8 +1420,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
                     }
                 }
                 if (lzs_dump_enabled()) {
-                    fprintf(stderr,
-                            "  [lzs-delta] off_extra: %u -> %u bits (saved %u)\n",
+                    TDC_LOG("  [lzs-delta] off_extra: %u -> %u bits (saved %u)\n",
                             off_extra_bits, delta_off_bits,
                             off_extra_bits - delta_off_bits);
                 }
@@ -1437,19 +1435,18 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
             for (uint32_t i = 0; i < seq_count; i++) {
                 if (off_sym[i] <= LZS_MAX_OFFSET_DELTA_SYMBOL) off_hist[off_sym[i]]++;
             }
-            fprintf(stderr,
-                    "  [lzs-extra] ll=%u ml=%u off=%u total=%u bits "
+            TDC_LOG("  [lzs-extra] ll=%u ml=%u off=%u total=%u bits "
                     "(%u bytes) repcodes=%u/%u (%.0f%%)%s\n",
                     ll_extra_bits, ml_extra_bits, off_extra_bits,
                     total_extra_bits, (total_extra_bits + 7u) / 8u,
                     n_repcodes, seq_count,
                     seq_count > 0 ? 100.0 * n_repcodes / seq_count : 0.0,
                     use_delta_offsets ? " [DELTA]" : "");
-            fprintf(stderr, "  [lzs-off-hist]");
+            TDC_LOG("  [lzs-off-hist]");
             for (uint32_t j = 0; j <= LZS_MAX_OFFSET_DELTA_SYMBOL; j++) {
-                if (off_hist[j] > 0) fprintf(stderr, " s%d=%u", j, off_hist[j]);
+                if (off_hist[j] > 0) TDC_LOG(" s%d=%u", j, off_hist[j]);
             }
-            fprintf(stderr, "\n");
+            TDC_LOG("\n");
         }
 
         /* Pack extra bits into combined (interleaved) buffer. */
@@ -1567,8 +1564,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
     if (timing) {
         double t_other = t_entropy - t_lit_ctx;
         double t_total = t_initial + t_priced + t_build + t_entropy;
-        fprintf(stderr,
-                "[lzs-time] src=%zu L%d total=%.3fms  "
+        TDC_LOG("[lzs-time] src=%zu L%d total=%.3fms  "
                 "parse0=%.3f priced=%.3f build=%.3f "
                 "entropy=%.3f (ctx=%.3f nctx=%.3f) ms\n",
                 src_size, level, t_total * 1e3,
@@ -1586,8 +1582,7 @@ static tdc_status lzs_encode(const uint8_t *src, size_t src_size,
         uint32_t total_enc = (uint32_t)LZS_HEADER_SIZE_V2
                            + sz_lit + sz_ll + sz_ml + sz_off + extra_bytes;
         const char *lit_mode = use_lit_ctx ? "CTX" : id_name[id_lit];
-        fprintf(stderr,
-                "[lzs-p2] src=%zu n_seqs=%u  "
+        TDC_LOG("[lzs-p2] src=%zu n_seqs=%u  "
                 "lit=%u(%u/%s) ll=%u/%s ml=%u/%s off=%u/%s extra=%u  "
                 "total=%u (%.2fx)\n",
                 src_size, seq_count,

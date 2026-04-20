@@ -42,11 +42,11 @@
 #include "tdc/types.h"
 
 #include "../core/buffer.h"
+#include "../core/log.h"
 #include "driver_internal.h"
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -279,8 +279,7 @@ tdc_status tdc_encode_block(const tdc_block      *src,
         int64_t n = shape_n_elems(&src->shape);
         size_t  raw = (size_t)n * tdc_dtype_size(src->dtype);
         double  raw_mib = (double)raw / (1024.0 * 1024.0);
-        fprintf(stderr,
-                "[stage] model=%6.2f ms (%7.1f MB/s) "
+        TDC_LOG("[stage] model=%6.2f ms (%7.1f MB/s) "
                 "xform=%6.2f ms (%7.1f MB/s) "
                 "entropy=%6.2f ms (%7.1f MB/s) "
                 "raw=%.2f MiB enc=%zu B\n",

@@ -35,12 +35,12 @@
 #include "tdc/types.h"
 
 #include "../core/buffer.h"
+#include "../core/log.h"
 #include "../core/timer.h"
 #include "driver_internal.h"
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 
 /* ----- Shared pipeline ---------------------------------------------------- */
@@ -326,8 +326,7 @@ run_model:
         size_t raw = (size_t)n_elems * tdc_dtype_size(dst->dtype);
         double raw_mib = (double)raw / (1024.0 * 1024.0);
         const char *tag = timer_tag ? timer_tag : "dec  ";
-        fprintf(stderr,
-                "[%-5s] entropy=%6.2f ms (%7.1f MB/s) "
+        TDC_LOG("[%-5s] entropy=%6.2f ms (%7.1f MB/s) "
                 "xform=%6.2f ms (%7.1f MB/s) "
                 "model=%6.2f ms (%7.1f MB/s) "
                 "raw=%.2f MiB enc=%llu B\n",
