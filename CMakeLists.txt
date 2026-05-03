@@ -193,6 +193,10 @@ if(TDC_BUILD_TESTS)
     target_link_libraries(test_pred2d_roundtrip PRIVATE tdc)
     add_test(NAME pred2d_roundtrip COMMAND test_pred2d_roundtrip)
 
+    add_executable(test_pred2d_wf_consistency tests/test_pred2d_wf_consistency.c)
+    target_link_libraries(test_pred2d_wf_consistency PRIVATE tdc)
+    add_test(NAME pred2d_wf_consistency COMMAND test_pred2d_wf_consistency)
+
     add_executable(test_quantize_pred2d_roundtrip tests/test_quantize_pred2d_roundtrip.c)
     target_link_libraries(test_quantize_pred2d_roundtrip PRIVATE tdc)
     if(NOT MSVC)

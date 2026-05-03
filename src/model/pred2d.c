@@ -96,6 +96,15 @@
 #  define TDC_PRED2D_HAVE_SSE2 1
 #endif
 
+/* AVX2 is opt-in: the 8-row PAETH wavefront below uses _mm256_* intrinsics
+ * for double the ILP of the 4-row SSE2 path. CMake's TDC_ENABLE_AVX2 option
+ * passes /arch:AVX2 (MSVC) or -mavx2 (GCC/Clang) which defines __AVX2__.
+ * Without it we fall back transparently to the SSE2 wf4 kernel. */
+#if defined(__AVX2__)
+#  include <immintrin.h>
+#  define TDC_PRED2D_HAVE_AVX2 1
+#endif
+
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
 #  include <arm_neon.h>
 #  define TDC_PRED2D_HAVE_NEON 1
@@ -251,6 +260,40 @@ static inline __m128i paeth_4x_sse2(__m128i a, __m128i b, __m128i c) {
                         _mm_and_si128(not_a, r));
 }
 #endif /* TDC_PRED2D_HAVE_SSE2 */
+
+/* --- AVX2 PAETH helper (8 × int32 lanes) ---------------------------------- *
+ * Same algorithm and tie-break order as scalar paeth32 — 8 independent
+ * lanes per __m256i. Used by the AVX2 wf8 wavefront decoder.
+ *
+ * AVX2 has _mm256_abs_epi32 (single instruction) so the SSE2 xor-shift
+ * trick is unnecessary here.
+ *
+ * Tie-break MUST match paeth32 bit-for-bit:
+ *     return (pa <= pb && pa <= pc) ? a
+ *          : (pb <= pc)             ? b
+ *                                   : c;
+ * Implemented via _mm256_blendv_epi8 over the >  masks, identical to the
+ * SSE2 helper above.
+ */
+#ifdef TDC_PRED2D_HAVE_AVX2
+static inline __m256i paeth_8x_avx2(__m256i a, __m256i b, __m256i c) {
+    __m256i bc = _mm256_sub_epi32(b, c);
+    __m256i ac = _mm256_sub_epi32(a, c);
+
+    __m256i pa  = _mm256_abs_epi32(bc);              /* |b - c| */
+    __m256i pb  = _mm256_abs_epi32(ac);              /* |a - c| */
+    __m256i pc  = _mm256_abs_epi32(_mm256_add_epi32(bc, ac)); /* |(b-c)+(a-c)| */
+
+    /* r = (pb > pc) ? c : b */
+    __m256i pb_gt_pc = _mm256_cmpgt_epi32(pb, pc);
+    __m256i r = _mm256_blendv_epi8(b, c, pb_gt_pc);
+
+    /* not_a = (pa > pb) | (pa > pc); result = not_a ? r : a */
+    __m256i not_a = _mm256_or_si256(_mm256_cmpgt_epi32(pa, pb),
+                                    _mm256_cmpgt_epi32(pa, pc));
+    return _mm256_blendv_epi8(a, r, not_a);
+}
+#endif /* TDC_PRED2D_HAVE_AVX2 */
 
 /* --- NEON UP helpers ------------------------------------------------------- */
 #ifdef TDC_PRED2D_HAVE_NEON
@@ -1077,6 +1120,403 @@ static void pred2d_dec_u16_paeth_wf4(const uint16_t *res, uint16_t *dst,
     }
 }
 
+/* ----- 8-row wavefront PAETH decode (16-bit, AVX2) ----------------------- *
+ * Doubles the lane count of wf4 from 4 (SSE2 __m128i) to 8 (AVX2 __m256i).
+ * Same staggered-row trick as wf4 — at iteration `c` lane i computes
+ * (R+i, c-i) for i in 0..7 — but with twice the independent dependency
+ * chains running in parallel.
+ *
+ * Prologue: 7 staggered steps where lane i comes online at c = i+1.
+ * Steady state c=8..nx-1: all 8 lanes active.
+ * Epilogue: 7 staggered drain steps mirroring the prologue.
+ *
+ * Carried state across the steady-state loop:
+ *   L = {L0..L7}  — lane i's last output (= left for next iter)
+ *   P = {P0..P6}  — lane i's output from 1 iter ago (= upleft for lane i+1)
+ *
+ * Lane shifts: SSE2 wf4 uses _mm_slli_si128(vL, 4) to shift the entire
+ * 128-bit vector by one int32 lane. AVX2 _mm256_slli_si256 only shifts
+ * within each 128-bit half. To shift all 256 bits by 4 bytes we need:
+ *   shifted = alignr_epi8(vL, permute2x128(vL, vL, 0x08), 12)
+ *   where permute2x128(.., 0x08) gives {vL_lo (high), 0 (low)} so
+ *   alignr_epi8(vL, that, 12) yields a full 256-bit left-shift by one lane.
+ * Insert the new lane-0 value via _mm256_or_si256 with a singleton vector.
+ *
+ * Scatter: _mm256_extract_epi32 takes a compile-time index, so we open-code
+ * 8 lane extracts after the add. (No AVX2 scatter for 32-bit indices —
+ * AVX-512 has scatter but we're targeting AVX2 only.)
+ *
+ * Requires nx >= 8 for the prologue and ny >= 9 (1 LEFT-row + 8 wf rows)
+ * for at least one full octet. Below that the dispatcher routes to wf4.
+ */
+#ifdef TDC_PRED2D_HAVE_AVX2
+static void pred2d_dec_u16_paeth_wf8(const uint16_t *res, uint16_t *dst,
+                                     int64_t nx, int64_t ny) {
+    /* Row 0: LEFT predictor (no row above). */
+    dst[0] = res[0];
+    for (int64_t c = 1; c < nx; ++c)
+        dst[c] = (uint16_t)(res[c] + dst[c - 1]);
+
+    int64_t row = 1;
+
+    /* ---------- 8-row wavefront groups ---------- */
+    for (; row + 7 < ny; row += 8) {
+        const uint16_t *rR  = res + (row + 0) * nx;
+        const uint16_t *rR1 = res + (row + 1) * nx;
+        const uint16_t *rR2 = res + (row + 2) * nx;
+        const uint16_t *rR3 = res + (row + 3) * nx;
+        const uint16_t *rR4 = res + (row + 4) * nx;
+        const uint16_t *rR5 = res + (row + 5) * nx;
+        const uint16_t *rR6 = res + (row + 6) * nx;
+        const uint16_t *rR7 = res + (row + 7) * nx;
+        uint16_t       *dR  = dst + (row + 0) * nx;
+        uint16_t       *dR1 = dst + (row + 1) * nx;
+        uint16_t       *dR2 = dst + (row + 2) * nx;
+        uint16_t       *dR3 = dst + (row + 3) * nx;
+        uint16_t       *dR4 = dst + (row + 4) * nx;
+        uint16_t       *dR5 = dst + (row + 5) * nx;
+        uint16_t       *dR6 = dst + (row + 6) * nx;
+        uint16_t       *dR7 = dst + (row + 7) * nx;
+        const uint16_t *dRm = dst + (row - 1) * nx;
+
+        /* Col 0 of all 8 rows: paeth(0, up, 0) = up. The output of (R+i, 0)
+         * feeds (R+i+1, 0) as the "up" — chained add. */
+        int32_t c0_R  = (int32_t)(uint16_t)((int32_t)rR [0] + (int32_t)dRm[0]);
+        dR [0] = (uint16_t)c0_R;
+        int32_t c0_R1 = (int32_t)(uint16_t)((int32_t)rR1[0] + c0_R);
+        dR1[0] = (uint16_t)c0_R1;
+        int32_t c0_R2 = (int32_t)(uint16_t)((int32_t)rR2[0] + c0_R1);
+        dR2[0] = (uint16_t)c0_R2;
+        int32_t c0_R3 = (int32_t)(uint16_t)((int32_t)rR3[0] + c0_R2);
+        dR3[0] = (uint16_t)c0_R3;
+        int32_t c0_R4 = (int32_t)(uint16_t)((int32_t)rR4[0] + c0_R3);
+        dR4[0] = (uint16_t)c0_R4;
+        int32_t c0_R5 = (int32_t)(uint16_t)((int32_t)rR5[0] + c0_R4);
+        dR5[0] = (uint16_t)c0_R5;
+        int32_t c0_R6 = (int32_t)(uint16_t)((int32_t)rR6[0] + c0_R5);
+        dR6[0] = (uint16_t)c0_R6;
+        int32_t c0_R7 = (int32_t)(uint16_t)((int32_t)rR7[0] + c0_R6);
+        dR7[0] = (uint16_t)c0_R7;
+
+        /* Carried state for the prologue (open-coded; SIMD steady-state
+         * below repacks them into __m256i registers). */
+        int32_t L0 = c0_R,  L1 = c0_R1, L2 = c0_R2, L3 = c0_R3;
+        int32_t L4 = c0_R4, L5 = c0_R5, L6 = c0_R6, L7 = c0_R7;
+        int32_t P0 = 0, P1 = 0, P2 = 0, P3 = 0, P4 = 0, P5 = 0, P6 = 0;
+
+        /* Prologue step 1 (c=1): 1 lane — row R col 1. */
+        {
+            int32_t pred = paeth32(L0, (int32_t)dRm[1], (int32_t)dRm[0]);
+            int32_t v = (int32_t)rR[1] + pred;
+            dR[1] = (uint16_t)v;
+            P0 = L0;
+            L0 = (int32_t)(uint16_t)v;
+        }
+        /* Prologue step 2 (c=2): 2 lanes. */
+        {
+            int32_t pr0 = paeth32(L0, (int32_t)dRm[2], (int32_t)dRm[1]);
+            int32_t v0 = (int32_t)rR[2] + pr0; dR[2] = (uint16_t)v0;
+            int32_t pr1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[1] + pr1; dR1[1] = (uint16_t)v1;
+            P0 = L0; P1 = L1;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+        }
+        /* Prologue step 3 (c=3): 3 lanes. */
+        {
+            int32_t pr0 = paeth32(L0, (int32_t)dRm[3], (int32_t)dRm[2]);
+            int32_t v0 = (int32_t)rR[3] + pr0; dR[3] = (uint16_t)v0;
+            int32_t pr1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[2] + pr1; dR1[2] = (uint16_t)v1;
+            int32_t pr2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[1] + pr2; dR2[1] = (uint16_t)v2;
+            P0 = L0; P1 = L1; P2 = L2;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+        }
+        /* Prologue step 4 (c=4): 4 lanes. */
+        {
+            int32_t pr0 = paeth32(L0, (int32_t)dRm[4], (int32_t)dRm[3]);
+            int32_t v0 = (int32_t)rR[4] + pr0; dR[4] = (uint16_t)v0;
+            int32_t pr1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[3] + pr1; dR1[3] = (uint16_t)v1;
+            int32_t pr2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[2] + pr2; dR2[2] = (uint16_t)v2;
+            int32_t pr3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[1] + pr3; dR3[1] = (uint16_t)v3;
+            P0 = L0; P1 = L1; P2 = L2; P3 = L3;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+        }
+        /* Prologue step 5 (c=5): 5 lanes. */
+        {
+            int32_t pr0 = paeth32(L0, (int32_t)dRm[5], (int32_t)dRm[4]);
+            int32_t v0 = (int32_t)rR[5] + pr0; dR[5] = (uint16_t)v0;
+            int32_t pr1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[4] + pr1; dR1[4] = (uint16_t)v1;
+            int32_t pr2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[3] + pr2; dR2[3] = (uint16_t)v2;
+            int32_t pr3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[2] + pr3; dR3[2] = (uint16_t)v3;
+            int32_t pr4 = paeth32(L4, L3, P3);
+            int32_t v4 = (int32_t)rR4[1] + pr4; dR4[1] = (uint16_t)v4;
+            P0 = L0; P1 = L1; P2 = L2; P3 = L3; P4 = L4;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+            L4 = (int32_t)(uint16_t)v4;
+        }
+        /* Prologue step 6 (c=6): 6 lanes. */
+        {
+            int32_t pr0 = paeth32(L0, (int32_t)dRm[6], (int32_t)dRm[5]);
+            int32_t v0 = (int32_t)rR[6] + pr0; dR[6] = (uint16_t)v0;
+            int32_t pr1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[5] + pr1; dR1[5] = (uint16_t)v1;
+            int32_t pr2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[4] + pr2; dR2[4] = (uint16_t)v2;
+            int32_t pr3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[3] + pr3; dR3[3] = (uint16_t)v3;
+            int32_t pr4 = paeth32(L4, L3, P3);
+            int32_t v4 = (int32_t)rR4[2] + pr4; dR4[2] = (uint16_t)v4;
+            int32_t pr5 = paeth32(L5, L4, P4);
+            int32_t v5 = (int32_t)rR5[1] + pr5; dR5[1] = (uint16_t)v5;
+            P0 = L0; P1 = L1; P2 = L2; P3 = L3; P4 = L4; P5 = L5;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+            L4 = (int32_t)(uint16_t)v4;
+            L5 = (int32_t)(uint16_t)v5;
+        }
+        /* Prologue step 7 (c=7): 7 lanes. */
+        {
+            int32_t pr0 = paeth32(L0, (int32_t)dRm[7], (int32_t)dRm[6]);
+            int32_t v0 = (int32_t)rR[7] + pr0; dR[7] = (uint16_t)v0;
+            int32_t pr1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[6] + pr1; dR1[6] = (uint16_t)v1;
+            int32_t pr2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[5] + pr2; dR2[5] = (uint16_t)v2;
+            int32_t pr3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[4] + pr3; dR3[4] = (uint16_t)v3;
+            int32_t pr4 = paeth32(L4, L3, P3);
+            int32_t v4 = (int32_t)rR4[3] + pr4; dR4[3] = (uint16_t)v4;
+            int32_t pr5 = paeth32(L5, L4, P4);
+            int32_t v5 = (int32_t)rR5[2] + pr5; dR5[2] = (uint16_t)v5;
+            int32_t pr6 = paeth32(L6, L5, P5);
+            int32_t v6 = (int32_t)rR6[1] + pr6; dR6[1] = (uint16_t)v6;
+            P0 = L0; P1 = L1; P2 = L2; P3 = L3; P4 = L4; P5 = L5; P6 = L6;
+            L0 = (int32_t)(uint16_t)v0;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+            L4 = (int32_t)(uint16_t)v4;
+            L5 = (int32_t)(uint16_t)v5;
+            L6 = (int32_t)(uint16_t)v6;
+        }
+
+        /* Steady state c = 8..nx-1: all 8 lanes active in __m256i. */
+        {
+            __m256i vL = _mm256_setr_epi32(L0, L1, L2, L3, L4, L5, L6, L7);
+            /* P[7] is meaningless (only P0..P6 used). Pack 0 in lane 7. */
+            __m256i vP = _mm256_setr_epi32(P0, P1, P2, P3, P4, P5, P6, 0);
+            const __m256i mask16 = _mm256_set1_epi32(0xFFFF);
+
+            for (int64_t c = 8; c < nx; ++c) {
+                /* Build vB by shifting vL left by one int32 lane and inserting
+                 * dRm[c] at lane 0. Cross-128-bit-lane shift requires a
+                 * permute2x128 + alignr_epi8(12) sequence. */
+                __m256i vL_swap = _mm256_permute2x128_si256(vL, vL, 0x08);
+                __m256i vB_shift = _mm256_alignr_epi8(vL, vL_swap, 12);
+                __m256i vB = _mm256_or_si256(
+                    vB_shift,
+                    _mm256_castsi128_si256(_mm_cvtsi32_si128((int32_t)dRm[c])));
+
+                __m256i vP_swap = _mm256_permute2x128_si256(vP, vP, 0x08);
+                __m256i vC_shift = _mm256_alignr_epi8(vP, vP_swap, 12);
+                __m256i vC = _mm256_or_si256(
+                    vC_shift,
+                    _mm256_castsi128_si256(_mm_cvtsi32_si128((int32_t)dRm[c - 1])));
+
+                __m256i pred = paeth_8x_avx2(vL, vB, vC);
+
+                /* Gather 8 staggered residuals. */
+                __m256i vRes = _mm256_setr_epi32(
+                    (int32_t)rR [c    ], (int32_t)rR1[c - 1],
+                    (int32_t)rR2[c - 2], (int32_t)rR3[c - 3],
+                    (int32_t)rR4[c - 4], (int32_t)rR5[c - 5],
+                    (int32_t)rR6[c - 6], (int32_t)rR7[c - 7]);
+
+                __m256i vV = _mm256_add_epi32(vRes, pred);
+
+                /* Update carried state. */
+                vP = vL;
+                vL = _mm256_and_si256(vV, mask16);
+
+                /* Scatter store: _mm256_extract_epi32 needs a const index. */
+                dR [c    ] = (uint16_t)(uint32_t)_mm256_extract_epi32(vV, 0);
+                dR1[c - 1] = (uint16_t)(uint32_t)_mm256_extract_epi32(vV, 1);
+                dR2[c - 2] = (uint16_t)(uint32_t)_mm256_extract_epi32(vV, 2);
+                dR3[c - 3] = (uint16_t)(uint32_t)_mm256_extract_epi32(vV, 3);
+                dR4[c - 4] = (uint16_t)(uint32_t)_mm256_extract_epi32(vV, 4);
+                dR5[c - 5] = (uint16_t)(uint32_t)_mm256_extract_epi32(vV, 5);
+                dR6[c - 6] = (uint16_t)(uint32_t)_mm256_extract_epi32(vV, 6);
+                dR7[c - 7] = (uint16_t)(uint32_t)_mm256_extract_epi32(vV, 7);
+            }
+
+            /* Unpack vL/vP back to scalars for the epilogue. */
+            L0 = _mm256_extract_epi32(vL, 0);
+            L1 = _mm256_extract_epi32(vL, 1);
+            L2 = _mm256_extract_epi32(vL, 2);
+            L3 = _mm256_extract_epi32(vL, 3);
+            L4 = _mm256_extract_epi32(vL, 4);
+            L5 = _mm256_extract_epi32(vL, 5);
+            L6 = _mm256_extract_epi32(vL, 6);
+            L7 = _mm256_extract_epi32(vL, 7);
+            P0 = _mm256_extract_epi32(vP, 0);
+            P1 = _mm256_extract_epi32(vP, 1);
+            P2 = _mm256_extract_epi32(vP, 2);
+            P3 = _mm256_extract_epi32(vP, 3);
+            P4 = _mm256_extract_epi32(vP, 4);
+            P5 = _mm256_extract_epi32(vP, 5);
+            P6 = _mm256_extract_epi32(vP, 6);
+        }
+
+        /* Epilogue: drain the staggered triangle. After the steady-state
+         * loop, lane 0 has finished (it computed up to col nx-1), but
+         * lanes 1..7 still owe their last 1..7 columns. */
+
+        /* 7-lane drain: lane 1 col nx-1, lane 2 col nx-2, ..., lane 7 col nx-7. */
+        {
+            int32_t pr1 = paeth32(L1, L0, P0);
+            int32_t v1 = (int32_t)rR1[nx - 1] + pr1; dR1[nx - 1] = (uint16_t)v1;
+            int32_t pr2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[nx - 2] + pr2; dR2[nx - 2] = (uint16_t)v2;
+            int32_t pr3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[nx - 3] + pr3; dR3[nx - 3] = (uint16_t)v3;
+            int32_t pr4 = paeth32(L4, L3, P3);
+            int32_t v4 = (int32_t)rR4[nx - 4] + pr4; dR4[nx - 4] = (uint16_t)v4;
+            int32_t pr5 = paeth32(L5, L4, P4);
+            int32_t v5 = (int32_t)rR5[nx - 5] + pr5; dR5[nx - 5] = (uint16_t)v5;
+            int32_t pr6 = paeth32(L6, L5, P5);
+            int32_t v6 = (int32_t)rR6[nx - 6] + pr6; dR6[nx - 6] = (uint16_t)v6;
+            int32_t pr7 = paeth32(L7, L6, P6);
+            int32_t v7 = (int32_t)rR7[nx - 7] + pr7; dR7[nx - 7] = (uint16_t)v7;
+            P1 = L1; P2 = L2; P3 = L3; P4 = L4; P5 = L5; P6 = L6;
+            L1 = (int32_t)(uint16_t)v1;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+            L4 = (int32_t)(uint16_t)v4;
+            L5 = (int32_t)(uint16_t)v5;
+            L6 = (int32_t)(uint16_t)v6;
+            L7 = (int32_t)(uint16_t)v7;
+        }
+        /* 6-lane drain. */
+        {
+            int32_t pr2 = paeth32(L2, L1, P1);
+            int32_t v2 = (int32_t)rR2[nx - 1] + pr2; dR2[nx - 1] = (uint16_t)v2;
+            int32_t pr3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[nx - 2] + pr3; dR3[nx - 2] = (uint16_t)v3;
+            int32_t pr4 = paeth32(L4, L3, P3);
+            int32_t v4 = (int32_t)rR4[nx - 3] + pr4; dR4[nx - 3] = (uint16_t)v4;
+            int32_t pr5 = paeth32(L5, L4, P4);
+            int32_t v5 = (int32_t)rR5[nx - 4] + pr5; dR5[nx - 4] = (uint16_t)v5;
+            int32_t pr6 = paeth32(L6, L5, P5);
+            int32_t v6 = (int32_t)rR6[nx - 5] + pr6; dR6[nx - 5] = (uint16_t)v6;
+            int32_t pr7 = paeth32(L7, L6, P6);
+            int32_t v7 = (int32_t)rR7[nx - 6] + pr7; dR7[nx - 6] = (uint16_t)v7;
+            P2 = L2; P3 = L3; P4 = L4; P5 = L5; P6 = L6;
+            L2 = (int32_t)(uint16_t)v2;
+            L3 = (int32_t)(uint16_t)v3;
+            L4 = (int32_t)(uint16_t)v4;
+            L5 = (int32_t)(uint16_t)v5;
+            L6 = (int32_t)(uint16_t)v6;
+            L7 = (int32_t)(uint16_t)v7;
+        }
+        /* 5-lane drain. */
+        {
+            int32_t pr3 = paeth32(L3, L2, P2);
+            int32_t v3 = (int32_t)rR3[nx - 1] + pr3; dR3[nx - 1] = (uint16_t)v3;
+            int32_t pr4 = paeth32(L4, L3, P3);
+            int32_t v4 = (int32_t)rR4[nx - 2] + pr4; dR4[nx - 2] = (uint16_t)v4;
+            int32_t pr5 = paeth32(L5, L4, P4);
+            int32_t v5 = (int32_t)rR5[nx - 3] + pr5; dR5[nx - 3] = (uint16_t)v5;
+            int32_t pr6 = paeth32(L6, L5, P5);
+            int32_t v6 = (int32_t)rR6[nx - 4] + pr6; dR6[nx - 4] = (uint16_t)v6;
+            int32_t pr7 = paeth32(L7, L6, P6);
+            int32_t v7 = (int32_t)rR7[nx - 5] + pr7; dR7[nx - 5] = (uint16_t)v7;
+            P3 = L3; P4 = L4; P5 = L5; P6 = L6;
+            L3 = (int32_t)(uint16_t)v3;
+            L4 = (int32_t)(uint16_t)v4;
+            L5 = (int32_t)(uint16_t)v5;
+            L6 = (int32_t)(uint16_t)v6;
+            L7 = (int32_t)(uint16_t)v7;
+        }
+        /* 4-lane drain. */
+        {
+            int32_t pr4 = paeth32(L4, L3, P3);
+            int32_t v4 = (int32_t)rR4[nx - 1] + pr4; dR4[nx - 1] = (uint16_t)v4;
+            int32_t pr5 = paeth32(L5, L4, P4);
+            int32_t v5 = (int32_t)rR5[nx - 2] + pr5; dR5[nx - 2] = (uint16_t)v5;
+            int32_t pr6 = paeth32(L6, L5, P5);
+            int32_t v6 = (int32_t)rR6[nx - 3] + pr6; dR6[nx - 3] = (uint16_t)v6;
+            int32_t pr7 = paeth32(L7, L6, P6);
+            int32_t v7 = (int32_t)rR7[nx - 4] + pr7; dR7[nx - 4] = (uint16_t)v7;
+            P4 = L4; P5 = L5; P6 = L6;
+            L4 = (int32_t)(uint16_t)v4;
+            L5 = (int32_t)(uint16_t)v5;
+            L6 = (int32_t)(uint16_t)v6;
+            L7 = (int32_t)(uint16_t)v7;
+        }
+        /* 3-lane drain. */
+        {
+            int32_t pr5 = paeth32(L5, L4, P4);
+            int32_t v5 = (int32_t)rR5[nx - 1] + pr5; dR5[nx - 1] = (uint16_t)v5;
+            int32_t pr6 = paeth32(L6, L5, P5);
+            int32_t v6 = (int32_t)rR6[nx - 2] + pr6; dR6[nx - 2] = (uint16_t)v6;
+            int32_t pr7 = paeth32(L7, L6, P6);
+            int32_t v7 = (int32_t)rR7[nx - 3] + pr7; dR7[nx - 3] = (uint16_t)v7;
+            P5 = L5; P6 = L6;
+            L5 = (int32_t)(uint16_t)v5;
+            L6 = (int32_t)(uint16_t)v6;
+            L7 = (int32_t)(uint16_t)v7;
+        }
+        /* 2-lane drain. */
+        {
+            int32_t pr6 = paeth32(L6, L5, P5);
+            int32_t v6 = (int32_t)rR6[nx - 1] + pr6; dR6[nx - 1] = (uint16_t)v6;
+            int32_t pr7 = paeth32(L7, L6, P6);
+            int32_t v7 = (int32_t)rR7[nx - 2] + pr7; dR7[nx - 2] = (uint16_t)v7;
+            P6 = L6;
+            L6 = (int32_t)(uint16_t)v6;
+            L7 = (int32_t)(uint16_t)v7;
+        }
+        /* 1-lane drain. */
+        {
+            int32_t pr7 = paeth32(L7, L6, P6);
+            int32_t v7 = (int32_t)rR7[nx - 1] + pr7; dR7[nx - 1] = (uint16_t)v7;
+        }
+    }
+
+    /* Trailing rows (at most 7): scalar PAETH — negligible cost. */
+    for (; row < ny; ++row) {
+        const uint16_t *rr = res + row * nx;
+        uint16_t       *dr = dst + row * nx;
+        const uint16_t *da = dst + (row - 1) * nx;
+        dr[0] = (uint16_t)((int32_t)rr[0] + (int32_t)da[0]);
+        for (int64_t c = 1; c < nx; ++c) {
+            int32_t left   = (int32_t)dr[c - 1];
+            int32_t up     = (int32_t)da[c];
+            int32_t upleft = (int32_t)da[c - 1];
+            dr[c] = (uint16_t)((int32_t)rr[c] + paeth32(left, up, upleft));
+        }
+    }
+}
+#endif /* TDC_PRED2D_HAVE_AVX2 */
+
 /* Forward declarations for float path (defined after auto-select). */
 static void pred2d_encode_float(tdc_dtype dt, tdc_pred2d_kind kind,
                                 const uint8_t *src, uint8_t *res,
@@ -1084,6 +1524,37 @@ static void pred2d_encode_float(tdc_dtype dt, tdc_pred2d_kind kind,
 static void pred2d_decode_float(tdc_dtype dt, tdc_pred2d_kind kind,
                                 const uint8_t *res, uint8_t *dst,
                                 int64_t nx, int64_t ny);
+
+/* ----- Test-only exports for u16 PAETH wavefront kernels ----------------- *
+ * Thin shims so tests/test_pred2d_wf_consistency.c can compare wf2/wf4/wf8
+ * against each other and against scalar paeth32 on identical input. Kept
+ * as separate symbols so the static inlining of the kernels themselves is
+ * preserved on the hot dispatch path. */
+void pred2d_dec_u16_paeth_wavefront_export(const uint16_t *res, uint16_t *dst,
+                                            int64_t nx, int64_t ny) {
+    pred2d_dec_u16_paeth_wavefront(res, dst, nx, ny);
+}
+void pred2d_dec_u16_paeth_wf4_export(const uint16_t *res, uint16_t *dst,
+                                      int64_t nx, int64_t ny) {
+    pred2d_dec_u16_paeth_wf4(res, dst, nx, ny);
+}
+void pred2d_dec_u16_paeth_wf8_export(const uint16_t *res, uint16_t *dst,
+                                      int64_t nx, int64_t ny) {
+#ifdef TDC_PRED2D_HAVE_AVX2
+    pred2d_dec_u16_paeth_wf8(res, dst, nx, ny);
+#else
+    /* Without AVX2 the symbol still resolves so the test can link; it
+     * just falls back to wf4 which the test compares against. */
+    pred2d_dec_u16_paeth_wf4(res, dst, nx, ny);
+#endif
+}
+int pred2d_have_avx2(void) {
+#ifdef TDC_PRED2D_HAVE_AVX2
+    return 1;
+#else
+    return 0;
+#endif
+}
 
 /* ----- Sweep dispatchers ------------------------------------------------- */
 /* Non-static so the QUANTIZE_PRED_2D composite model in
@@ -1126,11 +1597,24 @@ void pred2d_decode_sweep(tdc_dtype dt, tdc_pred2d_kind kind,
         return;
     }
     if (dt == TDC_DT_U16 && kind == TDC_PRED2D_PAETH && nx > 0 && ny > 0) {
-        /* 4-row wavefront for large rasters (4-way ILP); 2-row wavefront
-         * for smaller ones. The 4-row kernel needs nx >= 4 for its
-         * triangular prologue and at least one full quad after row 0
-         * (ny >= 5). Below that threshold the 2-row version is still a
-         * strict improvement over scalar. */
+        /* Tiered dispatch: 4-row SSE2 wavefront for the steady state, 2-row
+         * for smaller rasters, scalar for the smallest. The 4-row kernel
+         * needs nx >= 4 for its triangular prologue and at least one full
+         * quad after row 0 (ny >= 5); below that the 2-row version still
+         * beats scalar and is always safe.
+         *
+         * AVX2 8-row wavefront (pred2d_dec_u16_paeth_wf8) is implemented
+         * and round-trip-tested but NOT dispatched: bench on Raptor Lake
+         * (i9-14900K) measures 0.41x of wf4 throughput. The cross-128-bit-
+         * lane permute2x128 + alignr_epi8 adds ~3 cycles to the per-iter
+         * critical path, and 8 _mm256_extract_epi32 scatter-stores vs 4
+         * SSE2 extracts double the store-port pressure — neither helps
+         * because the bottleneck is the row-above memory dependency, not
+         * lane width. Confirms SPEEDUP-TODO N4 ("4-row wavefront is near
+         * the uarch ceiling on x86_64"). The wf8 kernel is kept compiled
+         * and round-trip-tested so a future re-bench (newer uarch, MSVC,
+         * larger raster, fused pipeline) can re-enable it without redoing
+         * the work. */
         if (nx >= 4 && ny >= 5) {
             pred2d_dec_u16_paeth_wf4((const uint16_t *)res,
                                       (uint16_t *)dst, nx, ny);
