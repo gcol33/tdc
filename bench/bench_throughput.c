@@ -27,6 +27,7 @@
 
 #include "../src/core/timer.h"
 #include "../src/core/decode_profile.h"
+#include "../src/model/pred2d_internal.h"
 #define now_seconds tdc_now_secs
 
 #define ITERS_FULL  5
@@ -595,6 +596,104 @@ static int case_pred2d_noisy_u16(void) {
 
     free(data);
     return rc;
+}
+
+/* Direct wavefront kernel microbench — measures the u16 PAETH decoder
+ * kernels (wf4 SSE2 vs wf8 AVX2) without the pipeline overhead of the
+ * full encode/transform/entropy chain. Useful for confirming whether the
+ * AVX2 8-row wavefront actually buys headroom over the SSE2 4-row
+ * version, or whether memory latency on the row-above dependency caps
+ * both at the same rate (SPEEDUP-TODO N4 prediction).
+ *
+ * The bench encodes once with the typed PAETH encoder, then loops the
+ * decoder N times against the same residual buffer. Throughput is
+ * reported on raw u16 bytes (the conventional codec-comparison number).
+ */
+static int case_pred2d_wf_kernel_microbench(void) {
+    if (g_smoke) return 0;  /* perf-only — round-trip is covered by tests */
+
+    const int NY = 2048, NX = 2048;
+    const size_t n = (size_t)NY * (size_t)NX;
+    const size_t bytes = n * sizeof(uint16_t);
+    uint16_t *src = (uint16_t *)malloc(bytes);
+    uint16_t *res = (uint16_t *)malloc(bytes);
+    uint16_t *dst = (uint16_t *)malloc(bytes);
+    if (!src || !res || !dst) {
+        free(src); free(res); free(dst);
+        return 1;
+    }
+    fill_grad_u16(src, NY, NX);
+
+    /* Encode via the typed sweep (PAETH on u16). */
+    {
+        tdc_pred2d_kind kind = TDC_PRED2D_PAETH;
+        pred2d_encode_sweep(TDC_DT_U16, kind,
+                            (const uint8_t *)src, (uint8_t *)res,
+                            (int64_t)NX, (int64_t)NY);
+    }
+
+    /* Best-of-N microbench. Both kernels are interleaved within the same
+     * loop so they share the same cache-warmup history and the same CPU
+     * frequency state, eliminating ordering bias. The two kernels write
+     * the same dst contents (PAETH is deterministic), so we don't need
+     * to memset between calls — `dst` is already correct after either
+     * kernel completes, and the next call simply overwrites. */
+    int iters = g_decode_iters > 0 ? g_decode_iters : 50;
+    const int warmup = 5;
+    const char *desc = "rast2d u16 2048x2048 (kernel)";
+    int avx2 = pred2d_have_avx2();
+
+    /* Warm L3 + frequency state with both kernels before timing. */
+    for (int i = 0; i < warmup; ++i) {
+        pred2d_dec_u16_paeth_wf4_export(res, dst, NX, NY);
+        if (avx2) pred2d_dec_u16_paeth_wf8_export(res, dst, NX, NY);
+    }
+
+    double t_wf4 = 1e18, t_wf8 = 1e18;
+    for (int i = 0; i < iters; ++i) {
+        double t0 = now_seconds();
+        pred2d_dec_u16_paeth_wf4_export(res, dst, NX, NY);
+        double t1 = now_seconds();
+        double dt4 = t1 - t0;
+        if (dt4 < t_wf4) t_wf4 = dt4;
+        if (memcmp(dst, src, bytes) != 0) {
+            fprintf(stderr, "FAIL [wf4 kernel]: round-trip mismatch\n");
+            free(src); free(res); free(dst); return 1;
+        }
+
+        if (avx2) {
+            double t2 = now_seconds();
+            pred2d_dec_u16_paeth_wf8_export(res, dst, NX, NY);
+            double t3 = now_seconds();
+            double dt8 = t3 - t2;
+            if (dt8 < t_wf8) t_wf8 = dt8;
+            if (memcmp(dst, src, bytes) != 0) {
+                fprintf(stderr, "FAIL [wf8 kernel]: round-trip mismatch\n");
+                free(src); free(res); free(dst); return 1;
+            }
+        }
+    }
+
+    /* Custom report block — print_row's column layout assumes a full
+     * encode/decode pair, but the kernel microbench is decode-only. */
+    double mib = (double)bytes / (1024.0 * 1024.0);
+    double wf4_mbps = mib / t_wf4;
+    printf("\n--- u16 PAETH wavefront kernel microbench (best of %d) ---\n",
+           iters);
+    printf("  %s, %.2f MiB raw\n", desc, mib);
+    printf("  wf4 (SSE2 4-lane) decode: %8.2f MB/s\n", wf4_mbps);
+    if (avx2) {
+        double wf8_mbps = mib / t_wf8;
+        double speedup = wf8_mbps / wf4_mbps;
+        printf("  wf8 (AVX2 8-lane) decode: %8.2f MB/s  (speedup %.2fx)\n",
+               wf8_mbps, speedup);
+    } else {
+        printf("  wf8 (AVX2 8-lane) decode: not run — TDC_ENABLE_AVX2 was OFF\n");
+    }
+    printf("\n");
+
+    free(src); free(res); free(dst);
+    return 0;
 }
 
 static int case_delta1d_f64(void) {
@@ -1478,6 +1577,7 @@ int main(int argc, char **argv) {
     rc |= case_delta_zigzag_shuffle_walk("DELTA1D+ZZ+BSHUF+LZ+HUF",   TDC_ENTROPY_LZ,      TDC_ENTROPY_HUFFMAN);
     rc |= case_delta1d_f64();
     rc |= case_pred2d_noisy_u16();
+    rc |= case_pred2d_wf_kernel_microbench();
     rc |= case_plane2d_shuffle_lz();
     rc |= case_pred3d_f32();
     rc |= case_pred3d_i16();

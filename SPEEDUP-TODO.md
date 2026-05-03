@@ -146,7 +146,7 @@ bench case.
 
 ---
 
-## N4 — PRED2D PAETH decode throughput (parked, carried forward)
+## N4 — PRED2D PAETH decode throughput (parked, ceiling confirmed 2026-05-03)
 
 **Symptom.** PRED2D PAETH decode on u16 noisy gradient 2048x2048:
 ~480 MB/s (after 4-row wavefront + hoisted paeth32). zstd L9 decodes
@@ -158,22 +158,40 @@ the same block at 820 MB/s.
 - 4-row staggered wavefront (commit 67f9f8c): +10% over 2-row, kept.
   Dispatched for rasters with nx ≥ 4 && ny ≥ 5.
 - Hoisted paeth32 algebra: +4%, kept.
-- SSE2/NEON SIMD paeth32: not attempted (predicted no gain — the
-  bottleneck is memory latency from the row-above dependency, not
-  ALU throughput).
+- 4-row SSE2 SIMD paeth32 (`paeth_4x_sse2`): kept, dispatched.
+- 8-row AVX2 SIMD wavefront `pred2d_dec_u16_paeth_wf8`
+  **implemented and benched 2026-05-03** — measured **0.42× of wf4**
+  throughput on Raptor Lake (i9-14900K, gcc 14.2 `-mavx2 -O3`,
+  `bench_throughput.exe` interleaved microbench, best of 50).
+  The cross-128-bit-lane shift (`permute2x128 + alignr_epi8`) adds
+  ~3 cycles to the per-iter critical path, and 8 `_mm256_extract_epi32`
+  scatter-stores double the store-port pressure vs SSE2's 4 extracts —
+  neither offset because the bottleneck is the row-above memory
+  dependency, not vector ALU throughput. Kernel and helper remain
+  compiled and round-trip-tested (`tests/test_pred2d_wf_consistency`)
+  so a future re-bench on another uarch or fused pipeline can
+  re-evaluate without redoing the work; dispatcher continues to use
+  wf4. See `bench/RESULTS.md` for the table.
 - UP predictor: matches PAETH on ratio while decoding 42% faster.
   For noisy data where PAETH's adaptive selection adds little, UP
   is the better default.
 
-**Current ceiling analysis.** The 4-row wavefront is near the uarch
-ceiling on x86_64 (MSVC /O2). Further ILP does not help because
-entropy/BSHUF stages now dominate the pipeline.
+**Current ceiling analysis.** The 4-row wavefront is at the uarch
+ceiling on x86_64. Empirically confirmed by the 2026-05-03 wf8 bench
+above: doubling lane width nets **negative** speedup on Raptor Lake.
+Further ILP does not help because entropy/BSHUF stages now dominate
+the pipeline AND the kernel itself is memory-latency bound on the
+row-above dependency.
 
 **Re-open criteria:**
 - A real-data bench surfaces u16 PAETH decode as the dominant stage
   in a pipeline where the model is earning its keep on ratio.
 - BSHUF gains a chunked variant enabling fused decode (see parked
   chunked-decode design in git history under old P2.2).
+- A future uarch (Zen 5+, AVX-512 with native scatter, MSVC's
+  improved AVX2 codegen) where the wf8 kernel might re-cross the
+  break-even point. The wf8 implementation is kept warm so this
+  is a one-line dispatcher change rather than a re-implementation.
 
 ---
 

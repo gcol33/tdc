@@ -87,6 +87,37 @@ Notes:
 - `PRED3D(GRAD)+ZZ+BSHUF+HUF` on the i16 volume hits 3.36× — 26% better than zstd L19 (2.66×) — at ~100× the encode speed.
 - LZ encode rates dropped vs the pre-Apr-12 baseline (window 64 KiB → 1 MiB, hash 2¹⁶ → 2¹⁸, chain depth 128, ext cap 256). Ratios on every applicable row went up; the encode cost is the documented price. See "encode-speed footnote" below.
 
+### u16 PAETH wavefront kernel microbench (2026-05-03, i9-14900K, gcc 14.2)
+
+Direct decode-kernel microbench, bypassing the encode/transform/entropy
+pipeline. 8 MiB residual buffer, kernels interleaved per iteration to
+share cache + frequency state, best of 50. Numbers are kernel-only
+throughput (residual → decoded raster), much higher than the
+end-to-end PAETH pipeline rows above (~290-470 MB/s) where BSHUF +
+entropy decode dominate.
+
+| kernel                          | decode MB/s | vs wf4   |
+|---------------------------------|------------:|---------:|
+| wf4 (SSE2 4-row staggered)      | ~1380-1500  |  1.00×   |
+| wf8 (AVX2 8-row staggered)      |  ~585-620   |  0.41-0.50× |
+
+**Finding.** wf8 is consistently ~58% slower than wf4 across 5 runs on
+Raptor Lake (i9-14900K) with `-mavx2 -O3`. The cross-128-bit-lane
+`permute2x128 + alignr_epi8` adds ~3 cycles to the per-iter critical
+path, and the 8 `_mm256_extract_epi32` scatter-stores double the
+store-port pressure vs SSE2's 4 extracts. Neither cost is offset
+because the bottleneck is the row-above memory dependency on the
+staggered `dRm[c]`/`dRm[c-1]` reads, not vector ALU throughput.
+
+This confirms the prediction in `SPEEDUP-TODO.md` N4: **the 4-row
+wavefront is at the uarch ceiling on x86_64 for u16 PAETH decode.**
+The wf8 kernel and helper are kept compiled and round-trip-tested
+(see `tests/test_pred2d_wf_consistency`) so a future bench on a
+different uarch (Zen 4/5, MSVC, AVX-512 widening) or a fused
+entropy+model decode path can re-evaluate without re-implementing.
+The dispatcher in `pred2d_decode_sweep` continues to route u16 PAETH
+through wf4.
+
 ## Part 2 — vectra (tdc-via-vectra) end-to-end
 
 Skipped this run — vectra integration not exercised in this pass. The
