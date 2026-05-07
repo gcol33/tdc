@@ -63,12 +63,12 @@ static inline uint64_t pred3d_float_compute(tdc_pred3d_kind kind,
                 case 7: return (a + b + c) / 3u;
                 default: return 0;
             }
-        case TDC_PRED3D_GRAD3D: {
-            int64_t ia = (int64_t)a, ib = (int64_t)b, ic = (int64_t)c;
-            int64_t iab = (int64_t)ab, iac = (int64_t)ac;
-            int64_t ibc = (int64_t)bc, iabc = (int64_t)abc;
-            return (uint64_t)(ia + ib + ic - iab - iac - ibc + iabc);
-        }
+        case TDC_PRED3D_GRAD3D:
+            /* Trilinear extrapolation in unsigned wraparound arithmetic;
+             * stays well-defined for float-ordered values that span the
+             * full int64 range. Bit-pattern equivalent to the previous
+             * signed version for inputs that fit in int64. */
+            return a + b + c - ab - ac - bc + abc;
         case TDC_PRED3D_PAETH3D:
             switch (oct) {
                 case 0: return 0;
@@ -79,13 +79,16 @@ static inline uint64_t pred3d_float_compute(tdc_pred3d_kind kind,
                 case 5: return paeth_ordered_3d(a, c, ac);
                 case 6: return paeth_ordered_3d(b, c, bc);
                 case 7: {
-                    int64_t ia = (int64_t)a, ib = (int64_t)b, ic = (int64_t)c;
-                    int64_t iab = (int64_t)ab, iac = (int64_t)ac;
-                    int64_t ibc = (int64_t)bc, iabc = (int64_t)abc;
-                    int64_t p = ia + ib + ic - iab - iac - ibc + iabc;
-                    int64_t pa = p >= ia ? p - ia : ia - p;
-                    int64_t pb = p >= ib ? p - ib : ib - p;
-                    int64_t pc = p >= ic ? p - ic : ic - p;
+                    /* Same selection rule as the inner-box Paeth (PNG-style),
+                     * but in uint64 wraparound arithmetic so float-ordered
+                     * extremes don't trigger UBSAN signed overflow. */
+                    uint64_t p   = a + b + c - ab - ac - bc + abc;
+                    uint64_t pa_d = p - a, pa_n = a - p;
+                    uint64_t pb_d = p - b, pb_n = b - p;
+                    uint64_t pc_d = p - c, pc_n = c - p;
+                    uint64_t pa = (pa_d <= pa_n) ? pa_d : pa_n;
+                    uint64_t pb = (pb_d <= pb_n) ? pb_d : pb_n;
+                    uint64_t pc = (pc_d <= pc_n) ? pc_d : pc_n;
                     if (pa <= pb && pa <= pc) return a;
                     if (pb <= pc) return b;
                     return c;

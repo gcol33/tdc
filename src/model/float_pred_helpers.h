@@ -76,16 +76,26 @@ static inline void tdc_float_store_float(tdc_dtype dt, uint8_t *base,
     }
 }
 
-/* Paeth prediction in ordered uint64 space (PNG-style). */
+/* Paeth prediction in ordered uint64 space (PNG-style).
+ *
+ * The float-ordered mapping spans the full int64 bit pattern range, so
+ * casting to int64 and computing p - a etc. with signed arithmetic
+ * overflows under UBSAN for values near the type boundary. Stay in uint64
+ * throughout: a + b - c is well-defined as wraparound, and the Paeth
+ * "closest predictor" rule only needs the unsigned wrap-distance between
+ * p and each candidate. The wrap-distance equals the signed |p - a| when
+ * the difference fits in int64; outside that range the score is
+ * approximate, which is fine — a, b, c are still the only candidates and
+ * the selection stays deterministic. */
 static inline uint64_t tdc_float_paeth_ordered(uint64_t left, uint64_t up,
                                                uint64_t upleft) {
-    int64_t a  = (int64_t)left;
-    int64_t b  = (int64_t)up;
-    int64_t c  = (int64_t)upleft;
-    int64_t p  = a + b - c;
-    int64_t pa = p >= a ? p - a : a - p;
-    int64_t pb = p >= b ? p - b : b - p;
-    int64_t pc = p >= c ? p - c : c - p;
+    uint64_t p   = left + up - upleft;
+    uint64_t pa_d = p - left,   pa_n = left   - p;
+    uint64_t pb_d = p - up,     pb_n = up     - p;
+    uint64_t pc_d = p - upleft, pc_n = upleft - p;
+    uint64_t pa = (pa_d <= pa_n) ? pa_d : pa_n;
+    uint64_t pb = (pb_d <= pb_n) ? pb_d : pb_n;
+    uint64_t pc = (pc_d <= pc_n) ? pc_d : pc_n;
     if (pa <= pb && pa <= pc) return left;
     if (pb <= pc) return up;
     return upleft;

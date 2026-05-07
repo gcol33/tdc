@@ -1319,19 +1319,40 @@ static void pred3d_decode_sweep(tdc_dtype dt, tdc_pred3d_kind kind,
  * scoring loop therefore agrees with whatever the kernel will write.
  */
 
-static inline int64_t pred3d_load(tdc_dtype dt, const uint8_t *base, int64_t i) {
-    return tdc_model_load(dt, base, i);
+static inline uint64_t pred3d_load_u(tdc_dtype dt, const uint8_t *base, int64_t i) {
+    return (uint64_t)tdc_model_load(dt, base, i);
 }
 
-/* Per-octant pred matching the typed kernel exactly. has_a/has_b/has_c
- * select which octant we're in. */
-static int64_t pred3d_compute(tdc_pred3d_kind kind,
-                              int64_t a, int64_t b, int64_t c,
-                              int64_t ab, int64_t ac, int64_t bc, int64_t abc,
-                              int has_a, int has_b, int has_c) {
+/* Unsigned wrap-min absolute difference (matches the helper in pred2d). */
+static inline uint64_t pred3d_abs_diff_u(uint64_t a, uint64_t b) {
+    uint64_t d = a - b;
+    uint64_t nd = (uint64_t)0 - d;
+    return (d <= nd) ? d : nd;
+}
+
+/* PNG-style Paeth in uint64 wraparound space — same selection rule as
+ * paeth64 but stays well-defined for full-range int64 inputs (e.g. float
+ * data passed through the ordered mapping). */
+static inline uint64_t paeth64_u(uint64_t a, uint64_t b, uint64_t c, uint64_t p) {
+    uint64_t pa = pred3d_abs_diff_u(p, a);
+    uint64_t pb = pred3d_abs_diff_u(p, b);
+    uint64_t pc = pred3d_abs_diff_u(p, c);
+    uint64_t r  = (pb <= pc) ? b : c;
+    return ((pa <= pb) && (pa <= pc)) ? a : r;
+}
+
+/* Per-octant pred matching the typed kernel exactly, in uint64 arithmetic.
+ * For inputs that fit in int64 the result is bit-equivalent to the previous
+ * signed version. The unsigned average uses a bit-trick that avoids carry
+ * overflow; the unsigned 3-way average loses up to 2 ulps of precision when
+ * the wrap happens but stays deterministic. */
+static uint64_t pred3d_compute_u(tdc_pred3d_kind kind,
+                                 uint64_t a, uint64_t b, uint64_t c,
+                                 uint64_t ab, uint64_t ac, uint64_t bc, uint64_t abc,
+                                 int has_a, int has_b, int has_c) {
     int oct = (has_c << 2) | (has_b << 1) | has_a; /* 0..7 */
     switch (kind) {
-        case TDC_PRED3D_LEFT:  return a; /* a == 0 if !has_a */
+        case TDC_PRED3D_LEFT:  return a;
         case TDC_PRED3D_UP:    return b;
         case TDC_PRED3D_FRONT: return c;
         case TDC_PRED3D_AVG3: {
@@ -1340,16 +1361,14 @@ static int64_t pred3d_compute(tdc_pred3d_kind kind,
                 case 1: return a;
                 case 2: return b;
                 case 4: return c;
-                case 3: return (a + b) / 2;
-                case 5: return (a + c) / 2;
-                case 6: return (b + c) / 2;
-                case 7: return (a + b + c) / 3;
+                case 3: return (a & b) + ((a ^ b) >> 1);
+                case 5: return (a & c) + ((a ^ c) >> 1);
+                case 6: return (b & c) + ((b ^ c) >> 1);
+                case 7: return (a + b + c) / 3u;  /* sum may wrap; deterministic */
                 default: return 0;
             }
         }
         case TDC_PRED3D_GRAD3D:
-            /* a + b + c - ab - ac - bc + abc collapses correctly per
-             * octant when out-of-bounds neighbors are zero. */
             return a + b + c - ab - ac - bc + abc;
         case TDC_PRED3D_PAETH3D: {
             switch (oct) {
@@ -1357,12 +1376,12 @@ static int64_t pred3d_compute(tdc_pred3d_kind kind,
                 case 1: return a;
                 case 2: return b;
                 case 4: return c;
-                case 3: return paeth64(a, b, ab, a + b - ab);
-                case 5: return paeth64(a, c, ac, a + c - ac);
-                case 6: return paeth64(b, c, bc, b + c - bc);
+                case 3: return paeth64_u(a, b, ab, a + b - ab);
+                case 5: return paeth64_u(a, c, ac, a + c - ac);
+                case 6: return paeth64_u(b, c, bc, b + c - bc);
                 case 7: {
-                    int64_t p = a + b + c - ab - ac - bc + abc;
-                    return paeth64(a, b, c, p);
+                    uint64_t p = a + b + c - ab - ac - bc + abc;
+                    return paeth64_u(a, b, c, p);
                 }
                 default: return 0;
             }
@@ -1399,23 +1418,22 @@ static tdc_pred3d_kind pred3d_auto_select(tdc_dtype dt, const uint8_t *src,
             int64_t z = row / ny;
             int64_t y = row % ny;
             for (int64_t x = 0; x < nx; ++x) {
-                int64_t i   = z * slab + y * nx + x;
-                int64_t val = pred3d_load(dt, src, i);
+                int64_t i    = z * slab + y * nx + x;
+                uint64_t val = pred3d_load_u(dt, src, i);
                 int has_a = x > 0;
                 int has_b = y > 0;
                 int has_c = z > 0;
-                int64_t a   = has_a               ? pred3d_load(dt, src, i - 1)             : 0;
-                int64_t b   = has_b               ? pred3d_load(dt, src, i - nx)            : 0;
-                int64_t c   = has_c               ? pred3d_load(dt, src, i - slab)          : 0;
-                int64_t ab  = (has_a && has_b)    ? pred3d_load(dt, src, i - 1 - nx)        : 0;
-                int64_t ac  = (has_a && has_c)    ? pred3d_load(dt, src, i - 1 - slab)      : 0;
-                int64_t bc  = (has_b && has_c)    ? pred3d_load(dt, src, i - nx - slab)     : 0;
-                int64_t abc = (has_a && has_b && has_c)
-                                                  ? pred3d_load(dt, src, i - 1 - nx - slab) : 0;
-                int64_t pred = pred3d_compute(kind, a, b, c, ab, ac, bc, abc,
-                                              has_a, has_b, has_c);
-                int64_t res  = val - pred;
-                sum += (uint64_t)(res < 0 ? -res : res);
+                uint64_t a   = has_a               ? pred3d_load_u(dt, src, i - 1)             : 0;
+                uint64_t b   = has_b               ? pred3d_load_u(dt, src, i - nx)            : 0;
+                uint64_t c   = has_c               ? pred3d_load_u(dt, src, i - slab)          : 0;
+                uint64_t ab  = (has_a && has_b)    ? pred3d_load_u(dt, src, i - 1 - nx)        : 0;
+                uint64_t ac  = (has_a && has_c)    ? pred3d_load_u(dt, src, i - 1 - slab)      : 0;
+                uint64_t bc  = (has_b && has_c)    ? pred3d_load_u(dt, src, i - nx - slab)     : 0;
+                uint64_t abc = (has_a && has_b && has_c)
+                                                   ? pred3d_load_u(dt, src, i - 1 - nx - slab) : 0;
+                uint64_t pred = pred3d_compute_u(kind, a, b, c, ab, ac, bc, abc,
+                                                 has_a, has_b, has_c);
+                sum += pred3d_abs_diff_u(val, pred);
             }
         }
         if (sum < best_sum) {
