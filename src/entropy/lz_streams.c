@@ -1859,10 +1859,13 @@ static tdc_status lzs_decode_fused(
             TDC_PREFETCH_L1(dst + dp - mo + ll);
         tdc_dp_add(TDC_DP_OTHER, t_other);
 
-        /* --- Execute: copy literals (item 4.3) --- */
+        /* --- Execute: copy literals (item 4.3) ---
+         * Gate the 16-byte SIMD path on lp + 16 <= total_lit too: the
+         * last sequences can sit within 15 bytes of the literals tail,
+         * and the SIMD load overreads up to 16 bytes from lit_raw. */
         uint64_t t_lit = tdc_dp_rdtsc();
         if (ll > 0) {
-            if (ll <= 16 && dp + ll <= safe_end) {
+            if (ll <= 16 && dp + ll <= safe_end && lp + 16 <= total_lit) {
                 tdc_copy16(dst + dp, lit_raw + lp);
             } else {
                 memcpy(dst + dp, lit_raw + lp, ll);
@@ -1991,7 +1994,7 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
 
         uint64_t t_lit = tdc_dp_rdtsc();
         if (ll > 0) {
-            if (ll <= 16 && dp + ll <= safe_end) {
+            if (ll <= 16 && dp + ll <= safe_end && lp + 16 <= total_lit) {
                 tdc_copy16(dst + dp, lit_raw + lp);
             } else {
                 memcpy(dst + dp, lit_raw + lp, ll);
@@ -2024,7 +2027,7 @@ static tdc_status lzs_reconstruct(uint8_t *dst, size_t dst_size,
         uint32_t mo = match_offs[i];
 
         if (ll > 0) {
-            if (ll <= 16 && dp + ll <= safe_end) {
+            if (ll <= 16 && dp + ll <= safe_end && lp + 16 <= total_lit) {
                 tdc_copy16(dst + dp, lit_raw + lp);
             } else {
                 memcpy(dst + dp, lit_raw + lp, ll);

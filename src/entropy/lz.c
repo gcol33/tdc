@@ -815,9 +815,13 @@ static inline void lz_decode_fast(
         /* Prefetch match address before literal copy. */
         TDC_PREFETCH_L1(dst + dp - off + lit_len);
 
-        /* Copy literals — exact memcpy (no source overread). */
+        /* Copy literals. The 16-byte SIMD path overreads up to 16 bytes
+         * from lit_data, which lives inside the *input* buffer (no
+         * caller-provided trailing slack). Gate the SIMD path on
+         * lp + 16 <= literals_size; fall back to exact memcpy near the
+         * literals tail. */
         if (LZ_LIKELY(lit_len > 0)) {
-            if (lit_len <= 16) {
+            if (lit_len <= 16 && lp + 16 <= literals_size) {
                 tdc_copy16(dst + dp, lit_data + lp);
             } else {
                 memcpy(dst + dp, lit_data + lp, lit_len);
