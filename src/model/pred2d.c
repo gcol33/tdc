@@ -1767,17 +1767,43 @@ static void pred2d_decode_float(tdc_dtype dt, tdc_pred2d_kind kind,
  * change end-to-end throughput.
  */
 
-static inline int64_t pred2d_load(tdc_dtype dt, const uint8_t *base, int64_t i) {
-    return tdc_model_load(dt, base, i);
+static inline uint64_t pred2d_load_u(tdc_dtype dt, const uint8_t *base, int64_t i) {
+    return (uint64_t)tdc_model_load(dt, base, i);
 }
 
-static int64_t pred2d_compute(tdc_pred2d_kind kind,
-                              int64_t left, int64_t up, int64_t upleft) {
+/* Unsigned wrap-min absolute difference: equals |int64(a) - int64(b)| when
+ * the difference fits in int64, and the smaller wrap-distance otherwise.
+ * Used for predictor scoring where exact precision at the int64 boundary is
+ * not required. */
+static inline uint64_t pred2d_abs_diff_u(uint64_t a, uint64_t b) {
+    uint64_t d = a - b;
+    uint64_t nd = (uint64_t)0 - d;
+    return (d <= nd) ? d : nd;
+}
+
+/* Unsigned-arithmetic Paeth used by auto-select. Same selection rule as
+ * paeth64 but every step uses well-defined unsigned wraparound, so float
+ * bit-pattern inputs (full int64 range) cannot trip UBSAN's signed-overflow
+ * sanitizer. The choice is between {a, b, c}; for inputs that fit in int64
+ * the result equals paeth64. */
+static inline uint64_t paeth64_u(uint64_t a, uint64_t b, uint64_t c) {
+    uint64_t p  = a + b - c;
+    uint64_t pa = pred2d_abs_diff_u(p, a);
+    uint64_t pb = pred2d_abs_diff_u(p, b);
+    uint64_t pc = pred2d_abs_diff_u(p, c);
+    uint64_t r  = (pb <= pc) ? b : c;
+    return ((pa <= pb) && (pa <= pc)) ? a : r;
+}
+
+static uint64_t pred2d_compute_u(tdc_pred2d_kind kind,
+                                 uint64_t left, uint64_t up, uint64_t upleft) {
     switch (kind) {
         case TDC_PRED2D_LEFT:    return left;
         case TDC_PRED2D_UP:      return up;
-        case TDC_PRED2D_AVERAGE: return (left + up) / 2;
-        case TDC_PRED2D_PAETH:   return paeth64(left, up, upleft);
+        /* Bit-trick unsigned average — no carry overflow, no /2 of a wrapped
+         * sum. Equals (left + up) / 2 in mathematical sense for unsigned. */
+        case TDC_PRED2D_AVERAGE: return (left & up) + ((left ^ up) >> 1);
+        case TDC_PRED2D_PAETH:   return paeth64_u(left, up, upleft);
         default:                 return 0;
     }
 }
@@ -1806,14 +1832,13 @@ tdc_pred2d_kind pred2d_auto_select(tdc_dtype dt, const uint8_t *src,
         uint64_t sum = 0;
         for (int64_t row = 0; row < sample_rows; ++row) {
             for (int64_t col = 0; col < nx; ++col) {
-                int64_t i      = row * nx + col;
-                int64_t val    = pred2d_load(dt, src, i);
-                int64_t left   = (col > 0)              ? pred2d_load(dt, src, i - 1)      : 0;
-                int64_t up     = (row > 0)              ? pred2d_load(dt, src, i - nx)     : 0;
-                int64_t upleft = (col > 0 && row > 0)   ? pred2d_load(dt, src, i - nx - 1) : 0;
-                int64_t pred   = pred2d_compute(kind, left, up, upleft);
-                int64_t res    = val - pred;
-                sum += (uint64_t)(res < 0 ? -res : res);
+                int64_t i       = row * nx + col;
+                uint64_t val    = pred2d_load_u(dt, src, i);
+                uint64_t left   = (col > 0)              ? pred2d_load_u(dt, src, i - 1)      : 0;
+                uint64_t up     = (row > 0)              ? pred2d_load_u(dt, src, i - nx)     : 0;
+                uint64_t upleft = (col > 0 && row > 0)   ? pred2d_load_u(dt, src, i - nx - 1) : 0;
+                uint64_t pred   = pred2d_compute_u(kind, left, up, upleft);
+                sum += pred2d_abs_diff_u(val, pred);
             }
         }
         if (sum < best_sum) {
