@@ -23,3 +23,9 @@ bench/__pycache__/
 
 # MkDocs build artifact
 site/
+
+# src/ and bench/ C files reference notes.md / todo.md as rationale source
+# for perf decisions — override the global gitignore rule.
+!notes.md
+!plan.md
+!todo.md
