@@ -111,6 +111,7 @@ set(TDC_SOURCES
     src/api/decode_impl.c
     src/api/decode_into.c
     src/api/decode_varlen.c
+    src/api/decode_dict.c
     src/api/stream_encode.c
     src/api/stream_decode.c
     src/api/pushpull_encode.c
@@ -223,6 +224,14 @@ if(TDC_BUILD_TESTS)
     add_executable(test_dnum_e2e tests/test_dnum_e2e.c)
     target_link_libraries(test_dnum_e2e PRIVATE tdc)
     add_test(NAME dnum_e2e COMMAND test_dnum_e2e)
+
+    add_executable(test_sparse_zero_e2e tests/test_sparse_zero_e2e.c)
+    target_link_libraries(test_sparse_zero_e2e PRIVATE tdc)
+    add_test(NAME sparse_zero_e2e COMMAND test_sparse_zero_e2e)
+
+    add_executable(test_dict_defer_e2e tests/test_dict_defer_e2e.c)
+    target_link_libraries(test_dict_defer_e2e PRIVATE tdc)
+    add_test(NAME dict_defer_e2e COMMAND test_dict_defer_e2e)
 
     add_executable(test_lane_roundtrip tests/test_lane_roundtrip.c)
     target_link_libraries(test_lane_roundtrip PRIVATE tdc)

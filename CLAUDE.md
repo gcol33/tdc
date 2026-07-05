@@ -191,6 +191,27 @@ ends. As of now:
   well enough that average probe length doesn't justify Robin Hood's
   per-probe overhead.
 
+- **A model's residual length is not always `n_elems`.** The decode driver
+  (`decode_impl.c`) and encoder (`encode.c`) must size the residual byte
+  walk from `driver_model_residual_len`, not `n_elems * residual_elem_size`.
+  SPARSE_ZERO_1D emits one u32 position per *non-zero* input (`n_nonzero`,
+  read from side meta), so its residual is shorter than the block. Assuming
+  `n_elems` made the driver's `walk_bytes == uncompressed_size` cross-check
+  reject every SPARSE_ZERO block as `TDC_E_CORRUPT`, and the ZERO_RESIDUAL
+  short-circuit stored the wrong logical size for an all-zero column. Both
+  are fixed; `test_sparse_zero_e2e` locks the full pipeline (the isolated
+  `test_sparse_zero_roundtrip` calls the model vtable directly and never
+  exercised the driver, which is how the bug shipped). Any new model whose
+  residual length differs from `n_elems` must extend
+  `driver_model_residual_len`.
+
+- **Dict-defer decode** (`decode_dict.c`, `tdc_decode_block_dict`): returns a
+  DICT_1D block as (dictionary bytes + u32 indices) without flattening, for
+  consumers that intern unique values (R STRSXP, Arrow dictionary array). It
+  reuses `driver_decode_block_impl` with the new `run_model = 0` flag so the
+  shared entropy/transform reversal stays the single source of truth and only
+  the model's flatten step is skipped. `test_dict_defer_e2e` covers it.
+
 When extracting from vectra, **read the relevant section of
 `vectra/CLAUDE.md` first**. The benchmark notes there are the closest
 thing this project has to institutional memory.
