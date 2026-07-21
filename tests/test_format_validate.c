@@ -61,9 +61,9 @@ static tdc_container_header make_homogeneous_header(void) {
     h.global_dtype  = (uint8_t)TDC_DT_F32;
     h.global_layout = (uint8_t)TDC_LAYOUT_RASTER_2D;
     h.global_rank   = 2;
-    h.global_dim[0] = 256;
-    h.global_dim[1] = 256;
-    h.global_dim[2] = 0;
+    h.u.global_dim[0] = 256;
+    h.u.global_dim[1] = 256;
+    h.u.global_dim[2] = 0;
     return h;
 }
 
@@ -131,7 +131,7 @@ static int test_container_header_rejects(void) {
     }
     {
         tdc_container_header h = make_heterogeneous_header();
-        h.global_dim[0] = 1;
+        h.u.global_dim[0] = 1;
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
 
@@ -145,28 +145,34 @@ static int test_container_header_rejects(void) {
     /* Homogeneous: trailing dim slot non-zero */
     {
         tdc_container_header h = make_homogeneous_header();
-        h.global_dim[2] = 7;  /* rank 2, slot 2 must be 0 */
+        h.u.global_dim[2] = 7;  /* rank 2, slot 2 must be 0 */
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
 
     /* Homogeneous: negative dim */
     {
         tdc_container_header h = make_homogeneous_header();
-        h.global_dim[0] = -1;
+        h.u.global_dim[0] = -1;
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
 
-    /* Index size not a multiple of entry size */
+    /* The trailing index is a row-group index whose size depends on the
+     * per-group column counts and on whether stats are attached, so it is
+     * NOT n_blocks * a fixed entry size. Only its presence is checkable
+     * from the 64-byte header. A non-empty container needs both halves. */
     {
         tdc_container_header h = make_homogeneous_header();
-        h.index_size = 4 * TDC_INDEX_ENTRY_SIZE + 3;
+        h.index_size = 4 * TDC_INDEX_ENTRY_SIZE + 3;  /* ragged, but legal */
+        CHECK(tdc_container_header_validate(&h) == TDC_OK);
+    }
+    {
+        tdc_container_header h = make_homogeneous_header();
+        h.index_size = 0;
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
-
-    /* Index size doesn't match n_blocks */
     {
         tdc_container_header h = make_homogeneous_header();
-        h.index_size = 5 * TDC_INDEX_ENTRY_SIZE;  /* h.n_blocks == 4 */
+        h.index_offset = 0;
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
 
@@ -176,6 +182,74 @@ static int test_container_header_rejects(void) {
         h.n_blocks    = 0;
         h.index_size  = TDC_INDEX_ENTRY_SIZE;  /* should be 0 */
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
+    }
+
+    /* ----- widened (schema-relocated) containers ----- */
+
+    /* A well-formed widened header: heterogeneous, both tail pointers set,
+     * schema written after the blocks region it supersedes. */
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.schema_size = 48;
+        h.u.het.blocks_start  = 128;
+        h.u.het.schema_offset = 4096;
+        CHECK(tdc_container_header_validate(&h) == TDC_OK);
+    }
+
+    /* v1 must leave the relocation pointers zeroed: a stale pointer with a
+     * v1 stamp would send a reader to the wrong schema. */
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.u.het.schema_offset = 4096;
+        CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
+    }
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.u.het.blocks_start = 128;
+        CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
+    }
+
+    /* v2 must set both, and must carry a schema to have relocated. */
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.schema_size = 48;
+        h.u.het.blocks_start = 128;      /* schema_offset left 0 */
+        CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
+    }
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.schema_size = 0;               /* relocated to nothing */
+        h.u.het.blocks_start  = 128;
+        h.u.het.schema_offset = 4096;
+        CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
+    }
+
+    /* The relocated schema is written past the blocks, never before. */
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.schema_size = 48;
+        h.u.het.blocks_start  = 4096;
+        h.u.het.schema_offset = 128;
+        CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
+    }
+
+    /* Only a heterogeneous container can be widened -- the relocation
+     * pointers share storage with the global shape. */
+    {
+        tdc_container_header h = make_homogeneous_header();
+        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
+    }
+
+    /* An unknown version is still refused. */
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.version = TDC_CONTAINER_VERSION_WIDENED + 1;
+        CHECK(tdc_container_header_validate(&h) == TDC_E_VERSION);
     }
 
     return 0;

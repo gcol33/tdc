@@ -178,7 +178,7 @@ int main(int argc, char **argv) {
            dtype_name((tdc_dtype)h->global_dtype),
            layout_name((tdc_layout)h->global_layout));
     printf("                global_shape=");
-    print_shape(h->global_dim, h->global_rank);
+    print_shape(h->u.global_dim, h->global_rank);
     printf("\n");
 
     /* --- Schema ---------------------------------------------------------- */
