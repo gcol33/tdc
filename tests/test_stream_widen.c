@@ -564,6 +564,73 @@ static int test_widen_twice(void) {
     return 0;
 }
 
+/* Aborting a widen writes nothing: the container is left exactly as it was
+ * found, even though blocks were already emitted past its trailer. */
+static int test_widen_abort(void) {
+    mem_io mio = {0};
+    if (build_base(&mio, 1)) { mem_io_free(&mio); return 1; }
+
+    size_t   base_size = mio.size;
+    uint8_t *base_copy = (uint8_t *)malloc(base_size);
+    memcpy(base_copy, mio.data, base_size);
+
+    tdc_stream_encoder_widen_config wcfg;
+    memset(&wcfg, 0, sizeof(wcfg));
+    wcfg.io.write_fn = mem_write;
+    wcfg.io.read_fn  = mem_read;
+    wcfg.io.seek_fn  = mem_seek;
+    wcfg.io.ctx      = &mio;
+    wcfg.schema      = &wide_schema;
+    wcfg.realloc_fn  = test_realloc;
+
+    tdc_stream_encoder *enc = NULL;
+    int rc = 0;
+    if (tdc_stream_encoder_open_widen(&wcfg, &enc) != TDC_OK) rc = 1;
+
+    /* Write some of the new column, then give up partway. */
+    if (!rc) {
+        tdc_codec_spec raw = make_raw_spec();
+        for (int rg = 0; rg < N_ROWGROUPS - 1 && !rc; ++rg) {
+            tdc_block b = make_block_i32(added_src[rg], N_ROWS);
+            if (tdc_stream_encoder_widen_block(enc, (uint64_t)rg, &b, &raw,
+                                               NULL) != TDC_OK) rc = 1;
+        }
+    }
+    if (!rc && tdc_stream_encoder_abort(&enc) != TDC_OK) rc = 1;
+    if (!rc && enc != NULL) rc = 1;
+
+    /* The file grew (the caller may truncate), but nothing the header
+     * reaches has changed, so it still reads as the original container. */
+    if (!rc && memcmp(mio.data, base_copy, base_size) != 0) rc = 1;
+
+    tdc_stream_decoder *dec = NULL;
+    if (!rc && open_dec(&mio, &dec) == TDC_OK) {
+        const tdc_schema *sch = tdc_stream_decoder_read_schema(dec);
+        const tdc_container_header *h = tdc_stream_decoder_header(dec);
+        if (!sch || sch->n_columns != 2) rc = 1;
+        if (!rc && h->version != TDC_CONTAINER_VERSION) rc = 1;
+        for (int rg = 0; rg < N_ROWGROUPS && !rc; ++rg) {
+            const tdc_rowgroup_entry *e =
+                tdc_stream_decoder_get_rowgroup(dec, (uint64_t)rg);
+            if (!e || e->n_cols != 2) { rc = 1; break; }
+            rc = check_f64_col(dec, (uint64_t)rg, 0, temp_src[rg], "abort temp");
+            if (!rc) rc = check_i32_col(dec, (uint64_t)rg, 1, pres_src[rg],
+                                        "abort pres");
+        }
+        tdc_stream_decoder_close(&dec);
+    } else if (!rc) {
+        rc = 1;
+    }
+
+    /* Abort is a safe no-op on an already-cleared handle. */
+    if (!rc && tdc_stream_encoder_abort(&enc) != TDC_OK) rc = 1;
+
+    free(base_copy);
+    mem_io_free(&mio);
+    ASSERT_OR_DIE(!rc, "aborted widen leaves the container untouched");
+    return 0;
+}
+
 /* Argument and precondition checking. */
 static int test_widen_rejects(void) {
     mem_io mio = {0};
@@ -637,6 +704,7 @@ int main(void) {
     RUN(test_widen_adds_stats_to_statless_base);
     RUN(test_widened_refuses_sequential);
     RUN(test_widen_twice);
+    RUN(test_widen_abort);
     RUN(test_widen_rejects);
 
     #undef RUN

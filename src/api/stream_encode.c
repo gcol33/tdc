@@ -665,6 +665,27 @@ tdc_status tdc_stream_encoder_widen_block(tdc_stream_encoder     *enc,
     return TDC_OK;
 }
 
+tdc_status tdc_stream_encoder_abort(tdc_stream_encoder **enc) {
+    if (!enc || !*enc) return TDC_OK;
+
+    v2_stream_encoder_state *e = (v2_stream_encoder_state *)*enc;
+
+    /* Same teardown as close, minus every write. Nothing that was already
+     * emitted is referenced by the on-disk header, so for a widen the
+     * container is left exactly as it was found. */
+    v2_free(e, e->cur_cols);
+    v2_free(e, e->cur_stats);
+    v2_free(e, e->schema_buf);
+    v2_free_groups(e);
+    if (e->scratch.data) {
+        e->realloc_fn(e->alloc_user, e->scratch.data, 0);
+    }
+    e->realloc_fn(e->alloc_user, e, 0);
+    *enc = NULL;
+
+    return TDC_OK;
+}
+
 uint64_t tdc_stream_encoder_block_count(const tdc_stream_encoder *enc) {
     if (!enc) return 0;
     const v2_stream_encoder_state *e =

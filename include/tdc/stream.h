@@ -208,6 +208,22 @@ tdc_status tdc_stream_encoder_set_rowgroup_stats(tdc_stream_encoder     *enc,
  */
 tdc_status tdc_stream_encoder_close(tdc_stream_encoder **enc);
 
+/*
+ * Discard an encoder without finalizing: frees all internal state and
+ * writes nothing -- no index, no schema, no header patch. Sets *enc to
+ * NULL; safe on a NULL *enc.
+ *
+ * For a widening encoder this is what makes a failed widen harmless: the
+ * blocks it already wrote sit past the container's trailing index and are
+ * referenced only by the header patch that now never happens, so the
+ * container is left exactly as it was found. (The caller may truncate the
+ * file back to its previous length to reclaim those bytes.)
+ *
+ * On an encoder from tdc_stream_encoder_open the header was already written
+ * at open, so aborting leaves a container with n_blocks = 0 and no index.
+ */
+tdc_status tdc_stream_encoder_abort(tdc_stream_encoder **enc);
+
 /* Number of blocks written so far. */
 uint64_t tdc_stream_encoder_block_count(const tdc_stream_encoder *enc);
 
