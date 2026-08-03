@@ -290,6 +290,10 @@ if(TDC_BUILD_TESTS)
     target_link_libraries(test_stream_widen PRIVATE tdc)
     add_test(NAME stream_widen COMMAND test_stream_widen)
 
+    add_executable(test_stream_extend tests/test_stream_extend.c)
+    target_link_libraries(test_stream_extend PRIVATE tdc)
+    add_test(NAME stream_extend COMMAND test_stream_extend)
+
     add_executable(test_stats tests/test_stats.c)
     target_link_libraries(test_stats PRIVATE tdc)
     add_test(NAME stats COMMAND test_stats)
