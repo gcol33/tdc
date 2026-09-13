@@ -219,6 +219,54 @@ static int test_empty_strings(void) {
     return rt_strings("empty strings", rows, 5);
 }
 
+static int test_no_heap(void) {
+    const tdc_model_vt *vt = &tdc_model_dict1d_vt;
+    /* Every string empty and no heap at all: data is NULL. */
+    uint32_t offsets[4] = { 0u, 0u, 0u, 0u };
+    tdc_block in = {0};
+    in.offsets     = offsets;
+    in.dtype       = TDC_DT_STRING;
+    in.layout      = TDC_LAYOUT_VECTOR_1D;
+    in.shape.rank  = 1;
+    in.shape.dim[0] = 3;
+    in.shape.stride[0] = 1;
+
+    tdc_buffer residual = make_buffer();
+    tdc_buffer side     = make_buffer();
+    tdc_dtype  rdt      = (tdc_dtype)0;
+    tdc_status st = vt->encode(&in, NULL, &residual, &rdt, &side);
+    ASSERT_OR_DIE(st == TDC_OK, "no-heap encode");
+    uint32_t count = 0u, total = 0xDEADBEEFu;
+    memcpy(&count, side.data + 0, 4u);
+    memcpy(&total, side.data + 4, 4u);
+    ASSERT_OR_DIE(count == 1u && total == 0u, "no-heap: one empty entry");
+
+    uint32_t out_offsets[4] = { 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu };
+    uint8_t  out_data[1] = { 0 };
+    tdc_block out = in;
+    out.data    = out_data;
+    out.offsets = out_offsets;
+    st = vt->decode(&out, NULL, rdt, residual.data, residual.size,
+                    side.data, side.size);
+    ASSERT_OR_DIE(st == TDC_OK, "no-heap decode");
+    ASSERT_OR_DIE(string_blocks_equal(&in, &out), "no-heap decoded strings");
+    free_buffer(&residual);
+    free_buffer(&side);
+
+    /* A NULL heap under non-empty strings is rejected, not read. */
+    uint32_t bad_offsets[4] = { 0u, 2u, 2u, 3u };
+    in.offsets = bad_offsets;
+    residual = make_buffer();
+    side     = make_buffer();
+    st = vt->encode(&in, NULL, &residual, &rdt, &side);
+    ASSERT_OR_DIE(st == TDC_E_INVAL, "NULL heap with bytes must be TDC_E_INVAL");
+    free_buffer(&residual);
+    free_buffer(&side);
+
+    printf("  [no heap] OK\n");
+    return 0;
+}
+
 static int test_empty_block(void) {
     const tdc_model_vt *vt = &tdc_model_dict1d_vt;
     /* n == 0: data and offsets may be NULL per the block contract. */
@@ -372,6 +420,7 @@ int main(void) {
     if (test_all_unique())      return 1;
     if (test_single_row())      return 1;
     if (test_empty_strings())   return 1;
+    if (test_no_heap())         return 1;
     if (test_empty_block())     return 1;
     if (test_rejections())      return 1;
     if (test_registry())        return 1;
