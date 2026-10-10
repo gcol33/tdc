@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- LZ encode at the default level (and levels 2-8, and LZ_STREAMS levels
+  2-4, which share the greedy parser) is 7-9x faster on
+  incompressible and weakly compressible input (#1). The hash-chain parser
+  skips ahead on miss streaks instead of walking the chain at every byte,
+  the match finder no longer clears its per-position chain array, and the
+  single-stream LZ encoder drops matches that save no bytes. On 131,072-row
+  f64 blocks through RAW + BYTE_SHUFFLE + LZ (`bench/bench_lz_levels.c`):
+  standard normal 42 -> 387 MB/s, smooth surface 55 -> 424 MB/s, both at
+  unchanged ratio; normal rounded to 2 decimals goes from ratio 1.000 to
+  0.881 (level 1: 0.982). The bitstream is unchanged; only the parse
+  differs, so existing records decode as before.
+
 - The row-group index wire format now has a single implementation
   (`src/format/rowgroup.c`). The stream encoder's serializer, the stream
   decoder's parser, and `format/rowgroup.c` were three separate hand-

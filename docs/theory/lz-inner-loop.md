@@ -190,6 +190,20 @@ the walk itself prefetches the next candidate's position and chain link,
 so the memory system keeps up on runs where every lookup descends
 several links.
 
+The chain branch also skips on miss streaks. After a miss, the next probe
+lands `1 + (run >> 6)` bytes further on, capped at 64, where `run` is the
+length of the pending literal run. Inside matchable data a match resets
+the run within a few probes and the step stays 1. Across high-entropy
+bytes, such as the mantissa planes of a byte-shuffled f64 column, the
+parser probes and chain-inserts only a thinning subset of positions; on
+131,072-row blocks of standard normal doubles this lifts the default
+level from about 40 to about 390 MB/s with the same ratio. Before it, the
+chain walk at every position (one random access into `chain_prev` per
+candidate) was the whole of the gap to the flat-hash level. The single
+stream LZ encoder also drops matches that do not save at least one byte
+(`match_len - 1 - offset bytes < 1`), so a length-3 match, which costs a
+tag byte plus a 2-byte offset, stays literal and does not reset the run.
+
 Hash table sizing deliberately runs over the conventional "70% load
 factor" target that a dictionary hash set would aim for. The matcher is
 not building a dictionary; it is building a multi-valued index over

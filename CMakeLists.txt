@@ -294,6 +294,13 @@ if(TDC_BUILD_TESTS)
     target_link_libraries(test_stream_extend PRIVATE tdc)
     add_test(NAME stream_extend COMMAND test_stream_extend)
 
+    add_executable(test_lz_levels_e2e tests/test_lz_levels_e2e.c)
+    target_link_libraries(test_lz_levels_e2e PRIVATE tdc)
+    if(NOT MSVC)
+        target_link_libraries(test_lz_levels_e2e PRIVATE m)
+    endif()
+    add_test(NAME lz_levels_e2e COMMAND test_lz_levels_e2e)
+
     add_executable(test_stats tests/test_stats.c)
     target_link_libraries(test_stats PRIVATE tdc)
     add_test(NAME stats COMMAND test_stats)
@@ -346,6 +353,11 @@ if(TDC_BUILD_BENCH)
 
     add_executable(bench_lz_decode_micro bench/bench_lz_decode_micro.c)
     target_link_libraries(bench_lz_decode_micro PRIVATE tdc)
+    add_executable(bench_lz_levels bench/bench_lz_levels.c)
+    target_link_libraries(bench_lz_levels PRIVATE tdc)
+    if(NOT MSVC)
+        target_link_libraries(bench_lz_levels PRIVATE m)
+    endif()
     # Round-trip smoke gate: runs every bench pipeline once on a tiny block
     # and asserts bytes match. Sub-second; catches any pipeline that breaks
     # round-trip between bench runs. SPEEDUP-TODO P3.2.
