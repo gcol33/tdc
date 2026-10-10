@@ -294,6 +294,10 @@ if(TDC_BUILD_TESTS)
     target_link_libraries(test_stream_extend PRIVATE tdc)
     add_test(NAME stream_extend COMMAND test_stream_extend)
 
+    add_executable(test_stream_write_record tests/test_stream_write_record.c)
+    target_link_libraries(test_stream_write_record PRIVATE tdc)
+    add_test(NAME stream_write_record COMMAND test_stream_write_record)
+
     add_executable(test_lz_levels_e2e tests/test_lz_levels_e2e.c)
     target_link_libraries(test_lz_levels_e2e PRIVATE tdc)
     if(NOT MSVC)

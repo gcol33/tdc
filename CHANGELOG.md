@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sequential walk on v2 rather than silently reporting end-of-blocks at the
   gap.
 
+- `tdc_stream_encoder_write_record` writes a block record the caller
+  already produced with `tdc_encode_block`. The container is byte-identical
+  to the one `write_block` builds; splitting encode from write lets a
+  caller encode the columns of a row group concurrently and write them in
+  order (#1).
+
 ### Changed
 
 - LZ encode at the default level (and levels 2-8, and LZ_STREAMS levels
