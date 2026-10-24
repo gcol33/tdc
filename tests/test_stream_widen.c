@@ -6,18 +6,17 @@
  *
  * What is actually asserted, beyond "the data comes back":
  *
- *   - the original container's bytes are a strict PREFIX of the widened
- *     file, which is the whole claim -- no existing block is moved,
- *     rewritten, or even read;
+ *   - the original container's bytes up to its index are a strict PREFIX of
+ *     the widened file -- no existing block is moved, rewritten, or even
+ *     read;
  *   - every pre-existing column still decodes to its original values, and
  *     its stats survive;
  *   - the appended column decodes per row group, and can carry stats even
  *     when the container had none;
- *   - restoring only the original 64-byte header turns the widened file
- *     back into the original container, which is the crash-before-header-
- *     patch state;
- *   - a widened container refuses sequential walking rather than
- *     truncating at the gap left by the superseded index;
+ *   - a process that dies at any write of a widen pass leaves a file that
+ *     reads either as the container before the pass or as the one after it;
+ *   - a widened container refuses sequential walking rather than reading
+ *     its superseded schema as a block record;
  *   - widening a widened container works (v2 -> v2).
  */
 
@@ -36,6 +35,10 @@ typedef struct {
     size_t   size;
     size_t   capacity;
     size_t   cursor;
+    /* When armed, writes past the first `budget` fail without touching the
+     * buffer: the state a process that died at that write leaves behind. */
+    int      armed;
+    size_t   budget;
 } mem_io;
 
 static void mem_io_free(mem_io *m) {
@@ -45,6 +48,10 @@ static void mem_io_free(mem_io *m) {
 
 static tdc_status mem_write(void *ctx, const void *data, size_t size) {
     mem_io *m = (mem_io *)ctx;
+    if (m->armed) {
+        if (m->budget == 0) return TDC_E_IO;
+        m->budget--;
+    }
     size_t need = m->cursor + size;
     if (need > m->capacity) {
         size_t new_cap = m->capacity ? m->capacity : 64;
@@ -307,76 +314,116 @@ static int check_f64_col(tdc_stream_decoder *dec, uint64_t rg, uint16_t col,
 
 /* ===== Tests ============================================================= */
 
+static uint64_t index_offset_of(const mem_io *mio) {
+    tdc_container_header h;
+    memcpy(&h, mio->data, TDC_CONTAINER_HEADER_SIZE);
+    return h.index_offset;
+}
+
 /*
- * The core guarantee: widening appends. Everything the original container
- * occupied is still there, byte for byte, in the same place.
+ * The core guarantee: widening leaves every existing block where it is.
+ * Everything before the original index is still there, byte for byte.
  */
-static int test_widen_appends_only(void) {
+static int test_widen_keeps_body(void) {
     mem_io mio = {0};
     if (build_base(&mio, 1)) { mem_io_free(&mio); return 1; }
 
-    /* Snapshot the original container. */
-    size_t   base_size = mio.size;
-    uint8_t *base_copy = (uint8_t *)malloc(base_size);
-    memcpy(base_copy, mio.data, base_size);
+    size_t   base_index = (size_t)index_offset_of(&mio);
+    uint8_t *base_copy  = (uint8_t *)malloc(base_index);
+    memcpy(base_copy, mio.data, base_index);
 
     if (widen_with_elevation(&mio, 1)) {
         free(base_copy); mem_io_free(&mio); return 1;
     }
 
-    /* The file grew, and every original byte past the 64-byte header is
-     * untouched. Only the header itself is rewritten (in place, last). */
-    if (mio.size <= base_size) {
-        free(base_copy); mem_io_free(&mio);
-        ASSERT_OR_DIE(0, "widened file should be larger");
-    }
-    if (memcmp(mio.data + TDC_CONTAINER_HEADER_SIZE,
-               base_copy + TDC_CONTAINER_HEADER_SIZE,
-               base_size - TDC_CONTAINER_HEADER_SIZE) != 0) {
-        free(base_copy); mem_io_free(&mio);
-        ASSERT_OR_DIE(0, "original body must be untouched by widening");
-    }
-
+    int rc = memcmp(mio.data + TDC_CONTAINER_HEADER_SIZE,
+                    base_copy + TDC_CONTAINER_HEADER_SIZE,
+                    base_index - TDC_CONTAINER_HEADER_SIZE) != 0;
     free(base_copy);
     mem_io_free(&mio);
+    ASSERT_OR_DIE(!rc, "original body must be untouched by widening");
     return 0;
 }
 
-/* Restoring the pre-widen header must restore the pre-widen container:
- * that is exactly the state a crash before the final header patch leaves. */
-static int test_crash_before_header_patch(void) {
-    mem_io mio = {0};
-    if (build_base(&mio, 1)) { mem_io_free(&mio); return 1; }
-
-    uint8_t old_header[TDC_CONTAINER_HEADER_SIZE];
-    memcpy(old_header, mio.data, TDC_CONTAINER_HEADER_SIZE);
-    size_t base_size = mio.size;
-
-    if (widen_with_elevation(&mio, 1)) { mem_io_free(&mio); return 1; }
-
-    /* Roll the header back; the appended bytes stay in the file. */
-    memcpy(mio.data, old_header, TDC_CONTAINER_HEADER_SIZE);
-
+/* Whether the container in mio is the base one (2 columns) or the widened
+ * one (3 columns), with every value intact; 0 for neither. */
+static int widen_state(mem_io *mio) {
     tdc_stream_decoder *dec = NULL;
-    tdc_status st = open_dec(&mio, &dec);
-    if (st != TDC_OK) { mem_io_free(&mio); ASSERT_OR_DIE(0, "reopen after rollback"); }
-
+    if (open_dec(mio, &dec) != TDC_OK) return 0;
     const tdc_schema *sch = tdc_stream_decoder_read_schema(dec);
-    int bad = (sch == NULL) || (sch->n_columns != 2) ||
-              (tdc_stream_decoder_rowgroup_count(dec) != N_ROWGROUPS);
-    if (!bad) {
-        for (int rg = 0; rg < N_ROWGROUPS && !bad; ++rg) {
-            const tdc_rowgroup_entry *e = tdc_stream_decoder_get_rowgroup(dec, (uint64_t)rg);
-            if (!e || e->n_cols != 2) bad = 1;
+    int n_cols = sch ? (int)sch->n_columns : 0;
+    int ok = (n_cols == 2 || n_cols == 3) &&
+             tdc_stream_decoder_rowgroup_count(dec) == N_ROWGROUPS;
+    for (int rg = 0; rg < N_ROWGROUPS && ok; ++rg) {
+        const tdc_rowgroup_entry *e =
+            tdc_stream_decoder_get_rowgroup(dec, (uint64_t)rg);
+        if (!e || e->n_cols != n_cols) { ok = 0; break; }
+        if (check_f64_col(dec, (uint64_t)rg, 0, temp_src[rg], "crash temp") ||
+            check_i32_col(dec, (uint64_t)rg, 1, pres_src[rg], "crash pres"))
+            ok = 0;
+        if (ok && n_cols == 3 &&
+            check_i32_col(dec, (uint64_t)rg, 2, added_src[rg], "crash elev"))
+            ok = 0;
+    }
+    tdc_stream_decoder_close(&dec);
+    return ok ? n_cols : 0;
+}
+
+/*
+ * A process can die at any write. Run a widen pass that stops at write k,
+ * for every k until the pass completes, and require the file each time to
+ * read as either the container before the pass or the one after it.
+ */
+static int test_crash_at_every_write(void) {
+    mem_io base = {0};
+    if (build_base(&base, 1)) { mem_io_free(&base); return 1; }
+
+    int completed = 0;
+    for (size_t k = 0; !completed && k < 10000; ++k) {
+        mem_io mio = {0};
+        mio.data     = (uint8_t *)malloc(base.size);
+        mio.size     = base.size;
+        mio.capacity = base.size;
+        memcpy(mio.data, base.data, base.size);
+        mio.armed  = 1;
+        mio.budget = k;
+
+        tdc_stream_encoder_widen_config wcfg;
+        memset(&wcfg, 0, sizeof(wcfg));
+        wcfg.io.write_fn = mem_write;
+        wcfg.io.read_fn  = mem_read;
+        wcfg.io.seek_fn  = mem_seek;
+        wcfg.io.ctx      = &mio;
+        wcfg.schema      = &wide_schema;
+        wcfg.realloc_fn  = test_realloc;
+
+        tdc_stream_encoder *enc = NULL;
+        tdc_status st = tdc_stream_encoder_open_widen(&wcfg, &enc);
+        tdc_codec_spec raw = make_raw_spec();
+        for (int rg = 0; st == TDC_OK && rg < N_ROWGROUPS; ++rg) {
+            tdc_block b = make_block_i32(added_src[rg], N_ROWS);
+            st = tdc_stream_encoder_widen_block(enc, (uint64_t)rg, &b, &raw,
+                                                NULL);
+        }
+        /* After a failed write every later write fails too, so tearing the
+         * encoder down leaves the file as a dead process would. */
+        if (st == TDC_OK) st = tdc_stream_encoder_close(&enc);
+        else              tdc_stream_encoder_abort(&enc);
+        completed = (st == TDC_OK);
+        mio.armed = 0;
+
+        int state = widen_state(&mio);
+        int rc = (state == 0) || (completed && state != 3);
+        mem_io_free(&mio);
+        if (rc) {
+            fprintf(stderr, "  crash after %d writes\n", (int)k);
+            mem_io_free(&base);
+            ASSERT_OR_DIE(0, "a crash must leave the old or the new container");
         }
     }
-    if (!bad) bad = check_f64_col(dec, 1, 0, temp_src[1], "rollback temp");
-    if (!bad) bad = check_i32_col(dec, 2, 1, pres_src[2], "rollback pres");
 
-    tdc_stream_decoder_close(&dec);
-    (void)base_size;
-    mem_io_free(&mio);
-    ASSERT_OR_DIE(!bad, "rolled-back header must yield the original container");
+    mem_io_free(&base);
+    ASSERT_OR_DIE(completed, "the pass completes once writes stop failing");
     return 0;
 }
 
@@ -499,7 +546,7 @@ static int test_widen_twice(void) {
     if (build_base(&mio, 1)) { mem_io_free(&mio); return 1; }
     if (widen_with_elevation(&mio, 1)) { mem_io_free(&mio); return 1; }
 
-    size_t after_first = mio.size;
+    size_t after_first = (size_t)index_offset_of(&mio);
     uint8_t *copy = (uint8_t *)malloc(after_first);
     memcpy(copy, mio.data, after_first);
 
@@ -535,7 +582,7 @@ static int test_widen_twice(void) {
     }
 
     int rc = 0;
-    /* Again: the first widen's bytes are untouched below the header. */
+    /* Again: the first widen's bytes before its index are untouched. */
     if (memcmp(mio.data + TDC_CONTAINER_HEADER_SIZE,
                copy + TDC_CONTAINER_HEADER_SIZE,
                after_first - TDC_CONTAINER_HEADER_SIZE) != 0) rc = 1;
@@ -698,8 +745,8 @@ int main(void) {
     } while (0)
 
     fprintf(stderr, "test_stream_widen:\n");
-    RUN(test_widen_appends_only);
-    RUN(test_crash_before_header_patch);
+    RUN(test_widen_keeps_body);
+    RUN(test_crash_at_every_write);
     RUN(test_widen_roundtrip);
     RUN(test_widen_adds_stats_to_statless_base);
     RUN(test_widened_refuses_sequential);

@@ -6,20 +6,21 @@
  *
  * What is actually asserted, beyond "the data comes back":
  *
- *   - the original container's bytes are a strict PREFIX of the extended
- *     file, which is the whole claim -- no existing block is moved,
- *     rewritten, or even read;
+ *   - the original container's bytes up to its index are a strict PREFIX of
+ *     the extended file -- no existing block is moved, rewritten, or even
+ *     read -- and the first appended block starts where that index started;
  *   - the index entries describing the pre-existing row groups are carried
  *     over verbatim: same offsets, same row counts, same stats;
  *   - the appended row groups decode to their own values;
- *   - restoring only the original 64-byte header turns the extended file
- *     back into the original container, which is the crash-before-header-
- *     patch state;
+ *   - a process that dies at any write of an extend pass leaves a file that
+ *     reads either as the container before the pass or as the one after it;
+ *   - any number of extend passes yields the same container bytes as one pass
+ *     writing the same row groups: the superseded indexes are reused, not
+ *     left behind;
  *   - an extended container refuses sequential walking rather than reading
  *     the superseded index sitting in the gap as a block record;
  *   - extending an extended container works, repeatedly, and each pass
- *     leaves the earlier row groups where they were -- which is what makes
- *     building a store by appending linear rather than quadratic;
+ *     leaves the earlier row groups where they were;
  *   - extending a WIDENED container preserves its relocated schema;
  *   - a row group whose column count disagrees with the schema is refused,
  *     rather than written to misalign every later column read.
@@ -40,6 +41,10 @@ typedef struct {
     size_t   size;
     size_t   capacity;
     size_t   cursor;
+    /* When armed, writes past the first `budget` fail without touching the
+     * buffer: the state a process that died at that write leaves behind. */
+    int      armed;
+    size_t   budget;
 } mem_io;
 
 static void mem_io_free(mem_io *m) {
@@ -49,6 +54,10 @@ static void mem_io_free(mem_io *m) {
 
 static tdc_status mem_write(void *ctx, const void *data, size_t size) {
     mem_io *m = (mem_io *)ctx;
+    if (m->armed) {
+        if (m->budget == 0) return TDC_E_IO;
+        m->budget--;
+    }
     size_t need = m->cursor + size;
     if (need > m->capacity) {
         size_t new_cap = m->capacity ? m->capacity : 64;
@@ -108,7 +117,7 @@ static void *test_realloc(void *user, void *ptr, size_t new_size) {
 #define N_ROWS       64
 #define BASE_RGS     2    /* row groups the container starts with */
 #define ADDED_RGS    2    /* row groups each extend pass appends */
-#define MAX_RGS      8
+#define MAX_RGS      16
 
 static double  temp_src[MAX_RGS][N_ROWS];
 static int32_t pres_src[MAX_RGS][N_ROWS];
@@ -181,8 +190,8 @@ static void fill_stats(tdc_column_stats *s, int n_cols, int rg) {
     }
 }
 
-/* Write the 2-column container holding row groups [0, BASE_RGS). */
-static int build_base(mem_io *mio, int with_stats) {
+/* Write the 2-column container holding row groups [0, n_rgs) in one pass. */
+static int build_n(mem_io *mio, int n_rgs, int with_stats) {
     tdc_stream_encoder_config ecfg;
     memset(&ecfg, 0, sizeof(ecfg));
     ecfg.io.write_fn = mem_write;
@@ -196,7 +205,7 @@ static int build_base(mem_io *mio, int with_stats) {
     ASSERT_OR_DIE(tdc_stream_encoder_open(&ecfg, &enc) == TDC_OK, "base open");
 
     tdc_codec_spec raw = make_raw_spec();
-    for (int rg = 0; rg < BASE_RGS; ++rg) {
+    for (int rg = 0; rg < n_rgs; ++rg) {
         tdc_block b0 = make_block_f64(temp_src[rg], N_ROWS);
         ASSERT_OR_DIE(tdc_stream_encoder_write_block(enc, &b0, &raw) == TDC_OK,
                       "base write temp");
@@ -218,9 +227,20 @@ static int build_base(mem_io *mio, int with_stats) {
     return 0;
 }
 
-/* Append row groups [first_rg, first_rg + ADDED_RGS) to an existing
- * 2-column container. */
-static int extend_by(mem_io *mio, int first_rg, int with_stats) {
+/* Write the 2-column container holding row groups [0, BASE_RGS). */
+static int build_base(mem_io *mio, int with_stats) {
+    return build_n(mio, BASE_RGS, with_stats);
+}
+
+static tdc_container_header read_header(const mem_io *mio) {
+    tdc_container_header h;
+    memcpy(&h, mio->data, TDC_CONTAINER_HEADER_SIZE);
+    return h;
+}
+
+/* Append row groups [first_rg, first_rg + count) to an existing 2-column
+ * container. */
+static int extend_n(mem_io *mio, int first_rg, int count, int with_stats) {
     tdc_stream_encoder_extend_config xcfg;
     memset(&xcfg, 0, sizeof(xcfg));
     xcfg.io.write_fn = mem_write;
@@ -234,7 +254,7 @@ static int extend_by(mem_io *mio, int first_rg, int with_stats) {
                   "extend open");
 
     tdc_codec_spec raw = make_raw_spec();
-    for (int k = 0; k < ADDED_RGS; ++k) {
+    for (int k = 0; k < count; ++k) {
         int rg = first_rg + k;
         tdc_block b0 = make_block_f64(temp_src[rg], N_ROWS);
         ASSERT_OR_DIE(tdc_stream_encoder_write_block(enc, &b0, &raw) == TDC_OK,
@@ -255,6 +275,24 @@ static int extend_by(mem_io *mio, int first_rg, int with_stats) {
     }
     ASSERT_OR_DIE(tdc_stream_encoder_close(&enc) == TDC_OK, "extend close");
     return 0;
+}
+
+/* Append row groups [first_rg, first_rg + ADDED_RGS). */
+static int extend_by(mem_io *mio, int first_rg, int with_stats) {
+    return extend_n(mio, first_rg, ADDED_RGS, with_stats);
+}
+
+/* Whether the container in a holds the same bytes as the one in b from the
+ * end of the header to the end of the index, and b ends there. */
+static int same_container_body(const mem_io *a, const mem_io *b) {
+    tdc_container_header ha = read_header(a);
+    tdc_container_header hb = read_header(b);
+    uint64_t end_a = ha.index_offset + ha.index_size;
+    uint64_t end_b = hb.index_offset + hb.index_size;
+    return end_a == end_b && end_b == b->size &&
+           memcmp(a->data + TDC_CONTAINER_HEADER_SIZE,
+                  b->data + TDC_CONTAINER_HEADER_SIZE,
+                  (size_t)end_b - TDC_CONTAINER_HEADER_SIZE) == 0;
 }
 
 static tdc_status open_dec(mem_io *mio, tdc_stream_decoder **dec) {
@@ -346,36 +384,39 @@ static int check_all_rowgroups(mem_io *mio, int n_rgs, int with_stats,
 /* ===== Tests ============================================================= */
 
 /*
- * The core guarantee: extending appends. Everything the original container
- * occupied is still there, byte for byte, in the same place.
+ * The core guarantee: extending leaves every existing block where it is.
+ * Everything before the original index is still there, byte for byte, and
+ * the appended blocks start where that index started.
  */
-static int test_extend_appends_only(void) {
+static int test_extend_keeps_body(void) {
     mem_io mio = {0};
     if (build_base(&mio, 1)) { mem_io_free(&mio); return 1; }
 
-    size_t   base_size = mio.size;
-    uint8_t *base_copy = (uint8_t *)malloc(base_size);
-    memcpy(base_copy, mio.data, base_size);
+    uint64_t base_index = read_header(&mio).index_offset;
+    uint8_t *base_copy  = (uint8_t *)malloc((size_t)base_index);
+    memcpy(base_copy, mio.data, (size_t)base_index);
 
     if (extend_by(&mio, BASE_RGS, 1)) {
         free(base_copy); mem_io_free(&mio); return 1;
     }
 
-    /* The file grew, and every original byte past the 64-byte header is
-     * untouched. Only the header itself is rewritten (in place, last). */
-    if (mio.size <= base_size) {
-        free(base_copy); mem_io_free(&mio);
-        ASSERT_OR_DIE(0, "extended file should be larger");
-    }
-    if (memcmp(mio.data + TDC_CONTAINER_HEADER_SIZE,
-               base_copy + TDC_CONTAINER_HEADER_SIZE,
-               base_size - TDC_CONTAINER_HEADER_SIZE) != 0) {
-        free(base_copy); mem_io_free(&mio);
-        ASSERT_OR_DIE(0, "original body must be untouched by extending");
+    int rc = memcmp(mio.data + TDC_CONTAINER_HEADER_SIZE,
+                    base_copy + TDC_CONTAINER_HEADER_SIZE,
+                    (size_t)base_index - TDC_CONTAINER_HEADER_SIZE) != 0;
+    free(base_copy);
+
+    tdc_stream_decoder *dec = NULL;
+    if (!rc && open_dec(&mio, &dec) == TDC_OK) {
+        const tdc_rowgroup_entry *e =
+            tdc_stream_decoder_get_rowgroup(dec, BASE_RGS);
+        if (!e || e->columns[0].block_offset != base_index) rc = 1;
+        tdc_stream_decoder_close(&dec);
+    } else {
+        rc = 1;
     }
 
-    free(base_copy);
     mem_io_free(&mio);
+    ASSERT_OR_DIE(!rc, "body kept, appended blocks start at the old index");
     return 0;
 }
 
@@ -427,36 +468,87 @@ static int test_existing_index_entries_survive(void) {
     return 0;
 }
 
-/* Restoring the pre-extend header must restore the pre-extend container:
- * that is exactly the state a crash before the final header patch leaves. */
-static int test_crash_before_header_patch(void) {
-    mem_io mio = {0};
-    if (build_base(&mio, 1)) { mem_io_free(&mio); return 1; }
-
-    uint8_t old_header[TDC_CONTAINER_HEADER_SIZE];
-    memcpy(old_header, mio.data, TDC_CONTAINER_HEADER_SIZE);
-
-    if (extend_by(&mio, BASE_RGS, 1)) { mem_io_free(&mio); return 1; }
-
-    /* Roll the header back; the appended bytes stay in the file. */
-    memcpy(mio.data, old_header, TDC_CONTAINER_HEADER_SIZE);
-
-    /* The container reads as it did before the extend: BASE_RGS row groups,
-     * original schema, original values. */
-    if (check_all_rowgroups(&mio, BASE_RGS, 1, "rolled-back container")) {
-        mem_io_free(&mio); return 1;
+/*
+ * A process can die at any write. Run an extend pass that stops at write k,
+ * for every k until the pass completes, and require the file each time to
+ * read as either the container before the pass or the one after it. The
+ * pass appends more than the base index holds, so the original index is
+ * moved ahead of the write cursor several times along the way. A pass run
+ * again over the crashed file writes over what the crashed one left: the
+ * result matches a single-pass container byte for byte.
+ */
+static int test_crash_at_every_write(void) {
+    mem_io base = {0};
+    if (build_base(&base, 1)) { mem_io_free(&base); return 1; }
+    const int added = 8;
+    mem_io once = {0};
+    if (build_n(&once, BASE_RGS + added, 1)) {
+        mem_io_free(&base); mem_io_free(&once); return 1;
     }
 
-    tdc_stream_decoder *dec = NULL;
-    if (open_dec(&mio, &dec) != TDC_OK) { mem_io_free(&mio); ASSERT_OR_DIE(0, "reopen"); }
-    const tdc_schema *sch = tdc_stream_decoder_read_schema(dec);
-    int bad = (sch == NULL) || (sch->n_columns != 2);
-    const tdc_container_header *h = tdc_stream_decoder_header(dec);
-    if (!bad && (!h || h->version != TDC_CONTAINER_VERSION)) bad = 1;
-    tdc_stream_decoder_close(&dec);
+    int completed = 0;
+    for (size_t k = 0; !completed && k < 10000; ++k) {
+        mem_io mio = {0};
+        mio.data     = (uint8_t *)malloc(base.size);
+        mio.size     = base.size;
+        mio.capacity = base.size;
+        memcpy(mio.data, base.data, base.size);
+        mio.armed  = 1;
+        mio.budget = k;
 
-    mem_io_free(&mio);
-    ASSERT_OR_DIE(!bad, "rolled-back header must yield the original container");
+        tdc_stream_encoder_extend_config xcfg;
+        memset(&xcfg, 0, sizeof(xcfg));
+        xcfg.io.write_fn = mem_write;
+        xcfg.io.read_fn  = mem_read;
+        xcfg.io.seek_fn  = mem_seek;
+        xcfg.io.ctx      = &mio;
+        xcfg.realloc_fn  = test_realloc;
+
+        tdc_stream_encoder *enc = NULL;
+        tdc_status st = tdc_stream_encoder_open_extend(&xcfg, &enc);
+        tdc_codec_spec raw = make_raw_spec();
+        for (int rg = BASE_RGS; st == TDC_OK && rg < BASE_RGS + added; ++rg) {
+            tdc_block b0 = make_block_f64(temp_src[rg], N_ROWS);
+            tdc_block b1 = make_block_i32(pres_src[rg], N_ROWS);
+            tdc_column_stats s[2];
+            fill_stats(s, 2, rg);
+            st = tdc_stream_encoder_write_block(enc, &b0, &raw);
+            if (st == TDC_OK) st = tdc_stream_encoder_write_block(enc, &b1, &raw);
+            if (st == TDC_OK) st = tdc_stream_encoder_set_rowgroup_stats(enc, s, 2);
+            if (st == TDC_OK) st = tdc_stream_encoder_end_rowgroup(enc, N_ROWS);
+        }
+        /* After a failed write every later write fails too, so tearing the
+         * encoder down leaves the file as a dead process would. */
+        if (st == TDC_OK) st = tdc_stream_encoder_close(&enc);
+        else              tdc_stream_encoder_abort(&enc);
+        completed = (st == TDC_OK);
+        mio.armed = 0;
+
+        tdc_stream_decoder *dec = NULL;
+        uint64_t n = 0;
+        if (open_dec(&mio, &dec) == TDC_OK) {
+            n = tdc_stream_decoder_rowgroup_count(dec);
+            tdc_stream_decoder_close(&dec);
+        }
+        int rc = (n != (uint64_t)BASE_RGS && n != (uint64_t)(BASE_RGS + added));
+        if (!rc && completed && n != (uint64_t)(BASE_RGS + added)) rc = 1;
+        if (!rc) rc = check_all_rowgroups(&mio, (int)n, 1, "state after a crash");
+        if (!rc && n == (uint64_t)BASE_RGS) {
+            rc = extend_n(&mio, BASE_RGS, added, 1);
+            if (!rc) rc = !same_container_body(&mio, &once);
+        }
+        mem_io_free(&mio);
+        if (rc) {
+            fprintf(stderr, "  crash after %d writes\n", (int)k);
+            mem_io_free(&base);
+            mem_io_free(&once);
+            ASSERT_OR_DIE(0, "a crash must leave the old or the new container");
+        }
+    }
+
+    mem_io_free(&base);
+    mem_io_free(&once);
+    ASSERT_OR_DIE(completed, "the pass completes once writes stop failing");
     return 0;
 }
 
@@ -567,7 +659,7 @@ static int test_extend_repeatedly(void) {
     mem_io mio = {0};
     if (build_base(&mio, 1)) { mem_io_free(&mio); return 1; }
 
-    size_t   after_base = mio.size;
+    size_t   after_base = (size_t)read_header(&mio).index_offset;
     uint8_t *snapshot   = (uint8_t *)malloc(after_base);
     memcpy(snapshot, mio.data, after_base);
 
@@ -577,8 +669,7 @@ static int test_extend_repeatedly(void) {
         }
     }
 
-    /* Still a strict append: the bytes the base container wrote have never
-     * moved, three reopens later. */
+    /* The base container's blocks have never moved, three reopens later. */
     if (memcmp(mio.data + TDC_CONTAINER_HEADER_SIZE,
                snapshot + TDC_CONTAINER_HEADER_SIZE,
                after_base - TDC_CONTAINER_HEADER_SIZE) != 0) {
@@ -699,6 +790,38 @@ static int test_extend_widened_container(void) {
     tdc_stream_decoder_close(&dec);
     mem_io_free(&mio);
     ASSERT_OR_DIE(!rc, "extending a widened container");
+    return 0;
+}
+
+/*
+ * The size claim: a container grown by many extend passes holds one index,
+ * not one per pass. Its bytes from the schema to the end of the index are
+ * identical to those of a container that wrote the same row groups in one
+ * pass; only the header differs, by the grown-in-place stamp.
+ */
+static int test_extend_matches_single_pass(void) {
+    const int passes = (MAX_RGS - BASE_RGS) / ADDED_RGS;
+    const int total  = BASE_RGS + passes * ADDED_RGS;
+
+    mem_io grown = {0};
+    if (build_base(&grown, 1)) { mem_io_free(&grown); return 1; }
+    for (int p = 0; p < passes; ++p) {
+        if (extend_by(&grown, BASE_RGS + p * ADDED_RGS, 1)) {
+            mem_io_free(&grown); return 1;
+        }
+    }
+
+    mem_io once = {0};
+    if (build_n(&once, total, 1)) {
+        mem_io_free(&grown); mem_io_free(&once); return 1;
+    }
+
+    int rc = !same_container_body(&grown, &once);
+    if (!rc) rc = check_all_rowgroups(&grown, total, 1, "grown container");
+
+    mem_io_free(&grown);
+    mem_io_free(&once);
+    ASSERT_OR_DIE(!rc, "grown container must match a single-pass container");
     return 0;
 }
 
@@ -837,14 +960,15 @@ int main(void) {
     } while (0)
 
     fprintf(stderr, "test_stream_extend:\n");
-    RUN(test_extend_appends_only);
+    RUN(test_extend_keeps_body);
     RUN(test_existing_index_entries_survive);
-    RUN(test_crash_before_header_patch);
+    RUN(test_crash_at_every_write);
     RUN(test_extend_roundtrip);
     RUN(test_extend_statless_base);
     RUN(test_extended_refuses_sequential);
     RUN(test_extend_repeatedly);
     RUN(test_extend_widened_container);
+    RUN(test_extend_matches_single_pass);
     RUN(test_extend_abort);
     RUN(test_extend_rejects);
 

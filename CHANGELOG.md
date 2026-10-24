@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Widening and extending reuse the superseded index's space.** Both now
+  write from the end of the container's live data (the last block or schema
+  byte it refers to, which is where its trailing index starts unless a pass
+  was interrupted) instead of past the index, so a container grown by any
+  number of passes holds one index
+  and is as long as one written in a single pass (byte-identical from the
+  schema to the end of the index for row-group appends). Each pass used to
+  leave its predecessor's index behind, so file size grew quadratically with
+  the number of passes.
+
+  The index the header names is still never overwritten: a byte-identical
+  copy of the original index is kept ahead of the write cursor (moved with
+  doubling room, O(log) times per pass) and the header is repointed at it, so
+  a process that dies at any write leaves the container from before or after
+  the pass, and the next pass writes over what an interrupted one left.
+  `tdc_stream_encoder_abort` now writes the original index and header back. Both config structs gain an optional `relocated_fn` hook that
+  reports the container end after each move, for callers that keep a record
+  at the end of the file. The bytes past the index after close are the
+  caller's to truncate.
+
 ### Added
 
 - **Column widening**: `tdc_stream_encoder_open_widen` +
