@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1825,11 +1825,11 @@
 <p>If the error surfaces from a streaming read, the upstream index is likely truncated. Re-read the container from the beginning and confirm <code>index_size</code> matches the trailing-index entry count.</p>
 <h3 id="tdc_e_corrupt-8"><code>TDC_E_CORRUPT = 8</code><a class="headerlink" href="#tdc_e_corrupt-8" title="Permanent link">&para;</a></h3>
 <p><strong>Symptom.</strong> Decode returns 8 before any residual bytes are produced. The record's header failed structural validation.</p>
-<p><strong>Likely cause.</strong> The 80-byte header's magic does not match <code>TDC_BLOCK_MAGIC</code> (<code>BLKB</code>), the advertised section sizes do not fit in <code>src_size</code>, or <code>validity_size</code> disagrees with the flag bit. The container-header analog is <code>src/format/header.c</code> line 44: <code>if (h-&gt;magic != TDC_CONTAINER_MAGIC) return TDC_E_CORRUPT;</code>. Block-record cases are scattered through <code>src/api/decode_impl.c</code> lines 57-85.</p>
+<p><strong>Likely cause.</strong> The 80-byte header's magic is neither <code>TDC_BLOCK_MAGIC</code> (<code>TDBK</code>) nor the legacy <code>TDC_LEGACY_BLOCK_MAGIC</code> (<code>BLKB</code>), the advertised section sizes do not fit in <code>src_size</code>, or <code>validity_size</code> disagrees with the flag bit. The container-header analog is <code>tdc_container_header_check_generation</code> in <code>src/format/header.c</code>. Block-record cases are scattered through <code>src/api/decode_impl.c</code> lines 57-85.</p>
 <p><strong>Fix.</strong> Re-read the bytes from the source. If the corruption is reproducible, run the block through <code>tdc_inspect</code> (<code>tools/tdc_inspect.c</code>) to locate the first invalid field. The most common real-world trigger is a truncated download; checksum the bytes before retrying.</p>
 <h3 id="tdc_e_version-9"><code>TDC_E_VERSION = 9</code><a class="headerlink" href="#tdc_e_version-9" title="Permanent link">&para;</a></h3>
 <p><strong>Symptom.</strong> Decode returns 9 with the container or block record held out of reach. The header's magic was correct but the version was not one the linked library understands.</p>
-<p><strong>Likely cause.</strong> The record was produced by a future tdc that bumped <code>TDC_BLOCK_VERSION</code> or <code>TDC_CONTAINER_VERSION</code>. Current v0 values are <code>TDC_CONTAINER_VERSION = 1</code> and <code>TDC_BLOCK_VERSION = 2</code>. The two return sites are <code>src/format/header.c</code> line 45 (containers) and <code>src/format/block_record.c</code> line 96 (per-block).</p>
+<p><strong>Likely cause.</strong> The record was produced by a future tdc that bumped <code>TDC_BLOCK_VERSION</code> or <code>TDC_CONTAINER_VERSION</code>. Current values are <code>TDC_CONTAINER_VERSION = 1</code> and <code>TDC_BLOCK_VERSION = 1</code> under the <code>'TDCF'</code> / <code>'TDBK'</code> magics; the legacy <code>'TDC1'</code> / <code>'BLKB'</code> generation is read at container version 1 or 2 and block version 2. The return sites are <code>tdc_container_header_check_generation</code> in <code>src/format/header.c</code> (containers) and <code>tdc_block_record_validate</code> in <code>src/format/block_record.c</code> (per-block).</p>
 <p><strong>Fix.</strong> Upgrade tdc to a library version that supports the record's version, or have the producer write a version this reader understands. There is no in-place migration; v0 does not read future versions.</p>
 <h3 id="tdc_e_io-10"><code>TDC_E_IO = 10</code><a class="headerlink" href="#tdc_e_io-10" title="Permanent link">&para;</a></h3>
 <p><strong>Symptom.</strong> A streaming read or write returned 10. The underlying file or socket failed.</p>
@@ -1947,10 +1947,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

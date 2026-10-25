@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1500,19 +1500,22 @@ with no growth logic. Adding a field requires a version bump; re-packing
 within the existing 80 bytes (using the <code>_reserved0</code> / <code>_reserved_pad</code>
 slots) does not. The container header follows the same discipline at 64
 bytes.</p>
-<p>The format carries two version numbers. <code>TDC_CONTAINER_VERSION = 1</code> stamps
-the container; <code>TDC_BLOCK_VERSION = 2</code> stamps every block record. They are
-independent by design so a later block-layout change does not force a
-rewrite of existing container indexes. The version numbers are written by
-the encoder and compared against the compile-time constants during
-<code>tdc_container_header_validate</code> and <code>tdc_block_record_validate</code>; mismatches
-return <code>TDC_E_VERSION</code>, distinct from <code>TDC_E_CORRUPT</code>.</p>
-<p>tdc is pre-release. Until a real external consumer ships (vectra's rewire
-lands, or another downstream integrates), the format may change in place
-without bumping version. The rules in this file describe the current
-layout, not a committed long-term ABI. The <code>project_no_versioning_during_prototype</code>
-note in the project memory governs evolution policy until that first
-downstream consumer exists.</p>
+<p>The current format is identified by its magic numbers, <code>'TDCF'</code> for the
+container and <code>'TDBK'</code> for a block record, and both carry version 1
+(<code>TDC_CONTAINER_VERSION</code>, <code>TDC_BLOCK_VERSION</code>). The versions are independent
+by design so a later block-layout change does not force a rewrite of
+existing container indexes. A header whose magic is unknown fails validation
+with <code>TDC_E_CORRUPT</code>; a known magic at a version its generation does not
+define fails with <code>TDC_E_VERSION</code>.</p>
+<p>The format vectra shipped before it, the <strong>legacy</strong> format (<code>'TDC1'</code>
+container at version 1, or 2 once grown in place; <code>'BLKB'</code> block record at
+version 2), is still read. Writers emit only the current format. The two
+differ in how a block stores its side metadata (see the block record below)
+and in how a grown container is marked. <code>tdc_container_header_is_legacy()</code>
+and <code>tdc_block_record_is_legacy()</code> tell a reader which one it holds. A
+container grown in place by the current library is rewritten with a
+current-format header, and its old and new blocks decode side by side
+because each block record describes itself.</p>
 <h2 id="container-header">Container header<a class="headerlink" href="#container-header" title="Permanent link">&para;</a></h2>
 <p>The container header is written once at the start of a container file,
 followed by a sequence of block records, followed by a trailing index
@@ -1542,7 +1545,7 @@ an 8-aligned offset.</p>
 <td style="text-align: right;">4</td>
 <td>magic</td>
 <td>u32</td>
-<td><code>TDC_CONTAINER_MAGIC</code> = <code>0x31434454</code> (<code>'TDC1'</code> LE)</td>
+<td><code>TDC_CONTAINER_MAGIC</code> = <code>0x46434454</code> (<code>'TDCF'</code> LE)</td>
 </tr>
 <tr>
 <td style="text-align: right;">4</td>
@@ -1556,7 +1559,7 @@ an 8-aligned offset.</p>
 <td style="text-align: right;">2</td>
 <td>flags</td>
 <td>u16</td>
-<td>bit 0 <code>HETEROGENEOUS</code>, bit 1 <code>HAS_STATS</code></td>
+<td>bit 0 <code>HETEROGENEOUS</code>, bit 1 <code>HAS_STATS</code>, bit 2 <code>WIDENED</code></td>
 </tr>
 <tr>
 <td style="text-align: right;">8</td>
@@ -1626,7 +1629,10 @@ an 8-aligned offset.</p>
 <p><code>TDC_CONTAINER_FLAG_HETEROGENEOUS</code> is bit 0. When set, per-block dtype and
 layout vary; the global fields must read as zero. <code>TDC_CONTAINER_FLAG_HAS_STATS</code>
 is bit 1 and signals that at least one row group's trailing index entry
-carries per-column min/max statistics.</p>
+carries per-column min/max statistics. <code>TDC_CONTAINER_FLAG_WIDENED</code> is bit 2
+and marks a heterogeneous container grown in place, whose schema and first
+block are located by the relocation pointers in the last 24 bytes (the
+legacy format marked the same state as container version 2).</p>
 <p>The trailing block-index is a contiguous array of 16-byte entries:</p>
 <table>
 <thead>
@@ -1696,14 +1702,14 @@ of size <code>uncompressed_size</code> before handing it to the model.</p>
 <td style="text-align: right;">4</td>
 <td>magic</td>
 <td>u32</td>
-<td><code>TDC_BLOCK_MAGIC</code> = <code>0x424B4C42</code> (<code>'BLKB'</code> LE)</td>
+<td><code>TDC_BLOCK_MAGIC</code> = <code>0x4B424454</code> (<code>'TDBK'</code> LE)</td>
 </tr>
 <tr>
 <td style="text-align: right;">4</td>
 <td style="text-align: right;">2</td>
 <td>version</td>
 <td>u16</td>
-<td><code>TDC_BLOCK_VERSION</code> = 2</td>
+<td><code>TDC_BLOCK_VERSION</code> = 1</td>
 </tr>
 <tr>
 <td style="text-align: right;">6</td>
@@ -1787,7 +1793,7 @@ of size <code>uncompressed_size</code> before handing it to the model.</p>
 <td style="text-align: right;">4</td>
 <td>side_meta_size</td>
 <td>u32</td>
-<td>model side metadata byte count</td>
+<td>on-disk byte count of the side metadata section</td>
 </tr>
 <tr>
 <td style="text-align: right;">68</td>
@@ -1820,20 +1826,37 @@ chain runs right-to-left and grows the payload back up to the
 post-transform intermediate size; the transform chain then runs right-to-left
 and grows that back up to <code>uncompressed_size</code>. Keeping both counts on disk
 means the decode hot path never guesses at output sizes.</p>
-<p><code>side_meta_size</code> carries model-specific bytes that parametrize the
-decoder. The contents vary by model id. <code>RAW</code> and <code>DELTA_1D</code> write nothing
-into this section, so the size is zero. <code>PRED_2D</code> and <code>PRED_3D</code> store a
-single byte holding the resolved predictor kind after <code>AUTO</code> is dispatched
-at encode time, so their size is 1.
-<code>TDC_MODEL_PLANE_2D</code> stores a u16 tile size, a u32 tile count, and three
+<p>The side metadata section carries model-specific bytes that parametrize the
+decoder. The contents vary by model id. <code>RAW</code> and <code>DELTA_1D</code> emit none, and
+the section is empty. <code>PRED_2D</code> and <code>PRED_3D</code> emit a single byte holding the
+resolved predictor kind after <code>AUTO</code> is dispatched at encode time.
+<code>TDC_MODEL_PLANE_2D</code> emits a u16 tile size, a u32 tile count, and three
 i32 coefficients per tile. <code>TDC_MODEL_DICT_1D</code> and the numeric-dict variant
-store a packed dictionary. The block header does not describe the internal
-layout of this section; the model id implies the format.</p>
+emit their dictionary, which for a column of distinct strings is every byte
+of the column. The block header does not describe the internal layout of
+these bytes; the model id implies it.</p>
+<p>Because a dictionary can be as large as the payload, the side metadata is
+compressed like it. A non-empty section is</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>  u32 raw_size                 bytes entering the entropy chain
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  entropy chain form           u32 stage-input size per entropy stage,
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>                               then the final stage's bytes
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>                               (the bytes themselves when the chain is empty)
+</span></code></pre></div>
+<p>run through the same entropy chain as the payload, so <code>side_meta_size</code> is
+the on-disk size of the whole section. One model stores its side metadata
+packed: <code>TDC_MODEL_DICT_1D</code> holds its dictionary in memory as <code>u32 count</code>,
+<code>u32 total</code>, <code>u32 offsets[count + 1]</code> and the string bytes, and enters the
+chain as <code>u32 count</code>, a LEB128 length per entry and the string bytes, since
+the absolute offsets of a dictionary of distinct values form a ramp no LZ
+coder matches. The decoder unpacks it before any consumer reads it. A model
+whose side metadata is a few bytes pays a constant overhead for this
+(<code>PRED_2D</code>'s one byte occupies 17 on disk under an <code>LZ</code> chain). In a legacy
+<code>'BLKB'</code> record the section holds the in-memory form verbatim.</p>
 <p><code>xform_params_size</code> is a TLV section placed between the side metadata and
 the payload. Layout, repeating until the byte budget is consumed:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>  u16 slot_index      (0 .. TDC_MAX_TRANSFORMS - 1)
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>  u16 blob_length
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>  blob_length bytes   (transform-specific payload, little-endian)
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>  u16 slot_index      (0 .. TDC_MAX_TRANSFORMS - 1)
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>  u16 blob_length
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  blob_length bytes   (transform-specific payload, little-endian)
 </span></code></pre></div>
 <p>Transforms without on-disk parameters (<code>ZIGZAG</code>, <code>BYTE_SHUFFLE</code>) are simply
 absent from the TLV stream. <code>QUANTIZE</code> stores its <code>scale</code>/<code>offset</code>/<code>target</code>
@@ -1872,40 +1895,40 @@ matching the allocator convention the library uses internally.</p>
 <p>The hex-dump example encodes a 16-element <code>i16</code> ramp (<code>src[i] = 100 + i</code>)
 with <code>model = DELTA_1D</code>, <code>xform[0] = ZIGZAG</code>, no entropy. Real output from
 a run on x86_64 MSVC:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>input   : 16 x i16 = 32 bytes
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>encoded : 112 bytes (80-byte header + side + payload)
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>block record header:
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  0000  42 4c 4b 42               magic            ('BLKB')
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  0004  02 00                     version
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  0006  00 00                     flags
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>  0008  02 00                     model_id
-</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>  000a  02 00 00 00 00 00 00 00   xform_ids[4]    (u16 x 4)
-</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>  0012  00 00 00 00 00 00 00 00   entropy_ids[4]  (u16 x 4)
-</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>  001a  02                        dtype
-</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>  001b  01                        layout
-</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>  001c  01                        rank
-</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>  001d  00                        _reserved0
-</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>  001e  00 00                     _reserved_pad
-</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>  0020  10 00 00 00 00 00 00 00   dim[0]          (int64)
-</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>  0028  00 00 00 00 00 00 00 00   dim[1]          (int64)
-</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>  0030  00 00 00 00 00 00 00 00   dim[2]          (int64)
-</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>  0038  20 00 00 00 00 00 00 00   uncompressed_size (u64)
-</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>  0040  00 00 00 00               side_meta_size   (u32)
-</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>  0044  20 00 00 00               payload_size     (u32)
-</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>  0048  00 00 00 00               xform_params_size(u32)
-</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>  004c  00 00 00 00               validity_size    (u32)
-</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>
-</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>payload (32 bytes):
-</span><span id="__span-2-26"><a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>  0050  c8 00 02 00 02 00 02 00 02 00 02 00 02 00 02 00   payload
-</span><span id="__span-2-27"><a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>  0060  02 00 02 00 02 00 02 00 02 00 02 00 02 00 02 00   payload
-</span><span id="__span-2-28"><a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>
-</span><span id="__span-2-29"><a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>total on-disk bytes: 112
-</span><span id="__span-2-30"><a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>round trip memcmp == source: yes
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>input   : 16 x i16 = 32 bytes
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>encoded : 112 bytes (80-byte header + side + payload)
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>block record header:
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  0000  54 44 42 4b               magic            ('TDBK')
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  0004  01 00                     version
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  0006  00 00                     flags
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  0008  02 00                     model_id
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  000a  02 00 00 00 00 00 00 00   xform_ids[4]    (u16 x 4)
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>  0012  00 00 00 00 00 00 00 00   entropy_ids[4]  (u16 x 4)
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  001a  02                        dtype
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>  001b  01                        layout
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>  001c  01                        rank
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>  001d  00                        _reserved0
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>  001e  00 00                     _reserved_pad
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>  0020  10 00 00 00 00 00 00 00   dim[0]          (int64)
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>  0028  00 00 00 00 00 00 00 00   dim[1]          (int64)
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>  0030  00 00 00 00 00 00 00 00   dim[2]          (int64)
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>  0038  20 00 00 00 00 00 00 00   uncompressed_size (u64)
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>  0040  00 00 00 00               side_meta_size   (u32)
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>  0044  20 00 00 00               payload_size     (u32)
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>  0048  00 00 00 00               xform_params_size(u32)
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>  004c  00 00 00 00               validity_size    (u32)
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>payload (32 bytes):
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>  0050  c8 00 02 00 02 00 02 00 02 00 02 00 02 00 02 00   payload
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a>  0060  02 00 02 00 02 00 02 00 02 00 02 00 02 00 02 00   payload
+</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a>
+</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a>total on-disk bytes: 112
+</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a>round trip memcmp == source: yes
 </span></code></pre></div>
 <p>Every byte of the 80-byte header lines up with the table above. The magic
-is <code>42 4c 4b 42</code>, the ASCII for <code>'BLKB'</code> read little-endian as
-<code>0x424B4C42</code>. Version 2 is <code>02 00</code>; the flags field is clear. The model id
+is <code>54 44 42 4b</code>, the ASCII for <code>'TDBK'</code> read little-endian as
+<code>0x4B424454</code>. Version 1 is <code>01 00</code>; the flags field is clear. The model id
 <code>02 00</code> is <code>TDC_MODEL_DELTA_1D = 0x0002</code>. The transform array's first slot
 <code>02 00</code> is <code>TDC_XFORM_ZIGZAG = 0x0002</code>; slots 1..3 are zero, terminating
 the chain. The entropy array is all zeros, and an all-zero entropy chain is
@@ -1928,66 +1951,60 @@ the pipeline visible in 32 bytes.</p>
 <p>The second example, <code>format_peek_header.c</code>, runs a heavier spec
 (<code>PRED_2D</code> + <code>ZIGZAG</code> + <code>BYTE_SHUFFLE</code> + <code>LZ</code>) on a 4×6 <code>i32</code> raster and
 prints the decoded header struct plus the section offsets. Real output:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>block record header (80 bytes)
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  magic              = 0x424b4c42  (TDC_BLOCK_MAGIC = 0x424b4c42)
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  version            = 2
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  flags              = 0x0000
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  model_id           = 0x0004
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  xform_ids[0..3]    = 0x0002 0x0003 0x0000 0x0000
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  entropy_ids[0..3]  = 0x0001 0x0000 0x0000 0x0000
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  dtype              = 3 (I32)
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  layout             = 2 (RASTER_2D)
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>  rank               = 2
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  dim[0..2]          = 4 6 0
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>  uncompressed_size  = 96 bytes
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>  side_meta_size     = 1
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>  xform_params_size  = 0
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>  payload_size       = 27
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>  validity_size      = 0
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>section offsets:
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>  header       : 0 .. 80
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>  side_meta    : 80 .. 81
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>  xform_params : 81 .. 81
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>  payload      : 81 .. 108
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>  validity     : 108 .. 108
-</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>
-</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>peek bytes_required = 96 (matches uncompressed element bytes)
-</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a>tdc_block_record_validate = 0 (ok)
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>block record header (80 bytes)
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  magic              = 0x4b424454  (TDC_BLOCK_MAGIC = 0x4b424454)
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  version            = 1
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  flags              = 0x0000
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  model_id           = 0x0004
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  xform_ids[0..3]    = 0x0002 0x0003 0x0000 0x0000
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  entropy_ids[0..3]  = 0x0001 0x0000 0x0000 0x0000
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  dtype              = 3 (I32)
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>  layout             = 2 (RASTER_2D)
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>  rank               = 2
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>  dim[0..2]          = 4 6 0
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>  uncompressed_size  = 96 bytes
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>  side_meta_size     = 17
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>  xform_params_size  = 0
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>  payload_size       = 27
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>  validity_size      = 0
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>section offsets:
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>  header       : 0 .. 80
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>  side_meta    : 80 .. 97
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>  xform_params : 97 .. 97
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>  payload      : 97 .. 124
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>  validity     : 124 .. 124
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>peek bytes_required = 96 (matches uncompressed element bytes)
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>tdc_block_record_validate = 0 (ok)
 </span></code></pre></div>
 <p>Here the model id is <code>0x0004</code> (<code>PRED_2D</code>). The transform chain is
 <code>ZIGZAG -&gt; BYTE_SHUFFLE</code>, both terminated by zero. The entropy chain is
-<code>LZ</code> then zero. <code>side_meta_size = 1</code> because <code>PRED_2D</code> stores one byte
-containing the resolved predictor kind after <code>AUTO</code> resolution. The whole
-block record is 108 bytes; the 24 i32 elements that would have been 96
-bytes raw compressed down to a 27-byte payload plus 1 side byte, plus the
-80-byte header. <code>tdc_block_record_validate</code> returns <code>TDC_OK</code>, and
+<code>LZ</code> then zero. <code>PRED_2D</code> emits one byte containing the resolved predictor
+kind after <code>AUTO</code> resolution; through the <code>LZ</code> chain that section occupies
+<code>side_meta_size = 17</code> bytes. The whole block record is 124 bytes; the 24
+i32 elements that would have been 96 bytes raw compressed down to a 27-byte
+payload plus the 17-byte side section, plus the 80-byte header. <code>tdc_block_record_validate</code> returns <code>TDC_OK</code>, and
 <code>tdc_decode_peek</code>'s <code>bytes_required</code> output exactly matches
 <code>n_elems * sizeof(i32) = 24 * 4 = 96</code>.</p>
 <h2 id="evolution-policy">Evolution policy<a class="headerlink" href="#evolution-policy" title="Permanent link">&para;</a></h2>
-<p>tdc is pre-release. The format will change in place while the design is
-still settling: struct reshuffles, new flag bits, new enum id
-allocations, new sections inside the existing 80-byte and 64-byte
-envelopes. No migration code, no dual-version reader branches. The rule
-we carry from the project memory is that format-version bumps only begin
-after the first real external consumer ships. Until then, edits land as
-"format change: <code>&lt;what&gt;</code>" in the commit log.</p>
-<p>Once that first consumer ships, the policy tightens. Any of the following
-would require a version bump: adding a field that enlarges the 80-byte
-block record or 64-byte container header; reordering existing fields;
-redefining an existing flag bit; changing the semantics of a size field;
-changing endianness. The format_hexdump program is the backstop for this
-rule: every named field in its output is an offset in <code>format.h</code>, and
-every change to <code>format.h</code> either preserves the program's output or
-invalidates the vignette along with the consumer. The compile-time
+<p>The first consumer, vectra, has shipped files in the legacy format, so the
+format is versioned from here on. Any of the following requires a new
+format generation (new magic numbers) or a version bump: adding a field that
+enlarges the 80-byte block record or 64-byte container header; reordering
+existing fields; redefining an existing flag bit; changing the semantics of
+a size field or of a section's contents; changing endianness. The library
+keeps reading every generation it has written. The format_hexdump program
+is the backstop for this rule: every named field in its output is an offset
+in <code>format.h</code>, and every change to <code>format.h</code> either preserves the program's
+output or invalidates this page along with the consumer. The compile-time
 <code>_Static_assert</code> on the struct sizes ensures a careless edit breaks the
 build before it breaks a reader.</p>
 <p>Changes that do <em>not</em> require a bump: reusing a <code>_reserved</code> byte for a new
 field with a zero default that decodes identically to its previous
 behavior; adding a new model / transform / entropy enum id in the unused
-id range; adding a new flag bit. Backends must read unknown flag bits as
-zero and unknown enum ids as <code>TDC_E_UNSUPPORTED</code>; the validator handles
-both cases explicitly.</p>
+id range. A reader built before such an id existed returns
+<code>TDC_E_UNSUPPORTED</code> for it.</p>
 <p>The enum id ranges are partitioned in <code>include/tdc/codec.h</code> so the static
 registry in v0 and a future plugin API share the same u16 namespace
 without collision. <code>0x0000</code> is a sentinel (never written as an active id).
@@ -1999,14 +2016,6 @@ backends once the plugin API lands; a user backend today should pick from
 this range to avoid future collisions. The ranges apply identically to
 model, transform, and entropy ids, giving three separate u16 spaces,
 each with the same partition.</p>
-<p>The <code>TDC_CONTAINER_VERSION</code> and <code>TDC_BLOCK_VERSION</code> constants will tick
-up together or separately as changes require. The two versions are
-independent so a block-layout change does not force a re-indexing of an
-existing container. A v0-aware reader that has been compiled against
-older headers will refuse to decode a record with a higher version: the
-validator returns <code>TDC_E_VERSION</code>, distinct from <code>TDC_E_CORRUPT</code>, which
-gives callers a clear signal that the record is well-formed but from a
-future format they do not understand yet.</p>
 
 
 
@@ -2064,10 +2073,10 @@ future format they do not understand yet.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.tabs", "navigation.tabs.sticky", "navigation.top", "navigation.indexes", "content.code.copy", "content.code.annotate", "content.tabs.link", "toc.follow", "search.suggest", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>
