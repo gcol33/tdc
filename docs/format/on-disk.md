@@ -40,20 +40,23 @@ within the existing 80 bytes (using the `_reserved0` / `_reserved_pad`
 slots) does not. The container header follows the same discipline at 64
 bytes.
 
-The format carries two version numbers. `TDC_CONTAINER_VERSION = 1` stamps
-the container; `TDC_BLOCK_VERSION = 2` stamps every block record. They are
-independent by design so a later block-layout change does not force a
-rewrite of existing container indexes. The version numbers are written by
-the encoder and compared against the compile-time constants during
-`tdc_container_header_validate` and `tdc_block_record_validate`; mismatches
-return `TDC_E_VERSION`, distinct from `TDC_E_CORRUPT`.
+The current format is identified by its magic numbers, `'TDCF'` for the
+container and `'TDBK'` for a block record, and both carry version 1
+(`TDC_CONTAINER_VERSION`, `TDC_BLOCK_VERSION`). The versions are independent
+by design so a later block-layout change does not force a rewrite of
+existing container indexes. A header whose magic is unknown fails validation
+with `TDC_E_CORRUPT`; a known magic at a version its generation does not
+define fails with `TDC_E_VERSION`.
 
-tdc is pre-release. Until a real external consumer ships (vectra's rewire
-lands, or another downstream integrates), the format may change in place
-without bumping version. The rules in this file describe the current
-layout, not a committed long-term ABI. The `project_no_versioning_during_prototype`
-note in the project memory governs evolution policy until that first
-downstream consumer exists.
+The format vectra shipped before it, the **legacy** format (`'TDC1'`
+container at version 1, or 2 once grown in place; `'BLKB'` block record at
+version 2), is still read. Writers emit only the current format. The two
+differ in how a block stores its side metadata (see the block record below)
+and in how a grown container is marked. `tdc_container_header_is_legacy()`
+and `tdc_block_record_is_legacy()` tell a reader which one it holds. A
+container grown in place by the current library is rewritten with a
+current-format header, and its old and new blocks decode side by side
+because each block record describes itself.
 
 ## Container header
 
@@ -73,9 +76,9 @@ an 8-aligned offset.
 
 | Offset | Size | Field           | Type   | Meaning                                                    |
 |-------:|-----:|-----------------|--------|------------------------------------------------------------|
-|      0 |    4 | magic           | u32    | `TDC_CONTAINER_MAGIC` = `0x31434454` (`'TDC1'` LE)         |
+|      0 |    4 | magic           | u32    | `TDC_CONTAINER_MAGIC` = `0x46434454` (`'TDCF'` LE)         |
 |      4 |    2 | version         | u16    | `TDC_CONTAINER_VERSION` = 1                                |
-|      6 |    2 | flags           | u16    | bit 0 `HETEROGENEOUS`, bit 1 `HAS_STATS`                   |
+|      6 |    2 | flags           | u16    | bit 0 `HETEROGENEOUS`, bit 1 `HAS_STATS`, bit 2 `WIDENED`  |
 |      8 |    8 | n_blocks        | u64    | number of block records in the container                   |
 |     16 |    8 | index_offset    | u64    | absolute file offset of trailing block-index table         |
 |     24 |    8 | index_size      | u64    | byte length of the trailing block-index table              |
@@ -89,7 +92,10 @@ an 8-aligned offset.
 `TDC_CONTAINER_FLAG_HETEROGENEOUS` is bit 0. When set, per-block dtype and
 layout vary; the global fields must read as zero. `TDC_CONTAINER_FLAG_HAS_STATS`
 is bit 1 and signals that at least one row group's trailing index entry
-carries per-column min/max statistics.
+carries per-column min/max statistics. `TDC_CONTAINER_FLAG_WIDENED` is bit 2
+and marks a heterogeneous container grown in place, whose schema and first
+block are located by the relocation pointers in the last 24 bytes (the
+legacy format marked the same state as container version 2).
 
 The trailing block-index is a contiguous array of 16-byte entries:
 
@@ -136,8 +142,8 @@ of size `uncompressed_size` before handing it to the model.
 
 | Offset | Size | Field             | Type   | Meaning                                                       |
 |-------:|-----:|-------------------|--------|---------------------------------------------------------------|
-|      0 |    4 | magic             | u32    | `TDC_BLOCK_MAGIC` = `0x424B4C42` (`'BLKB'` LE)                |
-|      4 |    2 | version           | u16    | `TDC_BLOCK_VERSION` = 2                                       |
+|      0 |    4 | magic             | u32    | `TDC_BLOCK_MAGIC` = `0x4B424454` (`'TDBK'` LE)                |
+|      4 |    2 | version           | u16    | `TDC_BLOCK_VERSION` = 1                                       |
 |      6 |    2 | flags             | u16    | `HAS_VALIDITY`, `LOSSY`, `ZERO_RESIDUAL`                      |
 |      8 |    2 | model_id          | u16    | `tdc_model_id`                                                |
 |     10 |    8 | xform_ids[4]      | u16[4] | `tdc_xform_id`, 0 terminates the chain                        |
@@ -149,7 +155,7 @@ of size `uncompressed_size` before handing it to the model.
 |     30 |    2 | _reserved_pad     | u16    | alignment padding for dim[3]                                  |
 |     32 |   24 | dim[3]            | i64[3] | block shape; trailing unused entries zero                     |
 |     56 |    8 | uncompressed_size | u64    | residual bytes **before** entropy stage                       |
-|     64 |    4 | side_meta_size    | u32    | model side metadata byte count                                |
+|     64 |    4 | side_meta_size    | u32    | on-disk byte count of the side metadata section               |
 |     68 |    4 | payload_size      | u32    | entropy-compressed payload bytes                              |
 |     72 |    4 | xform_params_size | u32    | TLV section byte count (0 if no per-slot xform params)        |
 |     76 |    4 | validity_size     | u32    | validity bitmap bytes (`ceil(n_elems / 8)` if `HAS_VALIDITY`) |
@@ -163,15 +169,36 @@ post-transform intermediate size; the transform chain then runs right-to-left
 and grows that back up to `uncompressed_size`. Keeping both counts on disk
 means the decode hot path never guesses at output sizes.
 
-`side_meta_size` carries model-specific bytes that parametrize the
-decoder. The contents vary by model id. `RAW` and `DELTA_1D` write nothing
-into this section, so the size is zero. `PRED_2D` and `PRED_3D` store a
-single byte holding the resolved predictor kind after `AUTO` is dispatched
-at encode time, so their size is 1.
-`TDC_MODEL_PLANE_2D` stores a u16 tile size, a u32 tile count, and three
+The side metadata section carries model-specific bytes that parametrize the
+decoder. The contents vary by model id. `RAW` and `DELTA_1D` emit none, and
+the section is empty. `PRED_2D` and `PRED_3D` emit a single byte holding the
+resolved predictor kind after `AUTO` is dispatched at encode time.
+`TDC_MODEL_PLANE_2D` emits a u16 tile size, a u32 tile count, and three
 i32 coefficients per tile. `TDC_MODEL_DICT_1D` and the numeric-dict variant
-store a packed dictionary. The block header does not describe the internal
-layout of this section; the model id implies the format.
+emit their dictionary, which for a column of distinct strings is every byte
+of the column. The block header does not describe the internal layout of
+these bytes; the model id implies it.
+
+Because a dictionary can be as large as the payload, the side metadata is
+compressed like it. A non-empty section is
+
+```
+  u32 raw_size                 bytes entering the entropy chain
+  entropy chain form           u32 stage-input size per entropy stage,
+                               then the final stage's bytes
+                               (the bytes themselves when the chain is empty)
+```
+
+run through the same entropy chain as the payload, so `side_meta_size` is
+the on-disk size of the whole section. One model stores its side metadata
+packed: `TDC_MODEL_DICT_1D` holds its dictionary in memory as `u32 count`,
+`u32 total`, `u32 offsets[count + 1]` and the string bytes, and enters the
+chain as `u32 count`, a LEB128 length per entry and the string bytes, since
+the absolute offsets of a dictionary of distinct values form a ramp no LZ
+coder matches. The decoder unpacks it before any consumer reads it. A model
+whose side metadata is a few bytes pays a constant overhead for this
+(`PRED_2D`'s one byte occupies 17 on disk under an `LZ` chain). In a legacy
+`'BLKB'` record the section holds the in-memory form verbatim.
 
 `xform_params_size` is a TLV section placed between the side metadata and
 the payload. Layout, repeating until the byte budget is consumed:
@@ -231,8 +258,8 @@ input   : 16 x i16 = 32 bytes
 encoded : 112 bytes (80-byte header + side + payload)
 
 block record header:
-  0000  42 4c 4b 42               magic            ('BLKB')
-  0004  02 00                     version
+  0000  54 44 42 4b               magic            ('TDBK')
+  0004  01 00                     version
   0006  00 00                     flags
   0008  02 00                     model_id
   000a  02 00 00 00 00 00 00 00   xform_ids[4]    (u16 x 4)
@@ -260,8 +287,8 @@ round trip memcmp == source: yes
 ```
 
 Every byte of the 80-byte header lines up with the table above. The magic
-is `42 4c 4b 42`, the ASCII for `'BLKB'` read little-endian as
-`0x424B4C42`. Version 2 is `02 00`; the flags field is clear. The model id
+is `54 44 42 4b`, the ASCII for `'TDBK'` read little-endian as
+`0x4B424454`. Version 1 is `01 00`; the flags field is clear. The model id
 `02 00` is `TDC_MODEL_DELTA_1D = 0x0002`. The transform array's first slot
 `02 00` is `TDC_XFORM_ZIGZAG = 0x0002`; slots 1..3 are zero, terminating
 the chain. The entropy array is all zeros, and an all-zero entropy chain is
@@ -290,8 +317,8 @@ prints the decoded header struct plus the section offsets. Real output:
 
 ```
 block record header (80 bytes)
-  magic              = 0x424b4c42  (TDC_BLOCK_MAGIC = 0x424b4c42)
-  version            = 2
+  magic              = 0x4b424454  (TDC_BLOCK_MAGIC = 0x4b424454)
+  version            = 1
   flags              = 0x0000
   model_id           = 0x0004
   xform_ids[0..3]    = 0x0002 0x0003 0x0000 0x0000
@@ -301,17 +328,17 @@ block record header (80 bytes)
   rank               = 2
   dim[0..2]          = 4 6 0
   uncompressed_size  = 96 bytes
-  side_meta_size     = 1
+  side_meta_size     = 17
   xform_params_size  = 0
   payload_size       = 27
   validity_size      = 0
 
 section offsets:
   header       : 0 .. 80
-  side_meta    : 80 .. 81
-  xform_params : 81 .. 81
-  payload      : 81 .. 108
-  validity     : 108 .. 108
+  side_meta    : 80 .. 97
+  xform_params : 97 .. 97
+  payload      : 97 .. 124
+  validity     : 124 .. 124
 
 peek bytes_required = 96 (matches uncompressed element bytes)
 tdc_block_record_validate = 0 (ok)
@@ -319,41 +346,34 @@ tdc_block_record_validate = 0 (ok)
 
 Here the model id is `0x0004` (`PRED_2D`). The transform chain is
 `ZIGZAG -> BYTE_SHUFFLE`, both terminated by zero. The entropy chain is
-`LZ` then zero. `side_meta_size = 1` because `PRED_2D` stores one byte
-containing the resolved predictor kind after `AUTO` resolution. The whole
-block record is 108 bytes; the 24 i32 elements that would have been 96
-bytes raw compressed down to a 27-byte payload plus 1 side byte, plus the
-80-byte header. `tdc_block_record_validate` returns `TDC_OK`, and
+`LZ` then zero. `PRED_2D` emits one byte containing the resolved predictor
+kind after `AUTO` resolution; through the `LZ` chain that section occupies
+`side_meta_size = 17` bytes. The whole block record is 124 bytes; the 24
+i32 elements that would have been 96 bytes raw compressed down to a 27-byte
+payload plus the 17-byte side section, plus the 80-byte header. `tdc_block_record_validate` returns `TDC_OK`, and
 `tdc_decode_peek`'s `bytes_required` output exactly matches
 `n_elems * sizeof(i32) = 24 * 4 = 96`.
 
 ## Evolution policy
 
-tdc is pre-release. The format will change in place while the design is
-still settling: struct reshuffles, new flag bits, new enum id
-allocations, new sections inside the existing 80-byte and 64-byte
-envelopes. No migration code, no dual-version reader branches. The rule
-we carry from the project memory is that format-version bumps only begin
-after the first real external consumer ships. Until then, edits land as
-"format change: `<what>`" in the commit log.
-
-Once that first consumer ships, the policy tightens. Any of the following
-would require a version bump: adding a field that enlarges the 80-byte
-block record or 64-byte container header; reordering existing fields;
-redefining an existing flag bit; changing the semantics of a size field;
-changing endianness. The format_hexdump program is the backstop for this
-rule: every named field in its output is an offset in `format.h`, and
-every change to `format.h` either preserves the program's output or
-invalidates the vignette along with the consumer. The compile-time
+The first consumer, vectra, has shipped files in the legacy format, so the
+format is versioned from here on. Any of the following requires a new
+format generation (new magic numbers) or a version bump: adding a field that
+enlarges the 80-byte block record or 64-byte container header; reordering
+existing fields; redefining an existing flag bit; changing the semantics of
+a size field or of a section's contents; changing endianness. The library
+keeps reading every generation it has written. The format_hexdump program
+is the backstop for this rule: every named field in its output is an offset
+in `format.h`, and every change to `format.h` either preserves the program's
+output or invalidates this page along with the consumer. The compile-time
 `_Static_assert` on the struct sizes ensures a careless edit breaks the
 build before it breaks a reader.
 
 Changes that do *not* require a bump: reusing a `_reserved` byte for a new
 field with a zero default that decodes identically to its previous
 behavior; adding a new model / transform / entropy enum id in the unused
-id range; adding a new flag bit. Backends must read unknown flag bits as
-zero and unknown enum ids as `TDC_E_UNSUPPORTED`; the validator handles
-both cases explicitly.
+id range. A reader built before such an id existed returns
+`TDC_E_UNSUPPORTED` for it.
 
 The enum id ranges are partitioned in `include/tdc/codec.h` so the static
 registry in v0 and a future plugin API share the same u16 namespace
@@ -366,12 +386,3 @@ backends once the plugin API lands; a user backend today should pick from
 this range to avoid future collisions. The ranges apply identically to
 model, transform, and entropy ids, giving three separate u16 spaces,
 each with the same partition.
-
-The `TDC_CONTAINER_VERSION` and `TDC_BLOCK_VERSION` constants will tick
-up together or separately as changes require. The two versions are
-independent so a block-layout change does not force a re-indexing of an
-existing container. A v0-aware reader that has been compiled against
-older headers will refuse to decode a record with a higher version: the
-validator returns `TDC_E_VERSION`, distinct from `TDC_E_CORRUPT`, which
-gives callers a clear signal that the record is well-formed but from a
-future format they do not understand yet.

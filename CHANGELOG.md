@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **New format generation: 'TDCF' container, 'TDBK' block record, both at
+  version 1.** A block's side metadata now goes through the block's entropy
+  chain, prefixed by its raw size, instead of being stored verbatim; a string
+  dictionary (DICT_1D), which for a column of distinct values holds every byte
+  of the column, is compressed like the payload. DICT_1D's dictionary is
+  stored packed, a LEB128 length per entry in place of the u32 offsets table,
+  and unpacked by the driver, so the model and every consumer of decoded side
+  metadata keep the offsets form. A grown-in-place container is marked by the
+  new `TDC_CONTAINER_FLAG_WIDENED` rather than by a second container version.
+  Writers emit only the new generation. The legacy generation ('TDC1'
+  container v1/v2, 'BLKB' block v2) is still read, decided per record through
+  `tdc_container_header_is_legacy()` / `tdc_block_record_is_legacy()`;
+  growing a legacy container rewrites its header in the new generation. New
+  helpers: `tdc_container_header_check_generation()`,
+  `tdc_container_header_is_widened()`, `tdc_block_magic_known()`.
+- The entropy chain (stage-size table + final bytes) has one implementation,
+  `driver_entropy_chain_encode` / `driver_entropy_chain_decode`, shared by the
+  payload and the side metadata.
+
 - **Widening and extending reuse the superseded index's space.** Both now
   write from the end of the container's live data (the last block or schema
   byte it refers to, which is where its trailing index starts unless a pass

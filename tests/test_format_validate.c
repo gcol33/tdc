@@ -190,15 +190,15 @@ static int test_container_header_rejects(void) {
      * schema written after the blocks region it supersedes. */
     {
         tdc_container_header h = make_heterogeneous_header();
-        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.flags |= TDC_CONTAINER_FLAG_WIDENED;
         h.schema_size = 48;
         h.u.het.blocks_start  = 128;
         h.u.het.schema_offset = 4096;
         CHECK(tdc_container_header_validate(&h) == TDC_OK);
     }
 
-    /* v1 must leave the relocation pointers zeroed: a stale pointer with a
-     * v1 stamp would send a reader to the wrong schema. */
+    /* An unwidened container must leave the relocation pointers zeroed: a
+     * stale pointer would send a reader to the wrong schema. */
     {
         tdc_container_header h = make_heterogeneous_header();
         h.u.het.schema_offset = 4096;
@@ -210,17 +210,18 @@ static int test_container_header_rejects(void) {
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
 
-    /* v2 must set both, and must carry a schema to have relocated. */
+    /* A widened container must set both, and must carry a schema to have
+     * relocated. */
     {
         tdc_container_header h = make_heterogeneous_header();
-        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.flags |= TDC_CONTAINER_FLAG_WIDENED;
         h.schema_size = 48;
         h.u.het.blocks_start = 128;      /* schema_offset left 0 */
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
     {
         tdc_container_header h = make_heterogeneous_header();
-        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.flags |= TDC_CONTAINER_FLAG_WIDENED;
         h.schema_size = 0;               /* relocated to nothing */
         h.u.het.blocks_start  = 128;
         h.u.het.schema_offset = 4096;
@@ -230,7 +231,7 @@ static int test_container_header_rejects(void) {
     /* The relocated schema is written past the blocks, never before. */
     {
         tdc_container_header h = make_heterogeneous_header();
-        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.flags |= TDC_CONTAINER_FLAG_WIDENED;
         h.schema_size = 48;
         h.u.het.blocks_start  = 4096;
         h.u.het.schema_offset = 128;
@@ -241,15 +242,54 @@ static int test_container_header_rejects(void) {
      * pointers share storage with the global shape. */
     {
         tdc_container_header h = make_homogeneous_header();
-        h.version = TDC_CONTAINER_VERSION_WIDENED;
+        h.flags |= TDC_CONTAINER_FLAG_WIDENED;
         CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
     }
 
     /* An unknown version is still refused. */
     {
         tdc_container_header h = make_heterogeneous_header();
-        h.version = TDC_CONTAINER_VERSION_WIDENED + 1;
+        h.version = TDC_CONTAINER_VERSION + 1;
         CHECK(tdc_container_header_validate(&h) == TDC_E_VERSION);
+    }
+
+    /* ----- legacy ('TDC1') containers are still read ----- */
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.magic   = TDC_LEGACY_CONTAINER_MAGIC;
+        h.version = TDC_LEGACY_CONTAINER_VERSION;
+        CHECK(tdc_container_header_validate(&h) == TDC_OK);
+        CHECK(tdc_container_header_is_legacy(&h));
+        CHECK(!tdc_container_header_is_widened(&h));
+    }
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.magic   = TDC_LEGACY_CONTAINER_MAGIC;
+        h.version = TDC_LEGACY_CONTAINER_VERSION_WIDENED;
+        h.schema_size = 48;
+        h.u.het.blocks_start  = 128;
+        h.u.het.schema_offset = 4096;
+        CHECK(tdc_container_header_validate(&h) == TDC_OK);
+        CHECK(tdc_container_header_is_widened(&h));
+    }
+    /* The flag is the current format's marker; a legacy header carrying it
+     * is malformed. */
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.magic   = TDC_LEGACY_CONTAINER_MAGIC;
+        h.version = TDC_LEGACY_CONTAINER_VERSION;
+        h.flags  |= TDC_CONTAINER_FLAG_WIDENED;
+        CHECK(tdc_container_header_validate(&h) == TDC_E_CORRUPT);
+    }
+    /* The current format has no version 2. */
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        h.version = TDC_LEGACY_CONTAINER_VERSION_WIDENED;
+        CHECK(tdc_container_header_validate(&h) == TDC_E_VERSION);
+    }
+    {
+        tdc_container_header h = make_heterogeneous_header();
+        CHECK(!tdc_container_header_is_legacy(&h));
     }
 
     return 0;
@@ -295,6 +335,22 @@ static int test_block_record_smoke(void) {
         bad.xform_ids[0] = (uint16_t)TDC_XFORM_NONE;
         bad.xform_ids[1] = (uint16_t)TDC_XFORM_ZIGZAG;  /* after NONE — illegal */
         CHECK(tdc_block_record_validate(&bad) == TDC_E_CORRUPT);
+    }
+    /* Legacy ('BLKB') records are read at their own version only. */
+    {
+        tdc_block_record legacy = r;
+        legacy.magic   = TDC_LEGACY_BLOCK_MAGIC;
+        legacy.version = TDC_LEGACY_BLOCK_VERSION;
+        CHECK(tdc_block_record_validate(&legacy) == TDC_OK);
+        CHECK(tdc_block_record_is_legacy(&legacy));
+        legacy.version = TDC_BLOCK_VERSION;
+        CHECK(tdc_block_record_validate(&legacy) == TDC_E_VERSION);
+    }
+    {
+        tdc_block_record bad = r;
+        bad.version = TDC_LEGACY_BLOCK_VERSION;
+        CHECK(tdc_block_record_validate(&bad) == TDC_E_VERSION);
+        CHECK(!tdc_block_record_is_legacy(&r));
     }
     return 0;
 }

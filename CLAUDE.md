@@ -63,6 +63,18 @@ When extracting code from `vectra/src/vtr_codec.c` and friends:
 Vectra will be rewired to call tdc once extraction is done; at that point
 vectra's old codec disappears entirely.
 
+## Format generations: read every one ever written (hard)
+
+vectra has shipped files, so the tdc on-disk format is versioned. Writers
+emit only the current generation ('TDCF' container / 'TDBK' block, version
+1). Readers keep accepting every earlier generation ('TDC1' / 'BLKB'),
+decided per record via `tdc_container_header_is_legacy()` /
+`tdc_block_record_is_legacy()`. A change to a section's layout or meaning
+needs a new generation (magic) or version, documented in `format.h` and
+`docs/format/on-disk.md`, plus a legacy read path; the old one is never
+dropped. Legacy differences are adapted at the driver boundary
+(`decode_impl.c` Stage 0) so models see one in-memory form.
+
 ## Allocation rule (hard)
 
 `tdc_buffer::realloc_fn` is the **only** allocation path inside tdc. No

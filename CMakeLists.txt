@@ -106,6 +106,8 @@ set(TDC_SOURCES
     src/format/stats.c
 
     src/api/encode.c
+    src/api/entropy_chain.c
+    src/api/side_pack.c
     src/api/decode.c
     src/api/decode_ex.c
     src/api/decode_impl.c
@@ -220,6 +222,10 @@ if(TDC_BUILD_TESTS)
     add_executable(test_sparse_zero_roundtrip tests/test_sparse_zero_roundtrip.c)
     target_link_libraries(test_sparse_zero_roundtrip PRIVATE tdc)
     add_test(NAME sparse_zero_roundtrip COMMAND test_sparse_zero_roundtrip)
+
+    add_executable(test_side_meta_e2e tests/test_side_meta_e2e.c)
+    target_link_libraries(test_side_meta_e2e PRIVATE tdc)
+    add_test(NAME side_meta_e2e COMMAND test_side_meta_e2e)
 
     add_executable(test_dnum_e2e tests/test_dnum_e2e.c)
     target_link_libraries(test_dnum_e2e PRIVATE tdc)

@@ -441,7 +441,7 @@ static int test_widen_roundtrip(void) {
 
     int rc = 0;
     const tdc_container_header *h = tdc_stream_decoder_header(dec);
-    if (!h || h->version != TDC_CONTAINER_VERSION_WIDENED) rc = 1;
+    if (!h || !tdc_container_header_is_widened(h)) rc = 1;
     if (!rc && h->u.het.schema_offset == 0) rc = 1;
     if (!rc && h->u.het.blocks_start != TDC_CONTAINER_HEADER_SIZE +
                                         (uint64_t)0) {
@@ -655,7 +655,7 @@ static int test_widen_abort(void) {
         const tdc_schema *sch = tdc_stream_decoder_read_schema(dec);
         const tdc_container_header *h = tdc_stream_decoder_header(dec);
         if (!sch || sch->n_columns != 2) rc = 1;
-        if (!rc && h->version != TDC_CONTAINER_VERSION) rc = 1;
+        if (!rc && tdc_container_header_is_widened(h)) rc = 1;
         for (int rg = 0; rg < N_ROWGROUPS && !rc; ++rg) {
             const tdc_rowgroup_entry *e =
                 tdc_stream_decoder_get_rowgroup(dec, (uint64_t)rg);

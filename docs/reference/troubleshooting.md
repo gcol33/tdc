@@ -125,7 +125,7 @@ If the error surfaces from a streaming read, the upstream index is likely trunca
 
 **Symptom.** Decode returns 8 before any residual bytes are produced. The record's header failed structural validation.
 
-**Likely cause.** The 80-byte header's magic does not match `TDC_BLOCK_MAGIC` (`BLKB`), the advertised section sizes do not fit in `src_size`, or `validity_size` disagrees with the flag bit. The container-header analog is `src/format/header.c` line 44: `if (h->magic != TDC_CONTAINER_MAGIC) return TDC_E_CORRUPT;`. Block-record cases are scattered through `src/api/decode_impl.c` lines 57-85.
+**Likely cause.** The 80-byte header's magic is neither `TDC_BLOCK_MAGIC` (`TDBK`) nor the legacy `TDC_LEGACY_BLOCK_MAGIC` (`BLKB`), the advertised section sizes do not fit in `src_size`, or `validity_size` disagrees with the flag bit. The container-header analog is `tdc_container_header_check_generation` in `src/format/header.c`. Block-record cases are scattered through `src/api/decode_impl.c` lines 57-85.
 
 **Fix.** Re-read the bytes from the source. If the corruption is reproducible, run the block through `tdc_inspect` (`tools/tdc_inspect.c`) to locate the first invalid field. The most common real-world trigger is a truncated download; checksum the bytes before retrying.
 
@@ -133,7 +133,7 @@ If the error surfaces from a streaming read, the upstream index is likely trunca
 
 **Symptom.** Decode returns 9 with the container or block record held out of reach. The header's magic was correct but the version was not one the linked library understands.
 
-**Likely cause.** The record was produced by a future tdc that bumped `TDC_BLOCK_VERSION` or `TDC_CONTAINER_VERSION`. Current v0 values are `TDC_CONTAINER_VERSION = 1` and `TDC_BLOCK_VERSION = 2`. The two return sites are `src/format/header.c` line 45 (containers) and `src/format/block_record.c` line 96 (per-block).
+**Likely cause.** The record was produced by a future tdc that bumped `TDC_BLOCK_VERSION` or `TDC_CONTAINER_VERSION`. Current values are `TDC_CONTAINER_VERSION = 1` and `TDC_BLOCK_VERSION = 1` under the `'TDCF'` / `'TDBK'` magics; the legacy `'TDC1'` / `'BLKB'` generation is read at container version 1 or 2 and block version 2. The return sites are `tdc_container_header_check_generation` in `src/format/header.c` (containers) and `tdc_block_record_validate` in `src/format/block_record.c` (per-block).
 
 **Fix.** Upgrade tdc to a library version that supports the record's version, or have the producer write a version this reader understands. There is no in-place migration; v0 does not read future versions.
 

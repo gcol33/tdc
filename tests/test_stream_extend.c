@@ -577,7 +577,7 @@ static int test_extend_roundtrip(void) {
     const tdc_container_header *h = tdc_stream_decoder_header(dec);
     /* Stamped as grown-in-place: the superseded index now sits in the blocks
      * region as a gap. */
-    if (!h || h->version != TDC_CONTAINER_VERSION_WIDENED) rc = 1;
+    if (!h || !tdc_container_header_is_widened(h)) rc = 1;
     /* The schema was NOT relocated: it is still where it was written. */
     if (!rc && h->u.het.schema_offset != TDC_CONTAINER_HEADER_SIZE) rc = 1;
     if (!rc && h->u.het.blocks_start !=
@@ -771,7 +771,7 @@ static int test_extend_widened_container(void) {
     if (open_dec(&mio, &dec) != TDC_OK) { mem_io_free(&mio); ASSERT_OR_DIE(0, "reopen"); }
 
     const tdc_container_header *h = tdc_stream_decoder_header(dec);
-    if (!h || h->version != TDC_CONTAINER_VERSION_WIDENED) rc = 1;
+    if (!h || !tdc_container_header_is_widened(h)) rc = 1;
     /* The relocated schema is still the one the header points at. */
     if (!rc && h->u.het.schema_offset != widened_schema_offset) rc = 1;
 

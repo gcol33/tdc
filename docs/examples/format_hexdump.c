@@ -80,7 +80,7 @@ int main(void) {
 
     /* ---- Block-record header (80 bytes) -------------------------------- */
     printf("block record header:\n");
-    row(b,  0, 4, "magic            ('BLKB')");
+    row(b,  0, 4, "magic            ('TDBK')");
     row(b,  4, 2, "version");
     row(b,  6, 2, "flags");
     row(b,  8, 2, "model_id");
